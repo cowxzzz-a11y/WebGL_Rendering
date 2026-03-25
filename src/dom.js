@@ -1,0 +1,26 @@
+export function createDOMRefs() {
+  return {
+    app: document.querySelector("#app"),
+    statusModelEl: document.querySelector("#status-model"),
+    statusHDREl: document.querySelector("#status-hdr"),
+    statusSelectionEl: document.querySelector("#status-selection"),
+    objectListEl: document.querySelector("#object-list"),
+    materialInspectorEl: document.querySelector("#material-inspector"),
+    basicInfoInspectorEl: document.querySelector("#basic-info-inspector"),
+    lightInspectorEl: document.querySelector("#light-inspector"),
+    tabButtons: document.querySelectorAll("[data-tab-target]"),
+    tabPanels: document.querySelectorAll("[data-tab-panel]"),
+    loadSceneBtn: document.querySelector("#load-scene-btn"),
+    loadTeaBtn: document.querySelector("#load-tea-btn"),
+    pickGLBBtn: document.querySelector("#pick-glb-btn"),
+    showFallbackBtn: document.querySelector("#show-fallback-btn"),
+    loadDefaultHDRBtn: document.querySelector("#load-default-hdr-btn"),
+    pickHDRBtn: document.querySelector("#pick-hdr-btn"),
+    resetViewBtn: document.querySelector("#reset-view-btn"),
+    clearSelectionBtn: document.querySelector("#clear-selection-btn"),
+    toggleMoveBtn: document.querySelector("#toggle-move-btn"),
+    showAllBtn: document.querySelector("#show-all-btn"),
+    glbInput: document.querySelector("#glb-input"),
+    hdrInput: document.querySelector("#hdr-input"),
+  };
+}

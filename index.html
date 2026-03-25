@@ -236,6 +236,7 @@
         <button class="tab-btn is-active" data-tab-target="objects">对象</button>
         <button class="tab-btn" data-tab-target="material">材质</button>
         <button class="tab-btn" data-tab-target="basic">基础信息</button>
+        <button class="tab-btn" data-tab-target="lights">灯光</button>
       </div>
 
       <div class="tab-panel is-active" data-tab-panel="objects">
@@ -254,6 +255,10 @@
       <div class="tab-panel" data-tab-panel="basic">
         <p class="hint">这里放对象和材质的基础信息，比如材质类型、贴图情况、阴影状态。</p>
         <div id="basic-info-inspector" class="tree-list"></div>
+      </div>
+      <div class="tab-panel" data-tab-panel="lights">
+        <p class="hint">这里可以调主平行光、辅助平行光和阴影参数，也可以把灯光选中后直接在场景里拖动。</p>
+        <div id="light-inspector" class="tree-list"></div>
       </div>
     </div>
 
