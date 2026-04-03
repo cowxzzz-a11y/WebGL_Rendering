@@ -40,11 +40,15 @@ export function createObjectManagerModule(app) {
 
     let current = clickedObject;
 
-    while (current.parent && current.parent !== root) {
+    while (current && current !== root) {
+      if (current.name && current.name.trim()) {
+        return current;
+      }
+
       current = current.parent;
     }
 
-    return current;
+    return clickedObject === root ? root : clickedObject;
   }
 
   function buildObjectRows(root, depth = 0, rows = []) {

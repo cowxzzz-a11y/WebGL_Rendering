@@ -3,16 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>threejs_scene</title>
+    <title>Three.js 查看器</title>
     <style>
+      :root {
+        color-scheme: dark;
+        --panel-bg: rgba(5, 10, 14, 0.46);
+        --panel-border: rgba(255, 255, 255, 0.12);
+        --panel-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+        --panel-text: #f6f7f8;
+        --panel-muted: rgba(246, 247, 248, 0.72);
+        --panel-soft: rgba(255, 255, 255, 0.08);
+        --panel-soft-strong: rgba(255, 255, 255, 0.14);
+        --panel-accent: #cfe3ff;
+        --panel-accent-text: #081018;
+        --panel-active: #ff7a90;
+      }
+
       html,
       body {
         margin: 0;
         width: 100%;
         height: 100%;
         overflow: hidden;
-        font-family: "Microsoft YaHei", Arial, sans-serif;
-        background: #10151c;
+        background: #d8d6d3;
+        font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      }
+
+      body {
+        color: var(--panel-text);
       }
 
       #app {
@@ -20,112 +38,241 @@
         height: 100%;
       }
 
-      .panel {
+      .panel-shell {
         position: fixed;
-        z-index: 10;
-        border-radius: 14px;
-        background: rgba(16, 21, 28, 0.78);
-        color: #f8fafc;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
-        backdrop-filter: blur(12px);
+        top: 16px;
+        z-index: 12;
+        pointer-events: none;
+      }
+
+      .panel-shell > * {
+        pointer-events: auto;
+      }
+
+      .left-panel-shell {
+        left: 16px;
+      }
+
+      .right-panel-shell {
+        right: 16px;
+      }
+
+      .panel {
+        border: 1px solid var(--panel-border);
+        border-radius: 18px;
+        background: var(--panel-bg);
+        color: var(--panel-text);
+        box-shadow: var(--panel-shadow);
+        backdrop-filter: blur(18px);
+        transition: opacity 0.2s ease, transform 0.2s ease;
       }
 
       .left-panel {
-        top: 16px;
-        left: 16px;
-        width: 380px;
+        width: 272px;
         padding: 16px;
       }
 
       .right-panel {
-        top: 16px;
-        right: 16px;
-        width: 340px;
+        width: 304px;
         max-height: calc(100vh - 32px);
-        padding: 16px;
+        padding: 14px 14px 12px;
         overflow: hidden;
         display: flex;
         flex-direction: column;
       }
 
+      .panel-shell.is-collapsed .panel {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .left-panel-shell.is-collapsed .panel {
+        transform: translateX(-18px) scale(0.98);
+      }
+
+      .right-panel-shell.is-collapsed .panel {
+        transform: translateX(18px) scale(0.98);
+      }
+
+      .panel-collapse-btn {
+        position: absolute;
+        top: 8px;
+        width: 26px;
+        height: 26px;
+        border: 0;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        color: var(--panel-text);
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+        transition: background 0.2s ease, transform 0.2s ease;
+      }
+
+      .panel-collapse-btn:hover {
+        background: rgba(255, 255, 255, 0.22);
+      }
+
+      .left-panel-shell .panel-collapse-btn {
+        left: 10px;
+      }
+
+      .right-panel-shell .panel-collapse-btn {
+        right: 10px;
+      }
+
+      .panel-shell.is-collapsed .panel-collapse-btn {
+        transform: scale(1.04);
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
       .panel h1,
       .panel h2,
       .panel h3 {
-        margin: 0 0 10px;
+        margin: 0;
       }
 
       .panel h1 {
-        font-size: 20px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
       }
 
       .panel h2 {
-        margin-top: 16px;
-        font-size: 15px;
-      }
-
-      .panel p {
-        margin: 6px 0;
+        margin-bottom: 8px;
         font-size: 13px;
-        line-height: 1.6;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.9);
       }
 
-      .panel code {
-        padding: 2px 6px;
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.08);
+      .panel h3 {
+        font-size: 12px;
+        color: var(--panel-muted);
+      }
+
+      .section + .section {
+        margin-top: 14px;
       }
 
       .button-row {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 10px;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
       }
 
       button {
         padding: 8px 12px;
         border: 0;
         border-radius: 10px;
-        background: #dbeafe;
-        color: #0f172a;
-        font-size: 13px;
+        background: var(--panel-accent);
+        color: var(--panel-accent-text);
+        font-size: 12px;
+        font-weight: 700;
         cursor: pointer;
       }
 
       button.secondary {
-        background: rgba(255, 255, 255, 0.12);
-        color: #f8fafc;
+        background: var(--panel-soft);
+        color: var(--panel-text);
       }
 
       button.active {
-        background: #fb7185;
-        color: #fff;
+        background: var(--panel-active);
+        color: #fff7f8;
       }
 
-      .status-box {
-        margin-top: 10px;
+      .control-stack {
         padding: 10px 12px;
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .range-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-size: 12px;
+        color: var(--panel-muted);
+      }
+
+      .range-value {
+        color: var(--panel-text);
+        font-variant-numeric: tabular-nums;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: #b9d5ff;
+      }
+
+      .tab-bar {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 12px;
+        padding: 4px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .tab-btn {
+        flex: 1;
+        padding: 8px 0;
+        background: transparent;
+        color: var(--panel-muted);
+        border-radius: 8px;
+      }
+
+      .tab-btn.is-active {
+        background: var(--panel-soft-strong);
+        color: var(--panel-text);
+      }
+
+      .tab-panel {
+        display: none;
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding-right: 2px;
+      }
+
+      .tab-panel.is-active {
+        display: block;
       }
 
       .tree-list {
-        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
 
       .tree-item {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-bottom: 8px;
         padding: 8px 10px;
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
       }
 
       .tree-item.selected {
-        outline: 1px solid rgba(251, 113, 133, 0.9);
-        background: rgba(251, 113, 133, 0.12);
+        outline: 1px solid rgba(255, 128, 152, 0.85);
+        background: rgba(255, 128, 152, 0.12);
       }
 
       .tree-item input[type="checkbox"] {
@@ -135,130 +282,157 @@
       .tree-label {
         flex: 1;
         min-width: 0;
-        font-size: 13px;
-        word-break: break-all;
+        font-size: 12px;
+        line-height: 1.45;
+        word-break: break-word;
       }
 
       .tree-type {
         display: block;
         margin-top: 2px;
-        color: rgba(248, 250, 252, 0.62);
+        color: var(--panel-muted);
         font-size: 11px;
-      }
-
-      .hint {
-        color: rgba(248, 250, 252, 0.78);
       }
 
       .empty {
         padding: 12px;
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.06);
-        color: rgba(248, 250, 252, 0.78);
-        font-size: 13px;
-      }
-
-      .tab-bar {
-        display: flex;
-        gap: 8px;
-        margin-top: 12px;
-        margin-bottom: 12px;
-        padding: 4px;
         border-radius: 12px;
         background: rgba(255, 255, 255, 0.06);
+        color: var(--panel-muted);
+        font-size: 12px;
       }
 
-      .tab-btn {
-        flex: 1;
-        background: transparent;
-        color: #f8fafc;
-        border-radius: 8px;
-        transition: background 0.2s ease, color 0.2s ease;
+      canvas.is-fly-look {
+        cursor: grabbing;
       }
 
-      .tab-btn.is-active {
-        background: #dbeafe;
-        color: #0f172a;
-      }
+      @media (max-width: 960px) {
+        .left-panel {
+          width: 236px;
+        }
 
-      .tab-panel {
-        display: none;
-        flex: 1;
-        min-height: 0;
-        overflow: auto;
-        padding-right: 4px;
-      }
-
-      .tab-panel.is-active {
-        display: block;
+        .right-panel {
+          width: 270px;
+        }
       }
     </style>
-
   </head>
   <body>
-    <div class="panel left-panel">
-      <h1>Three.js 小型查看器</h1>
-      <p class="hint">默认会尝试加载 <code>assets/scene.glb</code> 和 <code>assets/studio_small_09_4k.hdr</code>。</p>
+    <div class="panel-shell left-panel-shell" id="left-panel-shell">
+      <button
+        id="left-panel-toggle"
+        class="panel-collapse-btn"
+        type="button"
+        aria-label="收起左侧面板"
+      >
+        &lt;
+      </button>
+      <div class="panel left-panel">
+        <div class="panel-header">
+          <h1>Three.js 小型查看器</h1>
+        </div>
 
-      <h2>GLB 模型</h2>
-      <div class="button-row">
-        <button id="load-scene-btn">加载 scene.glb</button>
-        <button id="load-tea-btn">加载 tea.glb</button>
-        <button id="pick-glb-btn" class="secondary">选择本地 GLB</button>
-        <button id="show-fallback-btn" class="secondary">显示内置示例</button>
+        <section class="section">
+          <h2>模型</h2>
+          <div class="button-row">
+            <button id="show-demo-btn" type="button">内置立方体示例</button>
+            <button id="pick-glb-btn" type="button" class="secondary">
+              选择本地 GLB
+            </button>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>环境</h2>
+          <div class="button-row">
+            <button id="load-default-hdr-btn" type="button">加载默认 HDR</button>
+            <button id="pick-hdr-btn" type="button" class="secondary">
+              选择本地 HDR
+            </button>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>操作</h2>
+          <div class="button-row">
+            <button id="reset-view-btn" type="button" class="secondary">
+              重置视角
+            </button>
+            <button id="clear-selection-btn" type="button" class="secondary">
+              取消选中
+            </button>
+            <button id="toggle-move-btn" type="button" class="active">
+              物体移动已开
+            </button>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="control-stack">
+            <div class="range-label">
+              <span>UE 视角速度</span>
+              <span id="move-speed-value" class="range-value">4.0</span>
+            </div>
+            <input
+              id="move-speed-range"
+              type="range"
+              min="0.5"
+              max="20"
+              step="0.1"
+              value="4.0"
+            />
+          </div>
+        </section>
       </div>
-
-      <h2>HDR 环境光</h2>
-      <div class="button-row">
-        <button id="load-default-hdr-btn">加载默认 HDR</button>
-        <button id="pick-hdr-btn" class="secondary">选择本地 HDR</button>
-      </div>
-
-      <h2>场景操作</h2>
-      <div class="button-row">
-        <button id="reset-view-btn" class="secondary">重置视角</button>
-        <button id="clear-selection-btn" class="secondary">取消选中</button>
-        <button id="toggle-move-btn" class="active">移动模式开启</button>
-      </div>
-
-      <div class="status-box">
-        <p id="status-model">模型状态：准备中...</p>
-        <p id="status-hdr">HDR 状态：准备中...</p>
-        <p id="status-selection">当前选中：无</p>
-      </div>
-
-      <p class="hint">操作说明：左键旋转，滚轮缩放，右键平移。开启移动模式后，点击模型或右侧对象项，再拖动坐标轴即可移动。</p>
     </div>
 
-    <div class="panel right-panel">
-      <h2>检查器</h2>
-      <div class="tab-bar">
-        <button class="tab-btn is-active" data-tab-target="objects">对象</button>
-        <button class="tab-btn" data-tab-target="material">材质</button>
-        <button class="tab-btn" data-tab-target="basic">基础信息</button>
-        <button class="tab-btn" data-tab-target="lights">灯光</button>
-      </div>
-
-      <div class="tab-panel is-active" data-tab-panel="objects">
-        <p class="hint">勾选显示/隐藏，点击“选中”可以让它出现移动坐标轴。</p>
-        <div class="button-row">
-          <button id="show-all-btn" class="secondary">全部显示</button>
+    <div class="panel-shell right-panel-shell" id="right-panel-shell">
+      <button
+        id="right-panel-toggle"
+        class="panel-collapse-btn"
+        type="button"
+        aria-label="收起右侧面板"
+      >
+        &gt;
+      </button>
+      <div class="panel right-panel">
+        <div class="panel-header">
+          <h2>检查器</h2>
         </div>
-        <div id="object-list" class="tree-list"></div>
-      </div>
 
-      <div class="tab-panel" data-tab-panel="material">
-        <p class="hint">这里放材质类型切换和材质参数。选中一个 Mesh 后才会显示内容。</p>
-        <div id="material-inspector" class="tree-list"></div>
-      </div>
+        <div class="tab-bar">
+          <button class="tab-btn is-active" type="button" data-tab-target="objects">
+            对象
+          </button>
+          <button class="tab-btn" type="button" data-tab-target="material">
+            材质
+          </button>
+          <button class="tab-btn" type="button" data-tab-target="basic">
+            基础信息
+          </button>
+          <button class="tab-btn" type="button" data-tab-target="lights">
+            灯光
+          </button>
+        </div>
 
-      <div class="tab-panel" data-tab-panel="basic">
-        <p class="hint">这里放对象和材质的基础信息，比如材质类型、贴图情况、阴影状态。</p>
-        <div id="basic-info-inspector" class="tree-list"></div>
-      </div>
-      <div class="tab-panel" data-tab-panel="lights">
-        <p class="hint">这里可以调主平行光、辅助平行光和阴影参数，也可以把灯光选中后直接在场景里拖动。</p>
-        <div id="light-inspector" class="tree-list"></div>
+        <div class="tab-panel is-active" data-tab-panel="objects">
+          <div class="button-row" style="margin-bottom: 10px">
+            <button id="show-all-btn" type="button" class="secondary">全部显示</button>
+          </div>
+          <div id="object-list" class="tree-list"></div>
+        </div>
+
+        <div class="tab-panel" data-tab-panel="material">
+          <div id="material-inspector" class="tree-list"></div>
+        </div>
+
+        <div class="tab-panel" data-tab-panel="basic">
+          <div id="basic-info-inspector" class="tree-list"></div>
+        </div>
+
+        <div class="tab-panel" data-tab-panel="lights">
+          <div id="light-inspector" class="tree-list"></div>
+        </div>
       </div>
     </div>
 

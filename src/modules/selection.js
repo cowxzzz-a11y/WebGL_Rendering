@@ -1,8 +1,26 @@
 export function createSelectionModule(app) {
+  function updateSelectionBox() {
+    const { selectionBox } = app.runtime;
+    const object = app.state.selectedObject;
+
+    if (!selectionBox) {
+      return;
+    }
+
+    if (!object || !object.visible) {
+      selectionBox.visible = false;
+      return;
+    }
+
+    selectionBox.setFromObject(object);
+    selectionBox.visible = true;
+  }
+
   function clearSelection() {
     app.state.selectedObject = null;
     app.runtime.transformControls.detach();
     app.runtime.transformControls.visible = false;
+    app.runtime.selectionBox.visible = false;
     app.status.setSelection("无");
     app.objectManager.refreshObjectManager();
     app.inspectors.renderInspectors();
@@ -25,6 +43,7 @@ export function createSelectionModule(app) {
       app.runtime.transformControls.visible = false;
     }
 
+    updateSelectionBox();
     app.objectManager.refreshObjectManager();
     app.inspectors.renderInspectors();
   }
@@ -32,8 +51,12 @@ export function createSelectionModule(app) {
   function syncMoveModeButton() {
     const { toggleMoveBtn } = app.dom;
 
+    if (!toggleMoveBtn) {
+      return;
+    }
+
     if (app.state.moveModeEnabled) {
-      toggleMoveBtn.textContent = "移动模式开启";
+      toggleMoveBtn.textContent = "物体移动已开";
       toggleMoveBtn.classList.add("active");
 
       if (app.state.selectedObject) {
@@ -44,7 +67,7 @@ export function createSelectionModule(app) {
       return;
     }
 
-    toggleMoveBtn.textContent = "移动模式关闭";
+    toggleMoveBtn.textContent = "物体移动已关";
     toggleMoveBtn.classList.remove("active");
     app.runtime.transformControls.detach();
     app.runtime.transformControls.visible = false;
@@ -56,12 +79,8 @@ export function createSelectionModule(app) {
   }
 
   function handlePointerDown(event) {
-    if (!app.state.moveModeEnabled) {
-      return;
-    }
-
     const root = app.objectManager.getActiveRoot();
-    if (!root) {
+    if (!root || event.button !== 0 || app.navigation?.isFlyActive()) {
       return;
     }
 
@@ -91,5 +110,6 @@ export function createSelectionModule(app) {
     syncMoveModeButton,
     toggleMoveMode,
     handlePointerDown,
+    updateSelectionBox,
   };
 }
