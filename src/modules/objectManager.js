@@ -108,6 +108,7 @@ export function createObjectManagerModule(app) {
 
         refreshObjectManager();
         app.inspectors.renderInspectors();
+        app.renderPipeline?.markDirty();
       });
 
       const label = document.createElement("div");
@@ -147,6 +148,7 @@ export function createObjectManagerModule(app) {
 
     refreshObjectManager();
     app.inspectors.renderInspectors();
+    app.renderPipeline?.markDirty();
   }
 
   return {

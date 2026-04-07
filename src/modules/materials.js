@@ -285,8 +285,10 @@ export function createMaterialsModule(app) {
 
   function updateCustomShaderMaterials(root) {
     if (!root) {
-      return;
+      return false;
     }
+
+    let hasAnimatedMaterial = false;
 
     root.traverse((child) => {
       if (!child.isMesh) {
@@ -298,8 +300,11 @@ export function createMaterialsModule(app) {
         return;
       }
 
+      hasAnimatedMaterial = true;
       updateCustomShaderMaterial(material, app, performance.now() * 0.001);
     });
+
+    return hasAnimatedMaterial;
   }
 
   return {

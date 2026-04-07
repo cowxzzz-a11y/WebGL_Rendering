@@ -24,6 +24,7 @@ export function createSelectionModule(app) {
     app.status.setSelection("无");
     app.objectManager.refreshObjectManager();
     app.inspectors.renderInspectors();
+    app.renderPipeline?.markDirty();
   }
 
   function selectObject(object) {
@@ -46,6 +47,7 @@ export function createSelectionModule(app) {
     updateSelectionBox();
     app.objectManager.refreshObjectManager();
     app.inspectors.renderInspectors();
+    app.renderPipeline?.markDirty();
   }
 
   function syncMoveModeButton() {
@@ -76,6 +78,7 @@ export function createSelectionModule(app) {
   function toggleMoveMode() {
     app.state.moveModeEnabled = !app.state.moveModeEnabled;
     syncMoveModeButton();
+    app.renderPipeline?.markDirty();
   }
 
   function handlePointerDown(event) {

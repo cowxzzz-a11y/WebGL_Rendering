@@ -1,8 +1,12 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
+import { RectAreaLightHelper } from "three/addons/helpers/RectAreaLightHelper.js";
+import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
 
 export function createSceneRuntime(appElement) {
+  RectAreaLightUniformsLib.init();
+
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -11,11 +15,15 @@ export function createSceneRuntime(appElement) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
+  renderer.autoClear = true;
 
   appElement.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#d8d6d3");
+  scene.backgroundIntensity = 0.65;
+  scene.backgroundBlurriness = 0.82;
+  scene.environmentIntensity = 1.2;
 
   const camera = new THREE.PerspectiveCamera(
     45,
@@ -59,11 +67,11 @@ export function createSceneRuntime(appElement) {
   });
 
   const hemiLight = new THREE.HemisphereLight("#ffffff", "#8b97a8", 0.42);
-  hemiLight.name = "主半球光";
+  hemiLight.name = "环境半球光";
   scene.add(hemiLight);
 
   const dirLight = new THREE.DirectionalLight("#ffffff", 2.1);
-  dirLight.name = "主平行光";
+  dirLight.name = "HDR 主方向光";
   dirLight.position.set(4.5, 7.5, 6);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(4096, 4096);
@@ -76,17 +84,28 @@ export function createSceneRuntime(appElement) {
   dirLight.shadow.bias = -0.00015;
   dirLight.shadow.normalBias = 0.015;
   dirLight.shadow.radius = 1.4;
-  dirLight.target.name = "主平行光目标";
+  dirLight.target.name = "HDR 主方向光目标";
   dirLight.target.position.set(0, 0.6, 0);
   scene.add(dirLight);
   scene.add(dirLight.target);
 
+  const areaLightTarget = new THREE.Object3D();
+  areaLightTarget.name = "主面光目标";
+  areaLightTarget.position.set(0, 1, 0);
+  scene.add(areaLightTarget);
+
+  const areaLight = new THREE.RectAreaLight("#ffe0b5", 18, 2.8, 2.4);
+  areaLight.name = "主面光";
+  areaLight.position.set(2.8, 2.35, 1.6);
+  areaLight.lookAt(areaLightTarget.position);
+  scene.add(areaLight);
+
   const fillLight = new THREE.DirectionalLight("#e6edf6", 0.7);
-  fillLight.name = "辅助平行光";
+  fillLight.name = "辅助方向光";
   fillLight.position.set(-3.5, 4.5, -2.5);
   fillLight.castShadow = false;
   fillLight.visible = false;
-  fillLight.target.name = "辅助平行光目标";
+  fillLight.target.name = "辅助方向光目标";
   fillLight.target.position.set(0, 0.6, 0);
   scene.add(fillLight);
   scene.add(fillLight.target);
@@ -98,6 +117,10 @@ export function createSceneRuntime(appElement) {
   );
   dirLightHelper.visible = false;
   scene.add(dirLightHelper);
+
+  const areaLightHelper = new RectAreaLightHelper(areaLight, "#f97316");
+  areaLightHelper.visible = false;
+  scene.add(areaLightHelper);
 
   const fillLightHelper = new THREE.DirectionalLightHelper(
     fillLight,
@@ -124,8 +147,11 @@ export function createSceneRuntime(appElement) {
     selectionBox,
     hemiLight,
     dirLight,
+    areaLight,
+    areaLightTarget,
     fillLight,
     dirLightHelper,
+    areaLightHelper,
     fillLightHelper,
     shadowCameraHelper,
     pmremGenerator,

@@ -3,6 +3,15 @@ import * as THREE from "three";
 export function createInspectorsModule(app) {
   let currentInspectorTarget = app.dom.materialInspectorEl;
 
+  function markDirty({ interaction = false } = {}) {
+    if (interaction) {
+      app.renderPipeline?.notifyInteraction();
+      return;
+    }
+
+    app.renderPipeline?.markDirty();
+  }
+
   function switchInspectorTab(tabName) {
     app.dom.tabButtons.forEach((button) => {
       const isActive = button.dataset.tabTarget === tabName;
@@ -30,18 +39,6 @@ export function createInspectorsModule(app) {
     empty.className = "empty";
     empty.textContent = message;
     target.appendChild(empty);
-  }
-
-  function clearMaterialInspector(message) {
-    clearPanel(app.dom.materialInspectorEl, message);
-  }
-
-  function clearBasicInfoInspector(message) {
-    clearPanel(app.dom.basicInfoInspectorEl, message);
-  }
-
-  function clearLightInspector(message) {
-    clearPanel(app.dom.lightInspectorEl, message);
   }
 
   function getSelectedMaterialInfo() {
@@ -277,16 +274,19 @@ export function createInspectorsModule(app) {
     createNumberControl(`${prefix} X`, vector.x, min, max, step, (value) => {
       vector.x = value;
       onAfterChange?.();
+      markDirty({ interaction: true });
     });
 
     createNumberControl(`${prefix} Y`, vector.y, min, max, step, (value) => {
       vector.y = value;
       onAfterChange?.();
+      markDirty({ interaction: true });
     });
 
     createNumberControl(`${prefix} Z`, vector.z, min, max, step, (value) => {
       vector.z = value;
       onAfterChange?.();
+      markDirty({ interaction: true });
     });
   }
 
@@ -294,7 +294,7 @@ export function createInspectorsModule(app) {
     const info = getSelectedMaterialInfo();
 
     if (!info) {
-      clearBasicInfoInspector("当前没有选中对象。");
+      clearPanel(app.dom.basicInfoInspectorEl, "当前没有选中对象。");
       return;
     }
 
@@ -306,7 +306,7 @@ export function createInspectorsModule(app) {
     createInspectorSectionTitle("对象信息");
     createInfoRow("对象名称", object.name || "未命名对象");
     createInfoRow("对象类型", object.type);
-    createInfoRow("对象可见", object.visible ? "是" : "否");
+    createInfoRow("当前可见", object.visible ? "是" : "否");
 
     if ("castShadow" in object) {
       createInfoRow("投射阴影", object.castShadow ? "是" : "否");
@@ -319,20 +319,20 @@ export function createInspectorsModule(app) {
     createInspectorSectionTitle("对象开关");
     createBooleanControl("对象可见", object.visible, (value) => {
       object.visible = value;
-
       if (!value && object === app.state.selectedObject) {
         app.selection.clearSelection();
         return;
       }
-
       app.objectManager.refreshObjectManager();
       renderBasicInfoInspector();
+      markDirty();
     });
 
     if ("castShadow" in object) {
       createBooleanControl("投射阴影", object.castShadow, (value) => {
         object.castShadow = value;
         renderBasicInfoInspector();
+        markDirty();
       });
     }
 
@@ -340,6 +340,7 @@ export function createInspectorsModule(app) {
       createBooleanControl("接收阴影", object.receiveShadow, (value) => {
         object.receiveShadow = value;
         renderBasicInfoInspector();
+        markDirty();
       });
     }
 
@@ -347,10 +348,7 @@ export function createInspectorsModule(app) {
       createInspectorSectionTitle("灯光信息");
       createInfoRow("灯光颜色", `#${object.color.getHexString()}`);
       createInfoRow("灯光强度", object.intensity.toFixed(2));
-      if ("castShadow" in object) {
-        createInfoRow("灯光投影", object.castShadow ? "开启" : "关闭");
-      }
-      createInfoRow("提示", "更多灯光和阴影参数请切到灯光页签。");
+      createInfoRow("提示", "更多灯光参数请切换到灯光页签。");
       return;
     }
 
@@ -373,12 +371,10 @@ export function createInspectorsModule(app) {
     createInfoRow("材质预设", currentPreset);
     createInfoRow("颜色贴图", material.map ? "有" : "无");
     createInfoRow("法线贴图", material.normalMap ? "有" : "无");
-    createInfoRow("粗糙度贴图", material.roughnessMap ? "有" : "无");
-    createInfoRow("金属度贴图", material.metalnessMap ? "有" : "无");
-    createInfoRow("环境贴图", material.envMap ? "有" : "无");
+    createInfoRow("环境反射", "envMapIntensity" in material ? "可调" : "不支持");
 
     if (isArrayMaterial) {
-      createInfoRow("多材质提示", "当前只编辑第一个材质。");
+      createInfoRow("提示", "当前只编辑第一个材质槽位。");
     }
   }
 
@@ -386,17 +382,17 @@ export function createInspectorsModule(app) {
     const info = getSelectedMaterialInfo();
 
     if (!info) {
-      clearMaterialInspector("当前没有选中对象。");
+      clearPanel(app.dom.materialInspectorEl, "当前没有选中对象。");
       return;
     }
 
     if (!info.object.isMesh) {
-      clearMaterialInspector("当前选中的是非 Mesh 对象。请先选中具体 Mesh。");
+      clearPanel(app.dom.materialInspectorEl, "当前选中的是非 Mesh 对象，请先选中具体 Mesh。");
       return;
     }
 
     if (!info.material) {
-      clearMaterialInspector("当前选中的 Mesh 没有可编辑材质。");
+      clearPanel(app.dom.materialInspectorEl, "当前 Mesh 没有可编辑材质。");
       return;
     }
 
@@ -408,432 +404,207 @@ export function createInspectorsModule(app) {
 
     createInspectorSectionTitle("材质类型");
     createSelectControl(
-      "切换 Three.js 预制材质 / 自定义 Shader",
+      "切换 Three.js 材质 / 自定义 Shader",
       currentPreset,
       app.config.MATERIAL_PRESET_OPTIONS,
       (value) => {
         app.materials.replaceSelectedMaterial(value);
+        markDirty();
       }
     );
 
-    createInspectorSectionTitle("材质参数");
-    createInfoRow("当前材质类型", material.type || "未知");
-    createInfoRow(
-      "当前模式",
-      currentPreset === "original"
-        ? "正在使用 GLB 原材质。"
-        : "正在使用替换后的 Three.js 材质。"
-    );
-
-    if ("transparent" in material) {
-      createBooleanControl("开启透明 transparent", !!material.transparent, (value) => {
-        material.transparent = value;
-        material.needsUpdate = true;
-        renderBasicInfoInspector();
-      });
-    }
-
-    if ("depthWrite" in material) {
-      createBooleanControl("写入深度 depthWrite", !!material.depthWrite, (value) => {
-        material.depthWrite = value;
-        material.needsUpdate = true;
-      });
-    }
-
-    if ("depthTest" in material) {
-      createBooleanControl("深度测试 depthTest", !!material.depthTest, (value) => {
-        material.depthTest = value;
-        material.needsUpdate = true;
-      });
-    }
-
-    if ("side" in material) {
-      createSelectControl(
-        "渲染面 side",
-        String(material.side),
-        [
-          { value: String(THREE.FrontSide), label: "正面 FrontSide" },
-          { value: String(THREE.BackSide), label: "背面 BackSide" },
-          { value: String(THREE.DoubleSide), label: "双面 DoubleSide" },
-        ],
-        (value) => {
-          material.side = Number(value);
-          material.needsUpdate = true;
-        }
-      );
-    }
-
-    if ("flatShading" in material) {
-      createBooleanControl("平面着色 flatShading", !!material.flatShading, (value) => {
-        material.flatShading = value;
-        material.needsUpdate = true;
-      });
-    }
-
-    if ("toneMapped" in material) {
-      createBooleanControl("参与色调映射 toneMapped", !!material.toneMapped, (value) => {
-        material.toneMapped = value;
-        material.needsUpdate = true;
-      });
-    }
-
-    if ("fog" in material) {
-      createBooleanControl("参与雾 fog", !!material.fog, (value) => {
-        material.fog = value;
-        material.needsUpdate = true;
-      });
-    }
-
-    if ("dithering" in material) {
-      createBooleanControl("抖动 dithering", !!material.dithering, (value) => {
-        material.dithering = value;
-        material.needsUpdate = true;
-      });
-    }
-
-    if ("visible" in material) {
-      createBooleanControl("材质可见", !!material.visible, (value) => {
-        material.visible = value;
-        material.needsUpdate = true;
-      });
-    }
-
-    if ("wireframe" in material) {
-      createBooleanControl("线框显示 wireframe", !!material.wireframe, (value) => {
-        material.wireframe = value;
-        material.needsUpdate = true;
-      });
-    }
-
-    if ("alphaTest" in material) {
-      createNumberControl("透明裁切 alphaTest", material.alphaTest, 0, 1, 0.01, (value) => {
-        material.alphaTest = value;
-        material.needsUpdate = true;
-      });
-    }
+    createInspectorSectionTitle("基础参数");
+    createInfoRow("当前材质", material.type || "未知");
 
     if (material.color) {
       createColorControl("基础颜色", `#${material.color.getHexString()}`, (value) => {
         material.color.set(value);
+        markDirty();
       });
     }
 
     if ("roughness" in material) {
-      createNumberControl("粗糙度 roughness", material.roughness, 0, 1, 0.01, (value) => {
+      createNumberControl("粗糙度", material.roughness, 0, 1, 0.01, (value) => {
         material.roughness = value;
+        markDirty();
       });
     }
 
     if ("metalness" in material) {
-      createNumberControl("金属度 metalness", material.metalness, 0, 1, 0.01, (value) => {
+      createNumberControl("金属度", material.metalness, 0, 1, 0.01, (value) => {
         material.metalness = value;
+        markDirty();
       });
     }
 
     if ("envMapIntensity" in material) {
-      createNumberControl(
-        "环境反射 envMapIntensity",
-        material.envMapIntensity,
-        0,
-        10,
-        0.01,
-        (value) => {
-          material.envMapIntensity = value;
-        }
-      );
-    }
-
-    if ("reflectivity" in material) {
-      createNumberControl("反射 reflectivity", material.reflectivity, 0, 1, 0.01, (value) => {
-        material.reflectivity = value;
-      });
-    }
-
-    if ("shininess" in material) {
-      createNumberControl("高光 shininess", material.shininess, 0, 200, 1, (value) => {
-        material.shininess = value;
-      });
-    }
-
-    if ("specular" in material) {
-      createColorControl("高光颜色 specular", `#${material.specular.getHexString()}`, (value) => {
-        material.specular.set(value);
+      createNumberControl("环境反射", material.envMapIntensity, 0, 10, 0.01, (value) => {
+        material.envMapIntensity = value;
+        markDirty();
       });
     }
 
     if ("opacity" in material) {
-      createNumberControl("透明度 opacity", material.opacity, 0, 1, 0.01, (value) => {
+      createNumberControl("透明度", material.opacity, 0, 1, 0.01, (value) => {
         material.opacity = value;
         material.transparent = value < 1 || material.transparent;
         material.needsUpdate = true;
-        renderBasicInfoInspector();
+        markDirty();
       });
     }
 
     if ("clearcoat" in material) {
-      createNumberControl("清漆 clearcoat", material.clearcoat, 0, 1, 0.01, (value) => {
+      createNumberControl("清漆", material.clearcoat, 0, 1, 0.01, (value) => {
         material.clearcoat = value;
+        markDirty();
       });
     }
 
     if ("clearcoatRoughness" in material) {
       createNumberControl(
-        "清漆粗糙度 clearcoatRoughness",
+        "清漆粗糙度",
         material.clearcoatRoughness,
         0,
         1,
         0.01,
         (value) => {
           material.clearcoatRoughness = value;
+          markDirty();
         }
       );
     }
 
     if ("transmission" in material) {
-      createNumberControl("透射 transmission", material.transmission, 0, 1, 0.01, (value) => {
+      createNumberControl("透射", material.transmission, 0, 1, 0.01, (value) => {
         material.transmission = value;
+        markDirty();
       });
     }
 
     if ("ior" in material) {
-      createNumberControl("折射率 ior", material.ior, 1, 2.5, 0.01, (value) => {
+      createNumberControl("折射率", material.ior, 1, 2.5, 0.01, (value) => {
         material.ior = value;
-      });
-    }
-
-    if ("refractionRatio" in material) {
-      createNumberControl(
-        "折射比 refractionRatio",
-        material.refractionRatio,
-        0,
-        1,
-        0.01,
-        (value) => {
-          material.refractionRatio = value;
-        }
-      );
-    }
-
-    if ("thickness" in material) {
-      createNumberControl("厚度 thickness", material.thickness, 0, 10, 0.01, (value) => {
-        material.thickness = value;
-      });
-    }
-
-    if ("normalScale" in material) {
-      createNumberControl("法线强度 X", material.normalScale.x, -5, 5, 0.01, (value) => {
-        material.normalScale.set(value, material.normalScale.y);
-      });
-      createNumberControl("法线强度 Y", material.normalScale.y, -5, 5, 0.01, (value) => {
-        material.normalScale.set(material.normalScale.x, value);
-      });
-    }
-
-    if ("bumpScale" in material) {
-      createNumberControl("凹凸强度 bumpScale", material.bumpScale, 0, 5, 0.01, (value) => {
-        material.bumpScale = value;
-      });
-    }
-
-    if ("displacementScale" in material) {
-      createNumberControl(
-        "位移强度 displacementScale",
-        material.displacementScale,
-        0,
-        5,
-        0.01,
-        (value) => {
-          material.displacementScale = value;
-        }
-      );
-    }
-
-    if ("aoMapIntensity" in material) {
-      createNumberControl("AO 强度 aoMapIntensity", material.aoMapIntensity, 0, 5, 0.01, (value) => {
-        material.aoMapIntensity = value;
+        markDirty();
       });
     }
 
     if (material.emissive) {
-      createColorControl("自发光 emissive", `#${material.emissive.getHexString()}`, (value) => {
+      createColorControl("自发光", `#${material.emissive.getHexString()}`, (value) => {
         material.emissive.set(value);
+        markDirty();
       });
     }
 
     if ("emissiveIntensity" in material) {
-      createNumberControl(
-        "自发光强度 emissiveIntensity",
-        material.emissiveIntensity,
-        0,
-        10,
-        0.01,
-        (value) => {
-          material.emissiveIntensity = value;
-        }
-      );
-    }
-
-    if (material.userData?.materialPreset === "shader-ripple" && material.uniforms) {
-      createInspectorSectionTitle("自定义 Shader 参数");
-
-      createColorControl("颜色 A", `#${material.uniforms.uColorA.value.getHexString()}`, (value) => {
-        material.uniforms.uColorA.value.set(value);
-      });
-
-      createColorControl("颜色 B", `#${material.uniforms.uColorB.value.getHexString()}`, (value) => {
-        material.uniforms.uColorB.value.set(value);
-      });
-
-      createNumberControl("波纹密度 uWaveScale", material.uniforms.uWaveScale.value, 1, 30, 0.1, (value) => {
-        material.uniforms.uWaveScale.value = value;
-      });
-
-      createNumberControl("流动速度 uSpeed", material.uniforms.uSpeed.value, 0, 10, 0.01, (value) => {
-        material.uniforms.uSpeed.value = value;
-      });
-
-      createNumberControl(
-        "菲涅耳强度 uFresnelPower",
-        material.uniforms.uFresnelPower.value,
-        0,
-        8,
-        0.01,
-        (value) => {
-          material.uniforms.uFresnelPower.value = value;
-        }
-      );
-
-      createNumberControl("高光发光 uGlow", material.uniforms.uGlow.value, 0, 2, 0.01, (value) => {
-        material.uniforms.uGlow.value = value;
+      createNumberControl("自发光强度", material.emissiveIntensity, 0, 10, 0.01, (value) => {
+        material.emissiveIntensity = value;
+        markDirty();
       });
     }
-    if (material.userData?.materialPreset === "shader-water" && material.uniforms) {
-      createInspectorSectionTitle("自定义 Shader 参数");
-      createInfoRow("当前 Shader", material.userData?.shaderLabel || "流动水");
 
-      createColorControl("深水颜色", `#${material.uniforms.uDeepColor.value.getHexString()}`, (value) => {
-        material.uniforms.uDeepColor.value.set(value);
-      });
-
-      createColorControl("浅水颜色", `#${material.uniforms.uShallowColor.value.getHexString()}`, (value) => {
-        material.uniforms.uShallowColor.value.set(value);
-      });
-
-      createColorControl("高光颜色", `#${material.uniforms.uHighlightColor.value.getHexString()}`, (value) => {
-        material.uniforms.uHighlightColor.value.set(value);
-      });
-
-      createNumberControl("流速 uFlowSpeed", material.uniforms.uFlowSpeed.value, 0, 4, 0.01, (value) => {
-        material.uniforms.uFlowSpeed.value = value;
-      });
-
-      createNumberControl("噪声密度 uNoiseScale", material.uniforms.uNoiseScale.value, 0.1, 6, 0.01, (value) => {
-        material.uniforms.uNoiseScale.value = value;
-      });
-
-      createNumberControl(
-        "法线扰动 uNormalStrength",
-        material.uniforms.uNormalStrength.value,
-        0,
-        5,
-        0.01,
-        (value) => {
-          material.uniforms.uNormalStrength.value = value;
-        }
-      );
-
-      createNumberControl(
-        "表面起伏 uSurfaceMotion",
-        material.uniforms.uSurfaceMotion.value,
-        0,
-        0.2,
-        0.001,
-        (value) => {
-          material.uniforms.uSurfaceMotion.value = value;
-        }
-      );
-
-      createNumberControl(
-        "菲涅耳强度 uFresnelPower",
-        material.uniforms.uFresnelPower.value,
-        0,
-        8,
-        0.01,
-        (value) => {
-          material.uniforms.uFresnelPower.value = value;
-        }
-      );
-
-      createNumberControl(
-        "镜面强度 uSpecularStrength",
-        material.uniforms.uSpecularStrength.value,
-        0,
-        4,
-        0.01,
-        (value) => {
-          material.uniforms.uSpecularStrength.value = value;
-        }
-      );
-
-      createNumberControl("透明度 uOpacity", material.uniforms.uOpacity.value, 0, 1, 0.01, (value) => {
-        material.uniforms.uOpacity.value = value;
-      });
-
-      createNumberControl("泡沫强度 uFoamAmount", material.uniforms.uFoamAmount.value, 0, 2, 0.01, (value) => {
-        material.uniforms.uFoamAmount.value = value;
+    if ("wireframe" in material) {
+      createBooleanControl("线框显示", !!material.wireframe, (value) => {
+        material.wireframe = value;
+        material.needsUpdate = true;
+        markDirty();
       });
     }
   }
 
   function renderLightInspector() {
-    if (!app.dom.lightInspectorEl) {
-      return;
-    }
-
     app.dom.lightInspectorEl.innerHTML = "";
     currentInspectorTarget = app.dom.lightInspectorEl;
 
-    const { dirLight, fillLight, dirLightHelper, fillLightHelper, shadowCameraHelper } =
-      app.runtime;
+    const {
+      dirLight,
+      areaLight,
+      areaLightTarget,
+      fillLight,
+      dirLightHelper,
+      areaLightHelper,
+      fillLightHelper,
+      shadowCameraHelper,
+    } = app.runtime;
 
-    createInspectorSectionTitle("主平行光");
-    createButtonRow("场景里直接拖动", [
-      { label: "选中主光源", onClick: () => app.lights.attachMainLight() },
-      { label: "选中主光目标", onClick: () => app.lights.attachMainTarget() },
+    createInspectorSectionTitle("HDR 主方向光");
+    createButtonRow("快速选中", [
+      { label: "选中主光", onClick: () => app.lights.attachMainLight() },
+      { label: "选中目标", onClick: () => app.lights.attachMainTarget() },
     ]);
 
-    createBooleanControl("主光可见", dirLight.visible, (value) => {
+    createBooleanControl("主方向光可见", dirLight.visible, (value) => {
       dirLight.visible = value;
       app.lights.updateHelpers();
+      markDirty();
     });
 
-    createBooleanControl("主光投影", dirLight.castShadow, (value) => {
+    createBooleanControl("主方向光投影", dirLight.castShadow, (value) => {
       dirLight.castShadow = value;
       app.runtime.renderer.shadowMap.needsUpdate = true;
       app.lights.updateHelpers();
+      markDirty();
     });
 
-    createColorControl("主光颜色", `#${dirLight.color.getHexString()}`, (value) => {
+    createColorControl("主方向光颜色", `#${dirLight.color.getHexString()}`, (value) => {
       dirLight.color.set(value);
       app.lights.updateHelpers();
+      markDirty();
     });
 
-    createNumberControl("主光强度", dirLight.intensity, 0, 12, 0.01, (value) => {
+    createNumberControl("主方向光强度", dirLight.intensity, 0, 12, 0.01, (value) => {
       dirLight.intensity = value;
-      app.lights.updateHelpers();
+      markDirty();
     });
 
-    createVector3Controls("主光位置", dirLight.position, {
-      min: -20,
-      max: 20,
-      step: 0.01,
+    createVector3Controls("主方向光位置", dirLight.position, {
+      onAfterChange: () => app.lights.updateHelpers(),
+    });
+    createVector3Controls("主方向光目标", dirLight.target.position, {
+      min: -10,
+      max: 10,
       onAfterChange: () => app.lights.updateHelpers(),
     });
 
-    createVector3Controls("主光目标", dirLight.target.position, {
+    createInspectorSectionTitle("主面光");
+    createButtonRow("快速选中", [
+      { label: "选中面光", onClick: () => app.lights.attachAreaLight() },
+      { label: "选中目标", onClick: () => app.lights.attachAreaTarget() },
+    ]);
+
+    createBooleanControl("主面光可见", areaLight.visible, (value) => {
+      areaLight.visible = value;
+      app.lights.updateHelpers();
+      markDirty();
+    });
+
+    createColorControl("主面光颜色", `#${areaLight.color.getHexString()}`, (value) => {
+      areaLight.color.set(value);
+      markDirty();
+    });
+
+    createNumberControl("主面光强度", areaLight.intensity, 0, 40, 0.1, (value) => {
+      areaLight.intensity = value;
+      markDirty();
+    });
+
+    createNumberControl("主面光宽度", areaLight.width, 0.2, 8, 0.01, (value) => {
+      areaLight.width = value;
+      app.lights.updateHelpers();
+      markDirty();
+    });
+
+    createNumberControl("主面光高度", areaLight.height, 0.2, 8, 0.01, (value) => {
+      areaLight.height = value;
+      app.lights.updateHelpers();
+      markDirty();
+    });
+
+    createVector3Controls("主面光位置", areaLight.position, {
+      onAfterChange: () => app.lights.updateHelpers(),
+    });
+    createVector3Controls("主面光目标", areaLightTarget.position, {
       min: -10,
       max: 10,
-      step: 0.01,
       onAfterChange: () => app.lights.updateHelpers(),
     });
 
@@ -848,11 +619,12 @@ export function createInspectorsModule(app) {
         if (root) {
           app.lights.fitShadowToObject(root);
         }
+        markDirty();
       }
     );
 
     createNumberControl(
-      "贴合范围倍率",
+      "阴影贴合倍率",
       app.state.lightSettings.shadowFitPadding,
       1,
       4,
@@ -863,6 +635,7 @@ export function createInspectorsModule(app) {
         if (root) {
           app.lights.fitShadowToObject(root);
         }
+        markDirty();
       }
     );
 
@@ -877,6 +650,7 @@ export function createInspectorsModule(app) {
       ],
       (value) => {
         app.lights.setShadowMapType(value);
+        markDirty();
       }
     );
 
@@ -891,17 +665,20 @@ export function createInspectorsModule(app) {
       ],
       (value) => {
         app.lights.setLightMapSize(dirLight, Number(value));
+        markDirty();
       }
     );
 
-    createNumberControl("阴影软化 radius", dirLight.shadow.radius, 0, 8, 0.01, (value) => {
+    createNumberControl("阴影 radius", dirLight.shadow.radius, 0, 8, 0.01, (value) => {
       dirLight.shadow.radius = value;
       app.runtime.renderer.shadowMap.needsUpdate = true;
+      markDirty();
     });
 
     createNumberControl("阴影 bias", dirLight.shadow.bias, -0.01, 0.01, 0.00001, (value) => {
       dirLight.shadow.bias = value;
       app.runtime.renderer.shadowMap.needsUpdate = true;
+      markDirty();
     });
 
     createNumberControl(
@@ -913,102 +690,62 @@ export function createInspectorsModule(app) {
       (value) => {
         dirLight.shadow.normalBias = value;
         app.runtime.renderer.shadowMap.needsUpdate = true;
+        markDirty();
       }
     );
 
-    createNumberControl("shadow near", dirLight.shadow.camera.near, 0.01, 10, 0.01, (value) => {
-      dirLight.shadow.camera.near = value;
-      dirLight.shadow.camera.updateProjectionMatrix();
-      app.lights.updateHelpers();
-    });
-
-    createNumberControl("shadow far", dirLight.shadow.camera.far, 1, 100, 0.1, (value) => {
-      dirLight.shadow.camera.far = value;
-      dirLight.shadow.camera.updateProjectionMatrix();
-      app.lights.updateHelpers();
-    });
-
-    createNumberControl("shadow left", dirLight.shadow.camera.left, -20, 0, 0.01, (value) => {
-      dirLight.shadow.camera.left = value;
-      dirLight.shadow.camera.updateProjectionMatrix();
-      app.lights.updateHelpers();
-    });
-
-    createNumberControl("shadow right", dirLight.shadow.camera.right, 0, 20, 0.01, (value) => {
-      dirLight.shadow.camera.right = value;
-      dirLight.shadow.camera.updateProjectionMatrix();
-      app.lights.updateHelpers();
-    });
-
-    createNumberControl("shadow top", dirLight.shadow.camera.top, 0, 20, 0.01, (value) => {
-      dirLight.shadow.camera.top = value;
-      dirLight.shadow.camera.updateProjectionMatrix();
-      app.lights.updateHelpers();
-    });
-
-    createNumberControl(
-      "shadow bottom",
-      dirLight.shadow.camera.bottom,
-      -20,
-      0,
-      0.01,
-      (value) => {
-        dirLight.shadow.camera.bottom = value;
-        dirLight.shadow.camera.updateProjectionMatrix();
-        app.lights.updateHelpers();
-      }
-    );
-
-    createInspectorSectionTitle("灯光辅助线");
-
-    createBooleanControl("主光辅助线", dirLightHelper.visible, (value) => {
+    createInspectorSectionTitle("辅助线");
+    createBooleanControl("主方向光辅助线", dirLightHelper.visible, (value) => {
       app.lights.setHelpersVisible({ mainHelper: value });
+      markDirty();
     });
 
-    createBooleanControl("辅助光辅助线", fillLightHelper.visible, (value) => {
+    createBooleanControl("主面光辅助线", areaLightHelper.visible, (value) => {
+      app.lights.setHelpersVisible({ areaHelper: value });
+      markDirty();
+    });
+
+    createBooleanControl("辅助方向光辅助线", fillLightHelper.visible, (value) => {
       app.lights.setHelpersVisible({ fillHelper: value });
+      markDirty();
     });
 
     createBooleanControl("阴影相机辅助线", shadowCameraHelper.visible, (value) => {
       app.lights.setHelpersVisible({ shadowHelper: value });
+      markDirty();
     });
 
-    createInspectorSectionTitle("辅助平行光");
-    createButtonRow("场景里直接拖动", [
+    createInspectorSectionTitle("辅助方向光");
+    createButtonRow("快速选中", [
       { label: "选中辅助光", onClick: () => app.lights.attachFillLight() },
-      { label: "选中辅助光目标", onClick: () => app.lights.attachFillTarget() },
+      { label: "选中目标", onClick: () => app.lights.attachFillTarget() },
     ]);
 
     createBooleanControl("辅助光可见", fillLight.visible, (value) => {
       fillLight.visible = value;
       app.lights.updateHelpers();
+      markDirty();
     });
 
     createColorControl("辅助光颜色", `#${fillLight.color.getHexString()}`, (value) => {
       fillLight.color.set(value);
       app.lights.updateHelpers();
+      markDirty();
     });
 
     createNumberControl("辅助光强度", fillLight.intensity, 0, 12, 0.01, (value) => {
       fillLight.intensity = value;
-      app.lights.updateHelpers();
+      markDirty();
     });
 
     createVector3Controls("辅助光位置", fillLight.position, {
-      min: -20,
-      max: 20,
-      step: 0.01,
       onAfterChange: () => app.lights.updateHelpers(),
     });
-
     createVector3Controls("辅助光目标", fillLight.target.position, {
       min: -10,
       max: 10,
-      step: 0.01,
       onAfterChange: () => app.lights.updateHelpers(),
     });
-
-    createInfoRow("说明", "辅助光默认不投影，适合补侧光、轮廓光和层次。");
   }
 
   function renderInspectors() {

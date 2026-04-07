@@ -153,9 +153,9 @@ export function createNavigationModule(app) {
     }
 
     if (event.code === "KeyF") {
-      const target = app.objectManager.getActiveRoot();
+      const target = app.state.selectedObject || app.objectManager.getActiveRoot();
       if (target) {
-        app.assets.frameModel(target);
+        app.assets.frameObject(target);
         event.preventDefault();
       }
       return;
@@ -226,11 +226,11 @@ export function createNavigationModule(app) {
     }
 
     if (MOVE.lengthSq() === 0) {
-      return;
+      return false;
     }
 
     if (!state.viewportActive && !state.flyActive) {
-      return;
+      return false;
     }
 
     FORWARD.set(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
@@ -250,6 +250,7 @@ export function createNavigationModule(app) {
 
     camera.position.add(translation);
     syncOrbitTarget();
+    return true;
   }
 
   return {

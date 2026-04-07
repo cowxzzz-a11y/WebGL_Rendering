@@ -68,10 +68,12 @@ export function createAssetsModule(app) {
     controls.target.copy(sphere.center);
     controls.minDistance = Math.max(radius * 0.002, 0.002);
     controls.maxDistance = Math.max(radius * 18, 30);
+    camera.lookAt(sphere.center);
     controls.update();
     app.navigation?.syncFromCamera();
 
     app.lights.fitShadowToObject(root);
+    app.renderPipeline?.markDirty({ interaction: true });
 
     console.log("模型尺寸", Math.max(size.x, size.y, size.z));
   }
@@ -92,6 +94,7 @@ export function createAssetsModule(app) {
     }
 
     revokeModelObjectURL();
+    app.renderPipeline?.markDirty();
   }
 
   function frameObject(object) {
@@ -120,50 +123,112 @@ export function createAssetsModule(app) {
     app.runtime.controls.minDistance = Math.max(radius * 0.4, 0.2);
     app.runtime.controls.maxDistance = Math.max(radius * 18, 20);
     app.runtime.controls.update();
+    app.runtime.camera.lookAt(sphere.center);
     app.navigation?.syncFromCamera();
+    app.renderPipeline?.markDirty({ interaction: true });
   }
 
   function createSimpleDemo() {
     const demoGroup = new THREE.Group();
-    demoGroup.name = "内置立方体示例";
+    demoGroup.name = "内置演示场景";
+
+    const stage = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.45, 1.6, 0.28, 48),
+      new THREE.MeshStandardMaterial({
+        color: "#e7ddd3",
+        roughness: 0.88,
+        metalness: 0.02,
+      })
+    );
+    stage.name = "展台";
+    stage.position.set(0, 0.14, 0);
+    stage.receiveShadow = true;
+    stage.castShadow = true;
+    demoGroup.add(stage);
 
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 6),
+      new THREE.CircleGeometry(5.8, 72),
       new THREE.MeshStandardMaterial({
-        color: "#d7d2cb",
-        roughness: 0.94,
-        metalness: 0.01,
+        color: "#d1cac2",
+        roughness: 0.95,
+        metalness: 0,
       })
     );
     ground.name = "地面";
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
+    ground.castShadow = false;
     demoGroup.add(ground);
 
-    const cube = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 1, 1),
+    const hero = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.82, 4),
       new THREE.MeshPhysicalMaterial({
-        color: "#c98b4a",
-        roughness: 0.38,
-        metalness: 0.04,
-        clearcoat: 0.18,
-        clearcoatRoughness: 0.2,
-        envMapIntensity: 1,
+        color: "#d08a47",
+        roughness: 0.28,
+        metalness: 0.18,
+        clearcoat: 0.55,
+        clearcoatRoughness: 0.18,
+        envMapIntensity: 1.35,
       })
     );
-    cube.name = "立方体";
-    cube.position.set(0, 0.5, 0);
-    cube.rotation.set(0, Math.PI * 0.18, 0);
-    cube.castShadow = true;
-    cube.receiveShadow = true;
-    demoGroup.add(cube);
+    hero.name = "主雕塑";
+    hero.position.set(0, 1.1, 0);
+    hero.castShadow = true;
+    hero.receiveShadow = true;
+    demoGroup.add(hero);
+
+    const glass = new THREE.Mesh(
+      new THREE.SphereGeometry(0.36, 48, 48),
+      new THREE.MeshPhysicalMaterial({
+        color: "#d7efff",
+        roughness: 0.08,
+        transmission: 0.92,
+        thickness: 0.6,
+        ior: 1.32,
+        envMapIntensity: 1.2,
+      })
+    );
+    glass.name = "玻璃球";
+    glass.position.set(-0.86, 0.62, 0.54);
+    glass.castShadow = true;
+    glass.receiveShadow = true;
+    demoGroup.add(glass);
+
+    const panel = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 0.06, 0.45),
+      new THREE.MeshStandardMaterial({
+        color: "#f7d4aa",
+        emissive: "#ffb163",
+        emissiveIntensity: 2.4,
+        roughness: 0.34,
+        metalness: 0.06,
+      })
+    );
+    panel.name = "发光面板";
+    panel.position.set(0.98, 0.72, -0.2);
+    panel.rotation.y = -Math.PI * 0.28;
+    panel.castShadow = true;
+    panel.receiveShadow = true;
+    demoGroup.add(panel);
+
+    const backdrop = new THREE.Mesh(
+      new THREE.PlaneGeometry(5.8, 3.8),
+      new THREE.MeshStandardMaterial({
+        color: "#c8c1b8",
+        roughness: 0.92,
+        metalness: 0,
+      })
+    );
+    backdrop.name = "背景板";
+    backdrop.position.set(0, 1.9, -2.1);
+    backdrop.receiveShadow = true;
+    demoGroup.add(backdrop);
 
     app.materials.prepareModel(demoGroup);
-    ground.castShadow = false;
 
     return {
       demoGroup,
-      focusObject: cube,
+      focusObject: hero,
     };
   }
 
@@ -178,7 +243,8 @@ export function createAssetsModule(app) {
     frameObject(focusObject);
     app.objectManager.refreshObjectManager();
     app.selection.selectObject(focusObject);
-    app.status.setModel("已加载内置立方体示例");
+    app.status.setModel("已加载内置演示场景");
+    app.renderPipeline?.markDirty({ interaction: true });
   }
 
   function applyHDRTexture(texture, label) {
@@ -200,10 +266,11 @@ export function createAssetsModule(app) {
     app.runtime.scene.environment = envTarget.texture;
     app.runtime.scene.background = texture;
     app.runtime.scene.backgroundBlurriness = 0.85;
-    app.runtime.scene.backgroundIntensity = 0.55;
 
+    app.lights.syncEnvironmentLighting(texture);
     app.status.setHDR(`已加载 ${label}`);
     app.inspectors.renderInspectors();
+    app.renderPipeline?.markDirty({ interaction: true });
   }
 
   function loadHDRFromURL(url, label, isObjectURL = false) {
@@ -248,6 +315,7 @@ export function createAssetsModule(app) {
         app.objectManager.refreshObjectManager();
         app.selection.selectObject(model);
         app.status.setModel(`已加载 ${label}`);
+        app.renderPipeline?.markDirty({ interaction: true });
 
         if (isObjectURL) {
           app.state.currentModelObjectURL = url;
@@ -276,6 +344,7 @@ export function createAssetsModule(app) {
     revokeModelObjectURL,
     revokeHDRObjectURL,
     frameModel,
+    frameObject,
     removeCurrentModel,
     showFallbackDemo,
     applyHDRTexture,
