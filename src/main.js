@@ -25,10 +25,17 @@ const app = {
     currentRoot: null,
     selectedObject: null,
     moveModeEnabled: true,
+    hdrPaused: false,
+    hdrBackgroundVisible: false,
     currentModelObjectURL: null,
     currentHDRObjectURL: null,
     currentHDRTexture: null,
     currentEnvironmentTarget: null,
+    defaultSceneBackground:
+      runtime.scene.background?.clone?.() ?? runtime.scene.background ?? null,
+    defaultSceneBackgroundBlurriness: runtime.scene.backgroundBlurriness,
+    defaultSceneBackgroundIntensity: runtime.scene.backgroundIntensity,
+    defaultSceneEnvironmentIntensity: runtime.scene.environmentIntensity,
     lightSettings: {
       autoFitShadowToModel: true,
       shadowFitPadding: 1.6,
@@ -38,14 +45,19 @@ const app = {
       interactiveScale: 0.58,
       staticScale: 1,
       idleDelayMs: 420,
-      maxSamples: 48,
+      maxSamples: 96,
+      bounces: 6,
+      transmissiveBounces: 8,
+      filterGlossyFactor: 0.6,
     },
     environmentSettings: {
       autoSunFromHDR: true,
-      sunBoost: 1,
+      hdrStrength: 0.95,
+      hdrRotation: 0,
+      sunBoost: 0.35,
       sunDistanceFactor: 5.8,
-      environmentIntensity: 1.2,
-      backgroundIntensity: 0.65,
+      environmentIntensity: 0.9,
+      backgroundIntensity: 0.35,
     },
     viewSettings: {
       moveSpeed: 4.0,
@@ -84,6 +96,9 @@ function syncRenderSettingsUI() {
     staticScale,
     idleDelayMs,
     maxSamples,
+    bounces,
+    transmissiveBounces,
+    filterGlossyFactor,
   } = app.state.renderSettings;
 
   if (dom.interactiveScaleRange) {
@@ -113,12 +128,135 @@ function syncRenderSettingsUI() {
   if (dom.maxSamplesValueEl) {
     dom.maxSamplesValueEl.textContent = String(maxSamples);
   }
+
+  if (dom.bouncesRange) {
+    dom.bouncesRange.value = String(bounces);
+  }
+  if (dom.bouncesValueEl) {
+    dom.bouncesValueEl.textContent = String(bounces);
+  }
+
+  if (dom.transmissiveBouncesRange) {
+    dom.transmissiveBouncesRange.value = String(transmissiveBounces);
+  }
+  if (dom.transmissiveBouncesValueEl) {
+    dom.transmissiveBouncesValueEl.textContent = String(transmissiveBounces);
+  }
+
+  if (dom.glossyFilterRange) {
+    dom.glossyFilterRange.value = filterGlossyFactor.toFixed(2);
+  }
+  if (dom.glossyFilterValueEl) {
+    dom.glossyFilterValueEl.textContent = `${Math.round(filterGlossyFactor * 100)}%`;
+  }
+}
+
+function syncEnvironmentSettingsUI() {
+  const { hdrStrength, hdrRotation } = app.state.environmentSettings;
+
+  if (dom.hdrStrengthRange) {
+    dom.hdrStrengthRange.value = hdrStrength.toFixed(2);
+  }
+
+  if (dom.hdrStrengthValueEl) {
+    dom.hdrStrengthValueEl.textContent = `${Math.round(hdrStrength * 100)}%`;
+  }
+
+  if (dom.hdrRotationRange) {
+    dom.hdrRotationRange.value = String(Math.round(hdrRotation));
+  }
+
+  if (dom.hdrRotationValueEl) {
+    dom.hdrRotationValueEl.textContent = `${Math.round(hdrRotation)}°`;
+  }
+}
+
+function syncRotationDegreeLabel() {
+  if (!dom.hdrRotationValueEl) {
+    return;
+  }
+
+  dom.hdrRotationValueEl.textContent = `${Math.round(app.state.environmentSettings.hdrRotation)}°`;
+}
+
+function enhanceRangeHelpTooltips() {
+  const helpEntries = [
+    [
+      dom.hdrStrengthValueEl,
+      "同时控制 HDR 环境光和 HDR 自动提取主光的整体强度，方便快速判断整体明暗和材质反射。",
+    ],
+    [
+      dom.hdrRotationValueEl,
+      "同步旋转 HDR 环境和自动提取主光方向，方便快速调整主光朝向。默认不再把摄影棚 HDR 直接显示成背景。",
+    ],
+    [
+      dom.interactiveScaleValueEl,
+      "相机移动和拖拽物体时优先保证响应速度；数值越低越流畅，越高越清晰。",
+    ],
+    [
+      dom.staticScaleValueEl,
+      "镜头停下后切到这个分辨率持续累积；越高越清晰，但单样本耗时也会更高。",
+    ],
+    [
+      dom.idleDelayValueEl,
+      "停止操作后等待多久再进入高质量累积。数值低会更快开始收敛，数值高会减少频繁切换。",
+    ],
+    [
+      dom.maxSamplesValueEl,
+      "静止后最多继续累积多少个路径追踪样本。越高越干净，但等待时间越长。",
+    ],
+    [
+      dom.bouncesValueEl,
+      "控制漫反射全局光照的反弹次数。更高会更自然，但也更慢。",
+    ],
+    [
+      dom.transmissiveBouncesValueEl,
+      "控制玻璃、透明材质和折射路径的反弹次数。玻璃多时适当提高会更稳定。",
+    ],
+    [
+      dom.glossyFilterValueEl,
+      "使用 glossy filter 压制 fireflies 和高亮噪点。越高越稳，但高光会更柔。",
+    ],
+    [
+      dom.moveSpeedValueEl,
+      "控制类 UE 飞行视角移动速度。场景大时可以调高，近距离精修时可以调低。",
+    ],
+  ];
+
+  for (const [valueEl, helpText] of helpEntries) {
+    const labelRow = valueEl?.closest(".range-label");
+    if (!labelRow || labelRow.querySelector(".label-with-help")) {
+      continue;
+    }
+
+    const labelTextEl = Array.from(labelRow.children).find((child) => child !== valueEl);
+    if (!labelTextEl) {
+      continue;
+    }
+
+    const labelWithHelp = document.createElement("span");
+    labelWithHelp.className = "label-with-help";
+    labelRow.insertBefore(labelWithHelp, labelTextEl);
+    labelWithHelp.appendChild(labelTextEl);
+
+    const helpDot = document.createElement("span");
+    helpDot.className = "help-dot";
+    helpDot.tabIndex = 0;
+    helpDot.title = helpText;
+    helpDot.textContent = "?";
+    labelWithHelp.appendChild(helpDot);
+  }
 }
 
 app.inspectors.bindTabs();
 app.selection.syncMoveModeButton();
 app.navigation.bind();
+enhanceRangeHelpTooltips();
 syncRenderSettingsUI();
+syncEnvironmentSettingsUI();
+syncRotationDegreeLabel();
+app.assets.syncHDRToggleButton();
+app.assets.syncHDRBackgroundButton();
 
 function setPanelCollapsed(side, collapsed) {
   const shell =
@@ -134,6 +272,7 @@ function setPanelCollapsed(side, collapsed) {
 
   if (side === "left") {
     button.textContent = collapsed ? ">" : "<";
+    button.setAttribute("title", collapsed ? "展开左侧面板" : "收起左侧面板");
     button.setAttribute(
       "aria-label",
       collapsed ? "展开左侧面板" : "收起左侧面板"
@@ -142,6 +281,7 @@ function setPanelCollapsed(side, collapsed) {
   }
 
   button.textContent = collapsed ? "<" : ">";
+  button.setAttribute("title", collapsed ? "展开右侧面板" : "收起右侧面板");
   button.setAttribute(
     "aria-label",
     collapsed ? "展开右侧面板" : "收起右侧面板"
@@ -192,6 +332,40 @@ function bindRenderControls() {
     syncRenderSettingsUI();
     markStaticRenderUpdate();
   });
+
+  dom.bouncesRange?.addEventListener("input", () => {
+    app.state.renderSettings.bounces = Number(dom.bouncesRange.value);
+    syncRenderSettingsUI();
+    markStaticRenderUpdate();
+  });
+
+  dom.transmissiveBouncesRange?.addEventListener("input", () => {
+    app.state.renderSettings.transmissiveBounces = Number(
+      dom.transmissiveBouncesRange.value
+    );
+    syncRenderSettingsUI();
+    markStaticRenderUpdate();
+  });
+
+  dom.glossyFilterRange?.addEventListener("input", () => {
+    app.state.renderSettings.filterGlossyFactor = Number(dom.glossyFilterRange.value);
+    syncRenderSettingsUI();
+    markStaticRenderUpdate();
+  });
+
+  dom.hdrStrengthRange?.addEventListener("input", () => {
+    app.state.environmentSettings.hdrStrength = Number(dom.hdrStrengthRange.value);
+    syncEnvironmentSettingsUI();
+    syncRotationDegreeLabel();
+    app.assets.applyHDRPresentation();
+  });
+
+  dom.hdrRotationRange?.addEventListener("input", () => {
+    app.state.environmentSettings.hdrRotation = Number(dom.hdrRotationRange.value);
+    syncEnvironmentSettingsUI();
+    syncRotationDegreeLabel();
+    app.assets.applyHDRPresentation();
+  });
 }
 
 bindPanelToggles();
@@ -202,11 +376,24 @@ setPanelCollapsed("right", false);
 runtime.controls.addEventListener("change", markInteractiveRenderUpdate);
 runtime.transformControls.addEventListener("change", markInteractiveRenderUpdate);
 runtime.transformControls.addEventListener("objectChange", markInteractiveRenderUpdate);
+runtime.transformControls.addEventListener("dragging-changed", (event) => {
+  if (!event.value) {
+    app.renderPipeline.markDirty({ rebuildPathTracer: true });
+  }
+});
 
 runtime.renderer.domElement.addEventListener(
   "pointerdown",
   app.selection.handlePointerDown
 );
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.defaultPrevented) {
+    return;
+  }
+
+  app.selection.clearSelection();
+});
 
 dom.showDemoBtn?.addEventListener("click", () => {
   app.assets.showFallbackDemo();
@@ -222,6 +409,14 @@ dom.loadDefaultHDRBtn?.addEventListener("click", () => {
 
 dom.pickHDRBtn?.addEventListener("click", () => {
   dom.hdrInput.click();
+});
+
+dom.toggleHDRBtn?.addEventListener("click", () => {
+  app.assets.toggleHDRPause();
+});
+
+dom.toggleHDRBackgroundBtn?.addEventListener("click", () => {
+  app.assets.toggleHDRBackgroundVisibility();
 });
 
 dom.resetViewBtn?.addEventListener("click", () => {

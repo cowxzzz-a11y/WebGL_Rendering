@@ -194,23 +194,6 @@ export function createAssetsModule(app) {
     glass.receiveShadow = true;
     demoGroup.add(glass);
 
-    const panel = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 0.06, 0.45),
-      new THREE.MeshStandardMaterial({
-        color: "#f7d4aa",
-        emissive: "#ffb163",
-        emissiveIntensity: 2.4,
-        roughness: 0.34,
-        metalness: 0.06,
-      })
-    );
-    panel.name = "发光面板";
-    panel.position.set(0.98, 0.72, -0.2);
-    panel.rotation.y = -Math.PI * 0.28;
-    panel.castShadow = true;
-    panel.receiveShadow = true;
-    demoGroup.add(panel);
-
     const backdrop = new THREE.Mesh(
       new THREE.PlaneGeometry(5.8, 3.8),
       new THREE.MeshStandardMaterial({
@@ -244,7 +227,136 @@ export function createAssetsModule(app) {
     app.objectManager.refreshObjectManager();
     app.selection.selectObject(focusObject);
     app.status.setModel("已加载内置演示场景");
-    app.renderPipeline?.markDirty({ interaction: true });
+    app.renderPipeline?.markDirty({ interaction: true, rebuildPathTracer: true });
+  }
+
+  function cloneDefaultSceneBackground() {
+    const background = app.state.defaultSceneBackground;
+    return background?.clone?.() ?? background ?? null;
+  }
+
+  function syncHDRLightVisibility(hasHDRLoaded, enabled) {
+    const { dirLight } = app.runtime;
+    const snapshotKey = "__hdrPreviousVisible";
+
+    if (!hasHDRLoaded) {
+      if (snapshotKey in dirLight.userData) {
+        dirLight.visible = dirLight.userData[snapshotKey];
+        delete dirLight.userData[snapshotKey];
+      }
+      return;
+    }
+
+    if (enabled) {
+      if (snapshotKey in dirLight.userData) {
+        dirLight.visible = dirLight.userData[snapshotKey];
+        delete dirLight.userData[snapshotKey];
+      }
+      return;
+    }
+
+    if (!(snapshotKey in dirLight.userData)) {
+      dirLight.userData[snapshotKey] = dirLight.visible;
+    }
+
+    dirLight.visible = false;
+  }
+
+  function syncHDRToggleButton() {
+    const { toggleHDRBtn } = app.dom;
+
+    if (!toggleHDRBtn) {
+      return;
+    }
+
+    const hasHDRLoaded = Boolean(
+      app.state.currentHDRTexture && app.state.currentEnvironmentTarget
+    );
+
+    toggleHDRBtn.disabled = !hasHDRLoaded;
+    toggleHDRBtn.textContent = app.state.hdrPaused ? "恢复 HDR" : "暂停 HDR";
+    toggleHDRBtn.classList.toggle("active", hasHDRLoaded && app.state.hdrPaused);
+    toggleHDRBtn.classList.toggle("secondary", !hasHDRLoaded || !app.state.hdrPaused);
+  }
+
+  function syncHDRBackgroundButton() {
+    const { toggleHDRBackgroundBtn } = app.dom;
+
+    if (!toggleHDRBackgroundBtn) {
+      return;
+    }
+
+    const hasHDRLoaded = Boolean(
+      app.state.currentHDRTexture && app.state.currentEnvironmentTarget
+    );
+    const backgroundEnabled =
+      hasHDRLoaded && !app.state.hdrPaused && app.state.hdrBackgroundVisible;
+
+    toggleHDRBackgroundBtn.disabled = !hasHDRLoaded || app.state.hdrPaused;
+    toggleHDRBackgroundBtn.textContent = backgroundEnabled
+      ? "隐藏 HDR 背景"
+      : "显示 HDR 背景";
+    toggleHDRBackgroundBtn.classList.toggle("active", backgroundEnabled);
+    toggleHDRBackgroundBtn.classList.toggle("secondary", !backgroundEnabled);
+  }
+
+  function applyHDRRotation() {
+    const rotationRadians = THREE.MathUtils.degToRad(
+      app.state.environmentSettings.hdrRotation ?? 0
+    );
+
+    if (app.runtime.scene.backgroundRotation) {
+      app.runtime.scene.backgroundRotation.y = rotationRadians;
+    }
+
+    if (app.runtime.scene.environmentRotation) {
+      app.runtime.scene.environmentRotation.y = rotationRadians;
+    }
+  }
+
+  function applyHDRPresentation() {
+    const hasHDRLoaded = Boolean(
+      app.state.currentHDRTexture && app.state.currentEnvironmentTarget
+    );
+    const hdrEnabled = hasHDRLoaded && !app.state.hdrPaused;
+
+    applyHDRRotation();
+
+    if (hdrEnabled) {
+      app.runtime.scene.environment = app.state.currentEnvironmentTarget.texture;
+      if (app.state.hdrBackgroundVisible) {
+        app.runtime.scene.background = app.state.currentHDRTexture;
+        app.runtime.scene.backgroundBlurriness = 0;
+        app.runtime.scene.backgroundIntensity = app.state.environmentSettings.backgroundIntensity;
+      } else {
+        app.runtime.scene.background = cloneDefaultSceneBackground();
+        app.runtime.scene.backgroundBlurriness = app.state.defaultSceneBackgroundBlurriness;
+        app.runtime.scene.backgroundIntensity = app.state.defaultSceneBackgroundIntensity;
+      }
+      app.lights.syncEnvironmentLighting(app.state.currentHDRTexture);
+    } else {
+      app.runtime.scene.environment = null;
+      app.runtime.scene.background = cloneDefaultSceneBackground();
+      app.runtime.scene.backgroundBlurriness = app.state.defaultSceneBackgroundBlurriness;
+      app.runtime.scene.backgroundIntensity = app.state.defaultSceneBackgroundIntensity;
+      app.runtime.scene.environmentIntensity = app.state.defaultSceneEnvironmentIntensity;
+    }
+
+    syncHDRLightVisibility(hasHDRLoaded, hdrEnabled);
+    syncHDRToggleButton();
+    syncHDRBackgroundButton();
+    app.inspectors.renderInspectors();
+    app.renderPipeline?.syncEnvironmentAndLights({ interaction: true });
+  }
+
+  function toggleHDRPause(forcePaused = !app.state.hdrPaused) {
+    app.state.hdrPaused = Boolean(forcePaused);
+    applyHDRPresentation();
+  }
+
+  function toggleHDRBackgroundVisibility(forceVisible = !app.state.hdrBackgroundVisible) {
+    app.state.hdrBackgroundVisible = Boolean(forceVisible);
+    applyHDRPresentation();
   }
 
   function applyHDRTexture(texture, label) {
@@ -263,14 +375,8 @@ export function createAssetsModule(app) {
     app.state.currentEnvironmentTarget = envTarget;
     app.state.currentHDRTexture = texture;
 
-    app.runtime.scene.environment = envTarget.texture;
-    app.runtime.scene.background = texture;
-    app.runtime.scene.backgroundBlurriness = 0.85;
-
-    app.lights.syncEnvironmentLighting(texture);
+    applyHDRPresentation();
     app.status.setHDR(`已加载 ${label}`);
-    app.inspectors.renderInspectors();
-    app.renderPipeline?.markDirty({ interaction: true });
   }
 
   function loadHDRFromURL(url, label, isObjectURL = false) {
@@ -315,7 +421,7 @@ export function createAssetsModule(app) {
         app.objectManager.refreshObjectManager();
         app.selection.selectObject(model);
         app.status.setModel(`已加载 ${label}`);
-        app.renderPipeline?.markDirty({ interaction: true });
+        app.renderPipeline?.markDirty({ interaction: true, rebuildPathTracer: true });
 
         if (isObjectURL) {
           app.state.currentModelObjectURL = url;
@@ -348,7 +454,12 @@ export function createAssetsModule(app) {
     removeCurrentModel,
     showFallbackDemo,
     applyHDRTexture,
+    applyHDRPresentation,
     loadHDRFromURL,
     loadGLBFromURL,
+    syncHDRToggleButton,
+    syncHDRBackgroundButton,
+    toggleHDRPause,
+    toggleHDRBackgroundVisibility,
   };
 }

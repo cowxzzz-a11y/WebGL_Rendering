@@ -10,6 +10,10 @@ const SHADOW_MAP_TYPES = {
 const TEMP_BOX = new THREE.Box3();
 const TEMP_SPHERE = new THREE.Sphere();
 const TEMP_CENTER = new THREE.Vector3();
+const TEMP_DIRECTION_SUM = new THREE.Vector3();
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const HOTSPOT_THRESHOLD_RATIO = 0.78;
+const HOTSPOT_WEIGHT_POWER = 6;
 
 function rgbToLuminance(r, g, b) {
   return r * 0.2126 + g * 0.7152 + b * 0.0722;
@@ -42,6 +46,12 @@ function directionFromEquirectUV(u, v) {
     Math.cos(theta),
     sinTheta * Math.sin(phi)
   ).normalize();
+}
+
+function normalizeHDRColor(r, g, b) {
+  const normalizer = Math.max(r, g, b, 1e-6);
+
+  return new THREE.Color(r / normalizer, g / normalizer, b / normalizer);
 }
 
 export function createLightsModule(app) {
@@ -181,6 +191,13 @@ export function createLightsModule(app) {
     app.inspectors.switchInspectorTab("lights");
   }
 
+  function getRotatedHDRDirection(direction) {
+    const rotationDegrees = app.state.environmentSettings.hdrRotation ?? 0;
+    const rotationRadians = THREE.MathUtils.degToRad(rotationDegrees);
+
+    return direction.clone().applyAxisAngle(WORLD_UP, rotationRadians);
+  }
+
   function extractDominantDirection(texture) {
     const data = texture?.image?.data;
     const width = texture?.image?.width ?? 0;
@@ -198,6 +215,7 @@ export function createLightsModule(app) {
     let bestDirection = null;
     let bestColor = new THREE.Color("#ffffff");
     let bestLuminance = 0;
+    let bestPixel = null;
 
     for (let y = 0; y < height; y += 1) {
       for (let x = 0; x < width; x += 1) {
@@ -214,18 +232,59 @@ export function createLightsModule(app) {
           (x + 0.5) / width,
           (y + 0.5) / height
         );
+        bestPixel = pixel;
+        bestColor = normalizeHDRColor(pixel.r, pixel.g, pixel.b);
+      }
+    }
 
-        const normalizer = Math.max(pixel.r, pixel.g, pixel.b, 1e-6);
-        bestColor = new THREE.Color(
-          pixel.r / normalizer,
-          pixel.g / normalizer,
-          pixel.b / normalizer
+    if (!bestDirection || !bestPixel) {
+      return null;
+    }
+
+    const hotspotThreshold = bestLuminance * HOTSPOT_THRESHOLD_RATIO;
+    let hotspotWeight = 0;
+    let hotspotColorR = 0;
+    let hotspotColorG = 0;
+    let hotspotColorB = 0;
+    TEMP_DIRECTION_SUM.set(0, 0, 0);
+
+    for (let y = 0; y < height; y += 1) {
+      const rowSolidAngleWeight = Math.max(
+        Math.sin(((y + 0.5) / height) * Math.PI),
+        1e-4
+      );
+
+      for (let x = 0; x < width; x += 1) {
+        const index = (y * width + x) * 4;
+        const pixel = readHDRPixel(data, index, isRGBE);
+        const luminance = rgbToLuminance(pixel.r, pixel.g, pixel.b);
+
+        if (luminance < hotspotThreshold) {
+          continue;
+        }
+
+        const normalizedLuminance = Math.max(luminance / bestLuminance, 1e-4);
+        const pixelWeight =
+          Math.pow(normalizedLuminance, HOTSPOT_WEIGHT_POWER) * rowSolidAngleWeight;
+
+        hotspotWeight += pixelWeight;
+        hotspotColorR += pixel.r * pixelWeight;
+        hotspotColorG += pixel.g * pixelWeight;
+        hotspotColorB += pixel.b * pixelWeight;
+        TEMP_DIRECTION_SUM.addScaledVector(
+          directionFromEquirectUV((x + 0.5) / width, (y + 0.5) / height),
+          pixelWeight
         );
       }
     }
 
-    if (!bestDirection) {
-      return null;
+    if (hotspotWeight > 0 && TEMP_DIRECTION_SUM.lengthSq() > 1e-8) {
+      bestDirection = TEMP_DIRECTION_SUM.normalize().clone();
+      bestColor = normalizeHDRColor(
+        hotspotColorR / hotspotWeight,
+        hotspotColorG / hotspotWeight,
+        hotspotColorB / hotspotWeight
+      );
     }
 
     return {
@@ -237,39 +296,38 @@ export function createLightsModule(app) {
 
   function syncEnvironmentLighting(texture) {
     const settings = app.state.environmentSettings;
+    const hdrStrength = settings.hdrStrength ?? 1;
 
-    app.runtime.scene.environmentIntensity = settings.environmentIntensity;
+    app.runtime.scene.environmentIntensity = settings.environmentIntensity * hdrStrength;
     app.runtime.scene.backgroundIntensity = settings.backgroundIntensity;
 
-    if (!settings.autoSunFromHDR || !texture) {
-      app.renderPipeline?.markDirty();
+    if (app.state.hdrPaused || !settings.autoSunFromHDR || !texture) {
       return;
     }
 
     const dominant = extractDominantDirection(texture);
     if (!dominant) {
-      app.renderPipeline?.markDirty();
       return;
     }
 
     const { center, radius } = getSceneFocus();
     const distance = Math.max(radius * settings.sunDistanceFactor, 8);
+    const rotatedDirection = getRotatedHDRDirection(dominant.direction);
 
-    app.runtime.dirLight.position.copy(center).addScaledVector(dominant.direction, distance);
+    app.runtime.dirLight.position.copy(center).addScaledVector(rotatedDirection, distance);
     app.runtime.dirLight.target.position.copy(center);
     app.runtime.dirLight.color.copy(dominant.color).lerp(new THREE.Color("#ffffff"), 0.18);
     app.runtime.dirLight.intensity = THREE.MathUtils.clamp(
-      (1.2 + Math.log2(dominant.luminance + 1)) * settings.sunBoost,
-      0.8,
+      (1.2 + Math.log2(dominant.luminance + 1)) * settings.sunBoost * hdrStrength,
+      0,
       10
     );
 
-    TEMP_CENTER.copy(dominant.direction).multiplyScalar(-radius * 0.18);
+    TEMP_CENTER.copy(rotatedDirection).multiplyScalar(-radius * 0.18);
     app.runtime.areaLightTarget.position.copy(center).add(TEMP_CENTER).setY(center.y + radius * 0.15);
 
     updateHelpers();
     fitShadowToObject(app.objectManager.getActiveRoot());
-    app.renderPipeline?.markDirty();
   }
 
   return {

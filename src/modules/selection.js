@@ -1,4 +1,12 @@
 export function createSelectionModule(app) {
+  function setTransformControlsVisible(visible) {
+    app.runtime.transformControls.visible = visible;
+
+    if (app.runtime.transformControlsHelper) {
+      app.runtime.transformControlsHelper.visible = visible;
+    }
+  }
+
   function updateSelectionBox() {
     const { selectionBox } = app.runtime;
     const object = app.state.selectedObject;
@@ -19,12 +27,12 @@ export function createSelectionModule(app) {
   function clearSelection() {
     app.state.selectedObject = null;
     app.runtime.transformControls.detach();
-    app.runtime.transformControls.visible = false;
+    setTransformControlsVisible(false);
     app.runtime.selectionBox.visible = false;
     app.status.setSelection("无");
     app.objectManager.refreshObjectManager();
     app.inspectors.renderInspectors();
-    app.renderPipeline?.markDirty();
+    app.renderPipeline?.markDirty({ rebuildPathTracer: false });
   }
 
   function selectObject(object) {
@@ -38,16 +46,16 @@ export function createSelectionModule(app) {
 
     if (app.state.moveModeEnabled) {
       app.runtime.transformControls.attach(object);
-      app.runtime.transformControls.visible = true;
+      setTransformControlsVisible(true);
     } else {
       app.runtime.transformControls.detach();
-      app.runtime.transformControls.visible = false;
+      setTransformControlsVisible(false);
     }
 
     updateSelectionBox();
     app.objectManager.refreshObjectManager();
     app.inspectors.renderInspectors();
-    app.renderPipeline?.markDirty();
+    app.renderPipeline?.markDirty({ rebuildPathTracer: false });
   }
 
   function syncMoveModeButton() {
@@ -63,7 +71,7 @@ export function createSelectionModule(app) {
 
       if (app.state.selectedObject) {
         app.runtime.transformControls.attach(app.state.selectedObject);
-        app.runtime.transformControls.visible = true;
+        setTransformControlsVisible(true);
       }
 
       return;
@@ -72,13 +80,13 @@ export function createSelectionModule(app) {
     toggleMoveBtn.textContent = "物体移动已关";
     toggleMoveBtn.classList.remove("active");
     app.runtime.transformControls.detach();
-    app.runtime.transformControls.visible = false;
+    setTransformControlsVisible(false);
   }
 
   function toggleMoveMode() {
     app.state.moveModeEnabled = !app.state.moveModeEnabled;
     syncMoveModeButton();
-    app.renderPipeline?.markDirty();
+    app.renderPipeline?.markDirty({ rebuildPathTracer: false });
   }
 
   function handlePointerDown(event) {

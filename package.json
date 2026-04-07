@@ -10,7 +10,8 @@
     "optimize:glb": "node tools/gltf-optimize/smart-optimize.mjs"
   },
   "dependencies": {
-    "three": "0.162.0"
+    "three": "0.181.1",
+    "three-mesh-bvh": "^0.9.5"
   },
   "devDependencies": {
     "@gltf-transform/cli": "^4.3.0",
