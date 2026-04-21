@@ -1,2 +1,0 @@
-作品: 还原原画古驿站
-制作背景：根据原画使用MAYA制作三维模型，用RizomUV分UV，Substance 3D Painter制作贴图，打光后，用Arnold  渲染
