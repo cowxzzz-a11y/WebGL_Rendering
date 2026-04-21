@@ -75,7 +75,22 @@ type DetailDescriptor = {
   sections: DetailSection[]
 }
 
-const modelUrl = new URL('../assets/test/\u5efa\u7b51.glb', import.meta.url).href
+type DefaultModel = {
+  url: string
+  fileName: string
+}
+
+const defaultModelUrls = import.meta.glob<string>('../assets/**/*.glb', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+})
+const defaultModels: DefaultModel[] = Object.entries(defaultModelUrls)
+  .sort(([leftPath], [rightPath]) => leftPath.localeCompare(rightPath, undefined, { numeric: true }))
+  .map(([path, url]) => ({
+    url,
+    fileName: path.replace(/^\.\.\/assets\//, 'assets/'),
+  }))
 const environmentUrl = '/environment.env'
 
 const app = document.querySelector<HTMLDivElement>('#app')
@@ -124,7 +139,7 @@ if (
 let activeTabId = 'outline'
 let selectedDetailId: string | null = null
 let currentMeshNodes: OutlineNode[] = []
-let importedFileName = '\u5efa\u7b51.glb'
+let importedFileName = '\u672a\u5bfc\u5165'
 let importShouldReplace = false
 const detailRegistry = new Map<string, () => DetailDescriptor>()
 let selectedMesh: AbstractMesh | null = null
@@ -1729,11 +1744,40 @@ const updateKeyboardNavigation = () => {
   camera.setTarget(camera.target.add(offset), false, true, true)
 }
 
-loadModel(modelUrl, '\u5efa\u7b51.glb', true)
-  .catch((error) => {
-    console.error(error)
-    setStatus('Failed to load building.glb')
-  })
+const loadDefaultModels = async () => {
+  if (defaultModels.length === 0) {
+    setStatus('\u672a\u5728 assets \u4e2d\u627e\u5230 .glb \u6587\u4ef6')
+    return
+  }
+
+  const failedModels: string[] = []
+
+  for (const model of defaultModels) {
+    try {
+      await loadModel(model.url, model.fileName)
+    } catch (error) {
+      console.error(`Failed to load ${model.fileName}`, error)
+      failedModels.push(model.fileName)
+    }
+  }
+
+  if (importedMeshes.length > 0 && pendingStoredConfig) {
+    applyViewerConfig(pendingStoredConfig)
+    pendingStoredConfig = null
+  }
+
+  if (failedModels.length > 0) {
+    setStatus(`\u5df2\u5bfc\u5165 ${defaultModels.length - failedModels.length} \u4e2a GLB\uff0c${failedModels.length} \u4e2a\u5931\u8d25`)
+    return
+  }
+
+  setStatus(null)
+}
+
+loadDefaultModels().catch((error) => {
+  console.error(error)
+  setStatus('Failed to load assets GLB files')
+})
 
 engine.runRenderLoop(() => {
   try {
