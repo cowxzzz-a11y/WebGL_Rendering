@@ -1,0 +1,38 @@
+name: Deploy WebGL Rendering to Aliyun
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy dist to Aliyun
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          ARGS: "-avz --delete --exclude='.user.ini' --exclude='.htaccess' --exclude='.well-known' --exclude='404.html'"
+          SOURCE: "dist/"
+          REMOTE_HOST: "123.56.232.112"
+          REMOTE_USER: "root"
+          REMOTE_PORT: "28522"
+          TARGET: "/www/wwwroot/3d.puffina.xyz/"

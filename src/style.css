@@ -235,6 +235,131 @@ body,
   display: none;
 }
 
+.share-actions {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2;
+}
+
+.share-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: #07c160;
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.share-button:hover {
+  transform: scale(1.08);
+  opacity: 0.9;
+}
+
+.share-button:active {
+  transform: scale(0.96);
+}
+
+.share-button svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+.share-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.share-overlay.active {
+  display: flex;
+}
+
+.share-wechat-guide {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 18px 22px;
+  color: #ffffff;
+  text-align: right;
+}
+
+.guide-arrow {
+  font-size: 42px;
+  line-height: 1;
+  animation: share-arrow-bounce 1s ease infinite;
+}
+
+.guide-text {
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.share-qr-popup {
+  width: min(280px, calc(100vw - 48px));
+  padding: 22px 20px 18px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #333333;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
+}
+
+.share-qr-popup p {
+  margin: 12px 0 0;
+  color: #555555;
+  font-size: 13px;
+}
+
+.share-qr-close {
+  height: 32px;
+  margin-top: 14px;
+  padding: 0 18px;
+  border: 1px solid #d5d8dc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #222222;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.share-qr-close:hover {
+  background: #f2f4f5;
+}
+
+#shareQrCanvas {
+  display: block;
+  margin: 0 auto;
+}
+
+@keyframes share-arrow-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
 .import-panel {
   display: grid;
   gap: 10px;
@@ -471,11 +596,11 @@ body,
 
 @media (max-width: 760px) {
   .outliner-panel {
-    top: auto;
-    right: 12px;
-    left: 12px;
-    bottom: 12px;
-    width: auto;
-    max-height: 42vh;
+    display: none;
+  }
+
+  .share-actions {
+    right: 18px;
+    bottom: 18px;
   }
 }

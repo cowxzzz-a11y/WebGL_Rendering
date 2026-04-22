@@ -80,6 +80,32 @@ type DefaultModel = {
   fileName: string
 }
 
+type QRCodeInstance = {
+  addData: (text: string) => void
+  make: () => void
+  getModuleCount: () => number
+  isDark: (row: number, col: number) => boolean
+}
+
+type QRCodeFactory = (typeNumber: number, errorCorrectionLevel: string) => QRCodeInstance
+type WindowWithQRCode = Window & { qrcode?: QRCodeFactory }
+type ArcRotateTouchInput = {
+  angularSensibilityX: number
+  angularSensibilityY: number
+  multiTouchPanAndZoom: boolean
+  multiTouchPanning: boolean
+  panningSensibility: number
+  pinchDeltaPercentage: number
+  pinchPrecision: number
+  pinchZoom: boolean
+  useNaturalPinchZoom: boolean
+}
+
+const shareTitle = '3D \u5efa\u7b51\u6a21\u578b\u67e5\u770b\u5668'
+const shareDescription = '\u5728\u7ebf\u67e5\u770b\u548c\u5206\u4eab 3D \u5efa\u7b51\u6a21\u578b\uff0c\u652f\u6301\u706f\u5149\u3001\u6750\u8d28\u548c\u6a21\u578b\u5bfc\u5165\u8c03\u8282\u3002'
+const shareUrl = 'https://3d.puffina.xyz/'
+const desktopPanningSensibility = 45
+const mobilePanningSensibility = 18
 const defaultModelUrls = import.meta.glob<string>('../assets/**/*.glb', {
   eager: true,
   query: '?url',
@@ -101,6 +127,14 @@ if (!app) {
 
 app.innerHTML = `
   <canvas id="renderCanvas" aria-label="Babylon building render"></canvas>
+  <div class="share-actions" data-url="${shareUrl}" data-title="${shareTitle}" data-desc="${shareDescription}">
+    <button id="shareWechat" class="share-button" type="button" aria-label="\u5fae\u4fe1\u5206\u4eab" title="\u5fae\u4fe1\u5206\u4eab">
+      <svg viewBox="0 0 1024 1024" aria-hidden="true">
+        <path d="M690.1 377.4c5.9 0 11.8.2 17.6.5-24.4-128.7-158.3-227.1-319.9-227.1C209 150.8 64 270.8 64 420.2c0 81.1 43.6 154.2 111.9 203.6l-29.5 88.3 99.4-49.7c37.4 9.8 75.2 14.8 105 14.8 11.1 0 21.9-1 32.5-2.4C377 637.9 369.6 598.9 369.6 558.2c0-99.8 88-180.8 320.5-180.8zM445.8 276c21.2 0 36.8 15.6 36.8 36.8s-15.6 36.8-36.8 36.8-36.8-15.6-36.8-36.8 15.7-36.8 36.8-36.8zm-159.2 73.6c-21.2 0-36.8-15.6-36.8-36.8s15.6-36.8 36.8-36.8 36.8 15.6 36.8 36.8-15.6 36.8-36.8 36.8z" />
+        <path d="M912 558.2c0-122.7-122.5-222.5-273.2-222.5-160.1 0-273.2 99.8-273.2 222.5s113.1 222.5 273.2 222.5c31.4 0 62.8-9.8 94.2-19.6l80.6 49.7-19.6-78.5C862 693.4 912 631.7 912 558.2zM554 534.4c-15.6 0-29.5-13.9-29.5-29.5s13.9-29.5 29.5-29.5 29.5 13.9 29.5 29.5-13.9 29.5-29.5 29.5zm185.8 0c-15.6 0-29.5-13.9-29.5-29.5s13.9-29.5 29.5-29.5 29.5 13.9 29.5 29.5-13.9 29.5-29.5 29.5z" />
+      </svg>
+    </button>
+  </div>
   <aside class="outliner-panel" aria-label="Scene panel">
     <header id="sceneTabs" class="outliner-tabs" aria-label="Scene panel tabs"></header>
     <div class="config-actions" aria-label="Config actions">
@@ -112,10 +146,28 @@ app.innerHTML = `
   </aside>
   <input id="glbImportInput" class="import-file-input" type="file" accept=".glb,model/gltf-binary" />
   <div id="status" class="status">Loading scene...</div>
+  <div id="shareOverlay" class="share-overlay" aria-modal="true" role="dialog">
+    <div id="shareWechatGuide" class="share-wechat-guide" hidden>
+      <div class="guide-arrow">\u2197</div>
+      <div class="guide-text">\u70b9\u51fb\u53f3\u4e0a\u89d2\u300c\u00b7\u00b7\u00b7\u300d<br />\u9009\u62e9\u300c\u8f6c\u53d1\u7ed9\u670b\u53cb\u300d<br />\u5373\u53ef\u751f\u6210\u5fae\u4fe1\u5361\u7247</div>
+    </div>
+    <div id="shareQrPopup" class="share-qr-popup" hidden>
+      <canvas id="shareQrCanvas" aria-label="\u5fae\u4fe1\u5206\u4eab\u4e8c\u7ef4\u7801"></canvas>
+      <p>\u6253\u5f00\u5fae\u4fe1\u626b\u4e00\u626b\u5206\u4eab</p>
+      <button id="shareQrClose" class="share-qr-close" type="button">\u5173\u95ed</button>
+    </div>
+  </div>
 `
 
 const canvas = document.querySelector<HTMLCanvasElement>('#renderCanvas')
 const status = document.querySelector<HTMLDivElement>('#status')
+const shareActions = document.querySelector<HTMLElement>('.share-actions')
+const shareWechatButton = document.querySelector<HTMLButtonElement>('#shareWechat')
+const shareOverlay = document.querySelector<HTMLDivElement>('#shareOverlay')
+const shareWechatGuide = document.querySelector<HTMLDivElement>('#shareWechatGuide')
+const shareQrPopup = document.querySelector<HTMLDivElement>('#shareQrPopup')
+const shareQrCanvas = document.querySelector<HTMLCanvasElement>('#shareQrCanvas')
+const shareQrClose = document.querySelector<HTMLButtonElement>('#shareQrClose')
 const sceneTabs = document.querySelector<HTMLElement>('#sceneTabs')
 const saveConfigButton = document.querySelector<HTMLButtonElement>('#saveConfig')
 const resetConfigButton = document.querySelector<HTMLButtonElement>('#resetConfig')
@@ -126,6 +178,13 @@ const glbImportInput = document.querySelector<HTMLInputElement>('#glbImportInput
 if (
   !canvas ||
   !status ||
+  !shareActions ||
+  !shareWechatButton ||
+  !shareOverlay ||
+  !shareWechatGuide ||
+  !shareQrPopup ||
+  !shareQrCanvas ||
+  !shareQrClose ||
   !sceneTabs ||
   !saveConfigButton ||
   !resetConfigButton ||
@@ -660,14 +719,41 @@ camera.minZ = 0.03
 camera.fov = 0.72
 camera.wheelPrecision = 8
 camera.wheelDeltaPercentage = 0.06
-camera.pinchPrecision = 75
+camera.pinchPrecision = 28
+camera.pinchDeltaPercentage = 0.012
+camera.useNaturalPinchZoom = true
 camera.lowerRadiusLimit = 0.35
 camera.upperRadiusLimit = 500
 camera.lowerBetaLimit = 0.18
 camera.upperBetaLimit = Math.PI / 2.02
-camera.panningSensibility = 45
+camera.panningSensibility = desktopPanningSensibility
 camera.panningDistanceLimit = null
 camera.attachControl(canvas, true)
+
+const isMobileViewport = () => window.matchMedia('(pointer: coarse), (max-width: 760px)').matches
+
+const tuneTouchCameraControls = () => {
+  const panningSensibility = isMobileViewport() ? mobilePanningSensibility : desktopPanningSensibility
+  const pointersInput = camera.inputs.attached.pointers as Partial<ArcRotateTouchInput> | undefined
+
+  camera.panningSensibility = panningSensibility
+
+  if (!pointersInput) {
+    return
+  }
+
+  pointersInput.multiTouchPanning = true
+  pointersInput.multiTouchPanAndZoom = true
+  pointersInput.pinchZoom = true
+  pointersInput.useNaturalPinchZoom = true
+  pointersInput.pinchPrecision = isMobileViewport() ? 22 : 28
+  pointersInput.pinchDeltaPercentage = isMobileViewport() ? 0.016 : 0.012
+  pointersInput.panningSensibility = panningSensibility
+  pointersInput.angularSensibilityX = isMobileViewport() ? 780 : 1000
+  pointersInput.angularSensibilityY = isMobileViewport() ? 780 : 1000
+}
+
+tuneTouchCameraControls()
 
 canvas.addEventListener('contextmenu', (event) => {
   event.preventDefault()
@@ -739,7 +825,7 @@ canvas.addEventListener('pointerup', (event) => {
 })
 
 const hemiLight = new HemisphericLight('HemiLight', new Vector3(0, 1, 0), scene)
-hemiLight.intensity = 0.22
+hemiLight.intensity = 1
 hemiLight.diffuse = new Color3(0.9, 0.94, 1)
 hemiLight.groundColor = new Color3(0.34, 0.35, 0.36)
 
@@ -937,6 +1023,7 @@ const applyViewerConfig = (config: ViewerConfig) => {
   assignVector(camera.target, config.camera.target)
   camera.wheelPrecision = config.camera.wheelPrecision
   camera.panningSensibility = config.camera.panningSensibility
+  tuneTouchCameraControls()
 
   hemiLight.intensity = config.lights.hemi.intensity
   assignColor3(hemiLight.diffuse, config.lights.hemi.diffuse)
@@ -1037,6 +1124,109 @@ const showTemporaryStatus = (message: string) => {
     setStatus(null)
   }, 1600)
 }
+
+let qrCodeScriptPromise: Promise<void> | null = null
+
+const getShareData = () => ({
+  url: shareActions.dataset.url || window.location.href,
+  title: shareActions.dataset.title || document.title,
+  desc: shareActions.dataset.desc || '',
+})
+
+const loadQRCodeScript = () => {
+  const qrWindow = window as WindowWithQRCode
+
+  if (qrWindow.qrcode) {
+    return Promise.resolve()
+  }
+
+  qrCodeScriptPromise ??= new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+
+    script.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js'
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('QR code script failed to load.'))
+    document.head.append(script)
+  })
+
+  return qrCodeScriptPromise
+}
+
+const renderShareQRCode = (text: string, size = 208) => {
+  const qrFactory = (window as WindowWithQRCode).qrcode
+
+  if (!qrFactory) {
+    return
+  }
+
+  const qr = qrFactory(0, 'M')
+  qr.addData(text)
+  qr.make()
+
+  const context = shareQrCanvas.getContext('2d')
+
+  if (!context) {
+    return
+  }
+
+  const moduleCount = qr.getModuleCount()
+  const cellSize = Math.floor(size / moduleCount)
+  const canvasSize = cellSize * moduleCount
+
+  shareQrCanvas.width = canvasSize
+  shareQrCanvas.height = canvasSize
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvasSize, canvasSize)
+  context.fillStyle = '#111111'
+
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let col = 0; col < moduleCount; col += 1) {
+      if (qr.isDark(row, col)) {
+        context.fillRect(col * cellSize, row * cellSize, cellSize, cellSize)
+      }
+    }
+  }
+}
+
+const showShareOverlay = (mode: 'guide' | 'qr') => {
+  shareWechatGuide.hidden = mode !== 'guide'
+  shareQrPopup.hidden = mode !== 'qr'
+  shareOverlay.classList.add('active')
+}
+
+const hideShareOverlay = () => {
+  shareOverlay.classList.remove('active')
+}
+
+const handleWechatShare = async () => {
+  const { url } = getShareData()
+  const isWeChat = /MicroMessenger/i.test(navigator.userAgent)
+
+  if (isWeChat) {
+    showShareOverlay('guide')
+    return
+  }
+
+  showShareOverlay('qr')
+
+  try {
+    await loadQRCodeScript()
+    renderShareQRCode(url)
+  } catch (error) {
+    console.error(error)
+    showTemporaryStatus('\u4e8c\u7ef4\u7801\u52a0\u8f7d\u5931\u8d25\uff0c\u5df2\u590d\u5236\u5206\u4eab\u94fe\u63a5')
+    await navigator.clipboard?.writeText(url)
+  }
+}
+
+shareWechatButton.addEventListener('click', handleWechatShare)
+shareQrClose.addEventListener('click', hideShareOverlay)
+shareOverlay.addEventListener('click', (event) => {
+  if (event.target === shareOverlay || (event.target instanceof Element && event.target.closest('.share-wechat-guide'))) {
+    hideShareOverlay()
+  }
+})
 
 const saveCurrentConfig = () => {
   window.localStorage.setItem(configStorageKey, JSON.stringify(createViewerConfig(), null, 2))
@@ -1795,4 +1985,5 @@ engine.runRenderLoop(() => {
 window.addEventListener('resize', () => {
   engine.resize()
   engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 1.6))
+  tuneTouchCameraControls()
 })
