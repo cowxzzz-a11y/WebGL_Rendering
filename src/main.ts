@@ -106,13 +106,12 @@ const shareDescription = '\u5728\u7ebf\u67e5\u770b\u548c\u5206\u4eab 3D \u5efa\u
 const shareUrl = 'https://3d.puffina.xyz/'
 const desktopPanningSensibility = 45
 const mobilePanningSensibility = 18
-const defaultModelUrls = import.meta.glob<string>('../assets/**/*.glb', {
+const defaultModelUrls = import.meta.glob<string>('../assets/target.glb', {
   eager: true,
   query: '?url',
   import: 'default',
 })
 const defaultModels: DefaultModel[] = Object.entries(defaultModelUrls)
-  .sort(([leftPath], [rightPath]) => leftPath.localeCompare(rightPath, undefined, { numeric: true }))
   .map(([path, url]) => ({
     url,
     fileName: path.replace(/^\.\.\/assets\//, 'assets/'),
@@ -715,7 +714,6 @@ const camera = new ArcRotateCamera(
   new Vector3(0, 1.5, 0),
   scene,
 )
-camera.minZ = 0.03
 camera.fov = 0.72
 camera.wheelPrecision = 8
 camera.wheelDeltaPercentage = 0.06
@@ -866,6 +864,15 @@ const lightHelperMeshes = new Map<keyof typeof lightHelperVisible, LinesMesh>()
 const vectorToConfig = (vector: Vector3): VectorConfig => [vector.x, vector.y, vector.z]
 
 const colorToConfig = (color: Color3 | Color4): ColorConfig => [color.r, color.g, color.b]
+
+const updateCameraDepthRange = () => {
+  const effectiveRadius = Math.max(camera.radius, camera.lowerRadiusLimit ?? 0.35, 0.35)
+  const effectiveSceneRadius = Math.max(sceneRadius, effectiveRadius, 1)
+
+  // Keep the camera frustum tight enough to preserve depth precision on distant meshes.
+  camera.minZ = clamp(effectiveRadius * 0.005, 0.05, 2.5)
+  camera.maxZ = Math.max(effectiveSceneRadius * 20, effectiveRadius * 12, 120)
+}
 
 const assignVector = (target: Vector3, config: VectorConfig) => {
   target.x = config[0]
@@ -1662,6 +1669,7 @@ const frameHierarchy = (root: TransformNode, meshes: AbstractMesh[]) => {
   camera.beta = Math.PI / 2.62
 
   sunLight.position = center.add(new Vector3(8, 10, 6))
+  updateCameraDepthRange()
   updateLightDirectionHelpers()
 }
 
@@ -1936,7 +1944,7 @@ const updateKeyboardNavigation = () => {
 
 const loadDefaultModels = async () => {
   if (defaultModels.length === 0) {
-    setStatus('\u672a\u5728 assets \u4e2d\u627e\u5230 .glb \u6587\u4ef6')
+    setStatus('\u672a\u5728 assets \u4e2d\u627e\u5230 target.glb')
     return
   }
 
@@ -1974,6 +1982,7 @@ engine.runRenderLoop(() => {
     updateKeyboardNavigation()
     updateFocusAnimation()
     updateSelectionBox()
+    updateCameraDepthRange()
   } catch (error) {
     console.error(error)
     pressedKeys.clear()
