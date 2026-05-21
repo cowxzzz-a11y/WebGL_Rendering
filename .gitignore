@@ -8,6 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+!tools/gltf-optimize/node_modules/
 dist
 dist-ssr
 *.local
