@@ -26,6 +26,8 @@ export type ViewerConfig = {
       direction: VectorConfig
       position: VectorConfig
       helperVisible: boolean
+      shadowMapSize: number
+      shadowBias: number
     }
   }
   world: {

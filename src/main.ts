@@ -8,6 +8,8 @@ import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
 import { Engine } from '@babylonjs/core/Engines/engine'
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
+import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
+import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture'
@@ -862,6 +864,20 @@ sunLight.diffuse = new Color3(1, 0.965, 0.91)
 sunLight.specular = new Color3(0.65, 0.62, 0.58)
 sunLight.position = new Vector3(8, 10, 6)
 
+let shadowGenerator: ShadowGenerator
+let shadowMapSize = 2048
+let shadowBias = 0.0001
+let shadowNormalBias = 0.01
+const initShadowGenerator = () => {
+  shadowGenerator?.dispose()
+  shadowGenerator = new ShadowGenerator(shadowMapSize, sunLight)
+  shadowGenerator.usePercentageCloserFiltering = true
+  shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH
+  shadowGenerator.bias = shadowBias
+  shadowGenerator.normalBias = shadowNormalBias
+  importedMeshes.forEach((mesh) => shadowGenerator.addShadowCaster(mesh))
+}
+
 const pipeline = new DefaultRenderingPipeline('ClassicPipeline', true, scene, [camera])
 pipeline.samples = 4
 pipeline.fxaaEnabled = true
@@ -877,6 +893,7 @@ pipeline.grainEnabled = false
 pipeline.sharpenEnabled = false
 
 let importedMeshes: AbstractMesh[] = []
+initShadowGenerator()
 let importedMaterialTotal = 0
 let currentModelRoots: TransformNode[] = []
 let importedFileNames: string[] = []
@@ -1029,6 +1046,8 @@ const createViewerConfig = (): ViewerConfig => {
         direction: vectorToConfig(sunLight.direction),
         position: vectorToConfig(sunLight.position),
         helperVisible: lightHelperVisible.sun,
+        shadowMapSize,
+        shadowBias,
       },
     },
     world: {
@@ -1073,6 +1092,12 @@ const applyViewerConfig = (config: ViewerConfig) => {
   assignVector(sunLight.direction, config.lights.sun.direction)
   assignVector(sunLight.position, config.lights.sun.position)
   lightHelperVisible.sun = config.lights.sun.helperVisible
+
+  if ('shadowMapSize' in config.lights.sun) {
+    shadowMapSize = config.lights.sun.shadowMapSize
+    shadowBias = config.lights.sun.shadowBias
+    initShadowGenerator()
+  }
 
   scene.environmentIntensity = config.world.environmentIntensity
   scene.clearColor = new Color4(config.world.clearColor[0], config.world.clearColor[1], config.world.clearColor[2], 1)
@@ -1563,6 +1588,19 @@ detailRegistry.set('light:sun', () => ({
       title: '\u4f4d\u7f6e',
       items: vectorItems(sunLight.position, ['X', 'Y', 'Z'], -200, 200, 0.01),
     },
+    {
+      title: '\u9634\u5f71',
+      items: [
+        numberItem('\u8d28\u91cf', shadowMapSize, 512, 4096, 512, (value) => {
+          shadowMapSize = value
+          initShadowGenerator()
+        }),
+        numberItem('Bias', shadowBias, 0, 0.01, 0.0001, (value) => {
+          shadowBias = value
+          shadowGenerator.bias = value
+        }),
+      ],
+    },
   ],
 }))
 
@@ -1698,6 +1736,7 @@ const frameHierarchy = (root: TransformNode, meshes: AbstractMesh[]) => {
   camera.beta = Math.PI / 2.62
 
   sunLight.position = center.add(new Vector3(8, 10, 6))
+
   updateCameraDepthRange()
   updateLightDirectionHelpers()
 }
@@ -1740,6 +1779,10 @@ const disposeCurrentModels = () => {
   importedMaterialTotal = 0
   importedFileNames = []
   importedFileName = '\u672a\u5bfc\u5165'
+  const shadowMap = shadowGenerator.getShadowMap()
+  if (shadowMap) {
+    shadowMap.renderList = []
+  }
   setOutline([])
 }
 
@@ -1815,7 +1858,8 @@ const loadModel = async (source: string | File, fileName: string, shouldApplySto
   })
 
   result.meshes.forEach((mesh) => {
-    mesh.receiveShadows = false
+    mesh.receiveShadows = true
+    shadowGenerator.addShadowCaster(mesh)
 
     if (mesh.material instanceof PBRMaterial) {
       materials.add(mesh.material)

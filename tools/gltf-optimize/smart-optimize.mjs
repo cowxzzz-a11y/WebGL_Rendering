@@ -29,10 +29,12 @@ const DEFAULT_QUALITY_PROFILE = "balanced";
 const DEFAULT_PALETTE_MIN = 5;
 const KTX_MIN_VERSION = "4.3.0";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_KTX_HINT = "E:\\Software\\KTX-Software\\bin\\ktx.exe";
+const DEFAULT_KTX_HINT = path.join(SCRIPT_DIR, "bin", "ktx.exe");
 const MIPMAP_FILTER = "lanczos4";
 const MIPMAP_FILTER_SCALE = 1;
 const DEFAULT_WEBP_EFFORT = 5;
+const DEFAULT_KTX2_MODE = "uastc";
+const DEFAULT_KTX2_ZSTD_LEVEL = 7;
 const DEFAULT_WEBP_QUALITY_BASE = 92;
 const DEFAULT_WEBP_QUALITY_EMISSIVE = 94;
 const DEFAULT_WEBP_QUALITY_OTHER = 90;
@@ -136,6 +138,13 @@ async function main() {
     return;
   }
 
+  if (options.textureInfo) {
+    const info = await collectTextureInfo(document);
+    await fs.writeFile(options.textureInfo, JSON.stringify(info, null, 2), "utf8");
+    console.log(`Texture info JSON: ${options.textureInfo}`);
+    return;
+  }
+
   const objectPolicy = options.objectPolicy
     ? await readObjectPolicy(options.objectPolicy)
     : null;
@@ -143,6 +152,15 @@ async function main() {
   const paletteStats = await applySolidMaterialPalette(document, options);
   const geometryTargets =
     options.geometryMode === "local" ? collectGeometryTargets(document, objectPolicy) : [];
+
+  let fixedSizeCount = 0;
+  if (options.fixTextureSize) {
+    fixedSizeCount = await ensureTextureSizeMultipleOf4(document);
+  }
+
+  const textureOverrides = options.textureOverride
+    ? await readTextureOverrides(options.textureOverride)
+    : new Map();
 
   let textureStats = {
     format: options.textureFormat,
@@ -154,7 +172,14 @@ async function main() {
   };
 
   if (options.textureFormat === "ktx2") {
-    textureStats = await compressTexturesToKTX2(document, options);
+    textureStats = await compressTexturesToKTX2(document, options, textureOverrides);
+    const webpOverrideIndices = [...textureOverrides.entries()]
+      .filter(([, v]) => v.format === "webp")
+      .map(([k]) => k);
+    if (webpOverrideIndices.length > 0) {
+      const webpStats = await compressTexturesToWebP(document, options, new Set(webpOverrideIndices));
+      textureStats.converted += webpStats.converted;
+    }
   } else if (options.textureFormat === "webp") {
     textureStats = await compressTexturesToWebP(document, options);
   }
@@ -200,6 +225,7 @@ async function main() {
   console.log("");
   console.log("Smart optimize done.");
   console.log(`Fixed texture mime types: ${fixedMimeCount}`);
+  console.log(`Texture size fixed (4-multiple): ${fixedSizeCount}`);
   console.log(`Palette enabled: ${paletteStats.enabled ? "yes" : "no"}`);
   console.log(
     `Palette materials: ${paletteStats.materialsBefore} -> ${paletteStats.materialsAfter}`
@@ -271,6 +297,11 @@ function parseArgs(args) {
     simplifyMinTriangles: DEFAULT_SIMPLIFY_MIN_TRIANGLES,
     quantizeMinTriangles: DEFAULT_QUANTIZE_MIN_TRIANGLES,
     ktxPath: null,
+    ktx2Mode: DEFAULT_KTX2_MODE,
+    ktx2ZstdLevel: DEFAULT_KTX2_ZSTD_LEVEL,
+    fixTextureSize: true,
+    textureInfo: null,
+    textureOverride: null,
     analyzeJson: null,
     objectPolicy: null,
   };
@@ -421,6 +452,35 @@ function parseArgs(args) {
 
     if (arg.startsWith("--ktx-path=")) {
       options.ktxPath = arg.slice("--ktx-path=".length).trim();
+      continue;
+    }
+
+    if (arg.startsWith("--ktx2-mode=")) {
+      const value = arg.slice("--ktx2-mode=".length).trim().toLowerCase();
+      if (!["etc1s", "uastc"].includes(value)) {
+        throw new Error(`Unsupported KTX2 mode: ${value}`);
+      }
+      options.ktx2Mode = value;
+      continue;
+    }
+
+    if (arg.startsWith("--ktx2-zstd-level=")) {
+      options.ktx2ZstdLevel = parseIntegerOption(arg, "--ktx2-zstd-level=", 0, 22);
+      continue;
+    }
+
+    if (arg.startsWith("--texture-info=")) {
+      options.textureInfo = arg.slice("--texture-info=".length).trim();
+      continue;
+    }
+
+    if (arg.startsWith("--texture-override=")) {
+      options.textureOverride = arg.slice("--texture-override=".length).trim();
+      continue;
+    }
+
+    if (arg === "--no-fix-texture-size") {
+      options.fixTextureSize = false;
       continue;
     }
 
@@ -1163,7 +1223,7 @@ function getAccessorRange(accessor) {
   };
 }
 
-async function compressTexturesToKTX2(document, options) {
+async function compressTexturesToKTX2(document, options, textureOverrides = new Map()) {
   const root = document.getRoot();
   const textureUsage = buildTextureUsageMap(root.listMaterials());
   const ktxBinary = await resolveKtxBinary(options.ktxPath);
@@ -1186,6 +1246,12 @@ async function compressTexturesToKTX2(document, options) {
     for (let index = 0; index < textures.length; index += 1) {
       const texture = textures[index];
       const usages = textureUsage.get(texture) || [];
+      const override = textureOverrides.get(index);
+
+      if (override && override.format === "webp") {
+        stats.skipped += 1;
+        continue;
+      }
 
       if (usages.length === 0 || !texture.getImage()) {
         stats.skipped += 1;
@@ -1197,7 +1263,7 @@ async function compressTexturesToKTX2(document, options) {
         continue;
       }
 
-      const prepared = await prepareTextureForKTX(texture, usages, options);
+      const prepared = await prepareTextureForKTX(texture, usages, options, index, textureOverrides);
       const inputPath = path.join(tmpDir, `texture_${index}.png`);
       const outputPath = path.join(tmpDir, `texture_${index}.ktx2`);
 
@@ -1231,7 +1297,7 @@ async function compressTexturesToKTX2(document, options) {
   return stats;
 }
 
-async function prepareTextureForKTX(texture, usages, options) {
+async function prepareTextureForKTX(texture, usages, options, textureIndex = -1, textureOverrides = new Map()) {
   const profile = getQualityProfile(options.qualityProfile, options);
   const source = texture.getImage();
   const sharpImage = sharp(source, { limitInputPixels: true });
@@ -1257,7 +1323,10 @@ async function prepareTextureForKTX(texture, usages, options) {
   const targetWidth = ceilMultipleOfFour(Math.max(4, resize[0]));
   const targetHeight = ceilMultipleOfFour(Math.max(4, resize[1]));
   const colorSpace = isData ? "linear" : "srgb";
-  const mode = isNormal ? "uastc" : "etc1s";
+
+  const override = textureIndex >= 0 ? textureOverrides.get(textureIndex) : null;
+  const ktx2ModeOverride = override && override.ktx2Mode ? override.ktx2Mode : null;
+  const mode = ktx2ModeOverride || (isNormal ? "uastc" : "etc1s");
   const format = pickKtxFormat({
     channels,
     hasAlpha: effectiveHasAlpha,
@@ -1335,7 +1404,8 @@ function createKtxCreateParams(prepared, version, options) {
   ];
 
   if (prepared.mode === "uastc") {
-    params.push("--uastc-quality", String(profile.uastcQuality), "--uastc-rdo", "--zstd", "18");
+    const zstdLevel = options.ktx2ZstdLevel ?? DEFAULT_KTX2_ZSTD_LEVEL;
+    params.push("--uastc-quality", String(profile.uastcQuality), "--uastc-rdo", "--zstd", String(zstdLevel));
     if (prepared.isNormal) {
       params.push("--uastc-rdo-l", String(profile.uastcRdoNormal));
     } else if (prepared.isData) {
@@ -1388,7 +1458,7 @@ function pickKtxFormat({ channels, hasAlpha, colorSpace }) {
   return `R8G8B8A8_${suffix}`;
 }
 
-async function compressTexturesToWebP(document, options) {
+async function compressTexturesToWebP(document, options, textureFilter = null) {
   const root = document.getRoot();
   const textureUsage = buildTextureUsageMap(root.listMaterials());
   const profile = getQualityProfile(options.qualityProfile, options);
@@ -1402,7 +1472,15 @@ async function compressTexturesToWebP(document, options) {
     ktxBinary: null,
   };
 
-  for (const texture of root.listTextures()) {
+  const textures = root.listTextures();
+
+  for (let index = 0; index < textures.length; index += 1) {
+    const texture = textures[index];
+
+    if (textureFilter && !textureFilter.has(index)) {
+      continue;
+    }
+
     const usages = textureUsage.get(texture) || [];
     if (usages.length === 0 || !texture.getImage()) {
       stats.skipped += 1;
@@ -1496,12 +1574,10 @@ async function resolveKtxBinary(explicitPath) {
   }
 
   candidates.push(
-    path.join(SCRIPT_DIR, "bin", "ktx.exe"),
+    DEFAULT_KTX_HINT,
     path.join(SCRIPT_DIR, "ktx", "ktx.exe"),
     path.join(SCRIPT_DIR, "KTX-Software", "bin", "ktx.exe"),
     path.join(SCRIPT_DIR, "runtime", "ktx.exe"),
-    DEFAULT_KTX_HINT,
-    "E:\\Software\\KTX-Software\\ktx.exe",
     "ktx"
   );
 
@@ -1748,6 +1824,93 @@ function compareVersions(left, right) {
   }
 
   return 0;
+}
+
+async function collectTextureInfo(document) {
+  const textureUsage = buildTextureUsageMap(document.getRoot().listMaterials());
+  const textures = document.getRoot().listTextures();
+  const info = [];
+
+  for (let index = 0; index < textures.length; index += 1) {
+    const texture = textures[index];
+    const image = texture.getImage();
+    const name = texture.getName() || texture.getURI() || `texture_${index}`;
+    let width = 0;
+    let height = 0;
+
+    if (image) {
+      try {
+        const metadata = await sharp(image, { limitInputPixels: false }).metadata();
+        width = metadata.width ?? 0;
+        height = metadata.height ?? 0;
+      } catch {
+      }
+    }
+
+    const usages = textureUsage.get(texture) || [];
+    const slots = usages.map((u) => u.slot);
+    const mimeType = texture.getMimeType() || "";
+
+    info.push({ index, name, width, height, slots, mimeType });
+  }
+
+  return info;
+}
+
+async function readTextureOverrides(overridePath) {
+  const raw = await fs.readFile(overridePath, "utf8");
+  const payload = JSON.parse(raw.replace(/^\uFEFF/, ""));
+  const overrides = new Map();
+
+  for (const item of payload.overrides || []) {
+    if (typeof item.index !== "number") {
+      continue;
+    }
+
+    overrides.set(item.index, {
+      format: item.format === "webp" ? "webp" : "ktx2",
+      ktx2Mode: item.ktx2Mode === "uastc" ? "uastc" : "etc1s",
+    });
+  }
+
+  return overrides;
+}
+
+async function ensureTextureSizeMultipleOf4(document) {
+  let fixed = 0;
+
+  for (const texture of document.getRoot().listTextures()) {
+    const image = texture.getImage();
+    if (!image) {
+      continue;
+    }
+
+    const metadata = await sharp(image, { limitInputPixels: false }).metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
+
+    if (width <= 0 || height <= 0) {
+      continue;
+    }
+
+    const targetWidth = ceilMultipleOfFour(width);
+    const targetHeight = ceilMultipleOfFour(height);
+
+    if (targetWidth === width && targetHeight === height) {
+      continue;
+    }
+
+    const resized = await sharp(image, { limitInputPixels: false })
+      .resize(targetWidth, targetHeight, { fit: "fill", kernel: "lanczos3" })
+      .png()
+      .toBuffer();
+
+    texture.setImage(resized);
+    console.log(`  Resized texture ${width}x${height} -> ${targetWidth}x${targetHeight}`);
+    fixed += 1;
+  }
+
+  return fixed;
 }
 
 main().catch((error) => {

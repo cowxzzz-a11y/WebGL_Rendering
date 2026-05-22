@@ -25,26 +25,26 @@ $script:CurrentProcess = $null
 $script:StdOutReader = $null
 $script:StdErrReader = $null
 $script:TextureFormatMap = [ordered]@{
-    "WebP（推荐）" = "webp"
+    "KTX2（推荐）" = "ktx2"
+    "WebP"         = "webp"
     "不压缩纹理"   = "none"
-    "KTX2"         = "ktx2"
+}
+$script:Ktx2ModeMap = [ordered]@{
+    "ETC1S（高压缩率）"   = "etc1s"
+    "UASTC（高保真画质）" = "uastc"
 }
 $script:GeometryModeMap = [ordered]@{
     "局部优化（推荐）" = "local"
     "关闭几何优化"     = "none"
 }
-$script:QualityProfileMap = [ordered]@{
-    "质量优先" = "quality"
-    "平衡"     = "balanced"
-    "极限压缩" = "compact"
-}
+$script:SizePresets = @(512, 1024, 2048, 4096)
 function Get-DefaultSettings {
     return [ordered]@{
-        textureFormat         = "webp"
+        textureFormat         = "ktx2"
         geometryMode          = "local"
         qualityProfile        = "balanced"
-        colorMaxSize          = 768
-        dataMaxSize           = 512
+        colorMaxSize          = 2048
+        dataMaxSize           = 1024
         webpQualityBase       = 92
         webpQualityEmissive   = 94
         webpQualityOther      = 90
@@ -55,14 +55,9 @@ function Get-DefaultSettings {
         simplifyMinTriangles  = 500
         quantizeMinTriangles  = 2000
         ktxPath               = ""
-    }
-}
-
-function Get-ProfilePreset([string]$Name) {
-    switch ($Name) {
-        "quality"  { return @{ colorMaxSize = 1024; dataMaxSize = 768 } }
-        "compact"  { return @{ colorMaxSize = 512; dataMaxSize = 384 } }
-        default    { return @{ colorMaxSize = 768; dataMaxSize = 512 } }
+        ktx2Mode              = "uastc"
+        enableKtx2Zstd        = $true
+        enableFixTextureSize  = $true
     }
 }
 
@@ -169,7 +164,6 @@ function Collect-SettingsFromControls {
     param(
         [System.Windows.Forms.ComboBox]$TextureFormatCombo,
         [System.Windows.Forms.ComboBox]$GeometryModeCombo,
-        [System.Windows.Forms.ComboBox]$QualityProfileCombo,
         [System.Windows.Forms.NumericUpDown]$ColorMaxNumeric,
         [System.Windows.Forms.NumericUpDown]$DataMaxNumeric,
         [System.Windows.Forms.NumericUpDown]$WebPBaseNumeric,
@@ -181,15 +175,19 @@ function Collect-SettingsFromControls {
         [System.Windows.Forms.NumericUpDown]$SimplifyScaleNumeric,
         [System.Windows.Forms.NumericUpDown]$SimplifyMinNumeric,
         [System.Windows.Forms.NumericUpDown]$QuantizeMinNumeric,
-        [System.Windows.Forms.TextBox]$KtxPathTextBox
+        [System.Windows.Forms.TextBox]$KtxPathTextBox,
+        [System.Windows.Forms.ComboBox]$Ktx2ModeCombo,
+        [System.Windows.Forms.CheckBox]$Ktx2ZstdCheckBox,
+        [System.Windows.Forms.CheckBox]$FixTextureSizeCheckBox
     )
 
+    $format = Get-ComboValue -Map $script:TextureFormatMap -SelectedItem $TextureFormatCombo.SelectedItem
+
     return [ordered]@{
-        textureFormat        = Get-ComboValue -Map $script:TextureFormatMap -SelectedItem $TextureFormatCombo.SelectedItem
+        textureFormat        = $format
         geometryMode         = Get-ComboValue -Map $script:GeometryModeMap -SelectedItem $GeometryModeCombo.SelectedItem
-        qualityProfile       = Get-ComboValue -Map $script:QualityProfileMap -SelectedItem $QualityProfileCombo.SelectedItem
-        colorMaxSize         = [int]$ColorMaxNumeric.Value
-        dataMaxSize          = [int]$DataMaxNumeric.Value
+        colorMaxSize         = if ($format -eq "ktx2") { [int]$ColorMaxNumeric2.Value } else { [int]$ColorMaxNumeric.Value }
+        dataMaxSize          = if ($format -eq "ktx2") { [int]$DataMaxNumeric2.Value } else { [int]$DataMaxNumeric.Value }
         webpQualityBase      = [int]$WebPBaseNumeric.Value
         webpQualityEmissive  = [int]$WebPEmissiveNumeric.Value
         webpQualityOther     = [int]$WebPOtherNumeric.Value
@@ -200,6 +198,9 @@ function Collect-SettingsFromControls {
         simplifyMinTriangles = [int]$SimplifyMinNumeric.Value
         quantizeMinTriangles = [int]$QuantizeMinNumeric.Value
         ktxPath              = $KtxPathTextBox.Text.Trim()
+        ktx2Mode             = if ($Ktx2ModeCombo) { Get-ComboValue -Map $script:Ktx2ModeMap -SelectedItem $Ktx2ModeCombo.SelectedItem } else { $script:Ktx2ModeMap.Values | Select-Object -First 1 }
+        enableKtx2Zstd       = if ($Ktx2ZstdCheckBox) { [bool]$Ktx2ZstdCheckBox.Checked } else { $true }
+        enableFixTextureSize = if ($FixTextureSizeCheckBox) { [bool]$FixTextureSizeCheckBox.Checked } else { $true }
     }
 }
 
@@ -225,7 +226,6 @@ function Apply-SettingsToControls {
         [hashtable]$Settings,
         [System.Windows.Forms.ComboBox]$TextureFormatCombo,
         [System.Windows.Forms.ComboBox]$GeometryModeCombo,
-        [System.Windows.Forms.ComboBox]$QualityProfileCombo,
         [System.Windows.Forms.NumericUpDown]$ColorMaxNumeric,
         [System.Windows.Forms.NumericUpDown]$DataMaxNumeric,
         [System.Windows.Forms.NumericUpDown]$WebPBaseNumeric,
@@ -237,14 +237,18 @@ function Apply-SettingsToControls {
         [System.Windows.Forms.NumericUpDown]$SimplifyScaleNumeric,
         [System.Windows.Forms.NumericUpDown]$SimplifyMinNumeric,
         [System.Windows.Forms.NumericUpDown]$QuantizeMinNumeric,
-        [System.Windows.Forms.TextBox]$KtxPathTextBox
+        [System.Windows.Forms.TextBox]$KtxPathTextBox,
+        [System.Windows.Forms.ComboBox]$Ktx2ModeCombo,
+        [System.Windows.Forms.CheckBox]$Ktx2ZstdCheckBox,
+        [System.Windows.Forms.CheckBox]$FixTextureSizeCheckBox
     )
 
     $TextureFormatCombo.SelectedItem = Get-ComboLabel -Map $script:TextureFormatMap -Value ([string]$Settings.textureFormat)
     $GeometryModeCombo.SelectedItem = Get-ComboLabel -Map $script:GeometryModeMap -Value ([string]$Settings.geometryMode)
-    $QualityProfileCombo.SelectedItem = Get-ComboLabel -Map $script:QualityProfileMap -Value ([string]$Settings.qualityProfile)
     $ColorMaxNumeric.Value = [decimal]$Settings.colorMaxSize
+    $ColorMaxNumeric2.Value = [decimal]$Settings.colorMaxSize
     $DataMaxNumeric.Value = [decimal]$Settings.dataMaxSize
+    $DataMaxNumeric2.Value = [decimal]$Settings.dataMaxSize
     $WebPBaseNumeric.Value = [decimal]$Settings.webpQualityBase
     $WebPEmissiveNumeric.Value = [decimal]$Settings.webpQualityEmissive
     $WebPOtherNumeric.Value = [decimal]$Settings.webpQualityOther
@@ -255,20 +259,19 @@ function Apply-SettingsToControls {
     $SimplifyMinNumeric.Value = [decimal]$Settings.simplifyMinTriangles
     $QuantizeMinNumeric.Value = [decimal]$Settings.quantizeMinTriangles
     $KtxPathTextBox.Text = [string]$Settings.ktxPath
+    $Ktx2ModeCombo.SelectedItem = Get-ComboLabel -Map $script:Ktx2ModeMap -Value ([string]$Settings.ktx2Mode)
+    $Ktx2ZstdCheckBox.Checked = [bool]$Settings.enableKtx2Zstd
+    $FixTextureSizeCheckBox.Checked = [bool]$Settings.enableFixTextureSize
 }
 
-function Update-KtxVisibility {
+function Update-TextureGroupVisibility {
     param(
-        [System.Windows.Forms.ComboBox]$TextureFormatCombo,
-        [System.Windows.Forms.Label]$KtxPathLabel,
-        [System.Windows.Forms.TextBox]$KtxPathTextBox,
-        [System.Windows.Forms.Button]$KtxBrowseButton
+        [System.Windows.Forms.ComboBox]$TextureFormatCombo
     )
 
-    $show = (Get-ComboValue -Map $script:TextureFormatMap -SelectedItem $TextureFormatCombo.SelectedItem) -eq "ktx2"
-    $KtxPathLabel.Visible = $show
-    $KtxPathTextBox.Visible = $show
-    $KtxBrowseButton.Visible = $show
+    $format = Get-ComboValue -Map $script:TextureFormatMap -SelectedItem $TextureFormatCombo.SelectedItem
+    $webpTextureGroup.Visible = ($format -eq "webp")
+    $ktx2TextureGroup.Visible = ($format -eq "ktx2")
 }
 
 function Update-PaletteControls {
@@ -288,22 +291,36 @@ function Update-AdvancedLayout {
         [bool]$Expanded
     )
 
-    $textureGroup.Visible = $Expanded
+    $textureInfoVisible = $textureInfoGroup.Visible
+    $webpTextureGroup.Visible = $Expanded -and ((Get-ComboValue -Map $script:TextureFormatMap -SelectedItem $textureFormatCombo.SelectedItem) -eq "webp")
+    $ktx2TextureGroup.Visible = $Expanded -and ((Get-ComboValue -Map $script:TextureFormatMap -SelectedItem $textureFormatCombo.SelectedItem) -eq "ktx2")
     $geometryGroup.Visible = $Expanded
 
     if ($Expanded) {
-        $objectGroup.Location = New-Object System.Drawing.Point(12, 406)
-        $objectGroup.Size = New-Object System.Drawing.Size(876, 292)
+        $textureInfoToggleButton.Location = New-Object System.Drawing.Point(136, 160)
+        $textureInfoToggleButton.Visible = $true
+
+        $objectGroup.Location = New-Object System.Drawing.Point(12, 422)
+        $objectGroup.Size = New-Object System.Drawing.Size(876, 280)
         $objectTitleLabel.Location = New-Object System.Drawing.Point(10, 8)
         $objectGrid.Location = New-Object System.Drawing.Point(14, 34)
-        $objectGrid.Size = New-Object System.Drawing.Size(848, 188)
-        $scanObjectsButton.Location = New-Object System.Drawing.Point(14, 230)
-        $objectSummaryLabel.Location = New-Object System.Drawing.Point(140, 233)
-        $buttonPanel.Location = New-Object System.Drawing.Point(12, 706)
-        $logGroup.Location = New-Object System.Drawing.Point(12, 754)
+        $objectGrid.Size = New-Object System.Drawing.Size(848, 200)
+        $scanObjectsButton.Location = New-Object System.Drawing.Point(14, 244)
+        $objectSummaryLabel.Location = New-Object System.Drawing.Point(140, 247)
+        $textureInfoToggleButton.Location = New-Object System.Drawing.Point(136, 244)
+
+        if ($textureInfoVisible) {
+            $textureInfoGroup.Location = New-Object System.Drawing.Point(12, 710)
+            $buttonPanel.Location = New-Object System.Drawing.Point(12, 898)
+            $logGroup.Location = New-Object System.Drawing.Point(12, 946)
+        } else {
+            $buttonPanel.Location = New-Object System.Drawing.Point(12, 710)
+            $logGroup.Location = New-Object System.Drawing.Point(12, 758)
+        }
+
         $logGroup.Size = New-Object System.Drawing.Size(876, 188)
         $logTextBox.Size = New-Object System.Drawing.Size(848, 150)
-        $form.AutoScrollMinSize = New-Object System.Drawing.Size(0, 960)
+        $form.AutoScrollMinSize = New-Object System.Drawing.Size(0, 1160)
         return
     }
 
@@ -314,6 +331,8 @@ function Update-AdvancedLayout {
     $objectGrid.Size = New-Object System.Drawing.Size(848, 328)
     $scanObjectsButton.Location = New-Object System.Drawing.Point(14, 370)
     $objectSummaryLabel.Location = New-Object System.Drawing.Point(140, 373)
+    $textureInfoToggleButton.Visible = $false
+    $textureInfoGroup.Visible = $false
     $buttonPanel.Location = New-Object System.Drawing.Point(12, 600)
     $logGroup.Location = New-Object System.Drawing.Point(12, 648)
     $logGroup.Size = New-Object System.Drawing.Size(876, 200)
@@ -428,7 +447,6 @@ function Set-ObjectGridFromReport {
             [string]$item.id
         )
         if (-not [bool]$item.recommendedSimplify) {
-            $Grid.Rows[$rowIndex].Cells["simplify"].ReadOnly = $true
             $Grid.Rows[$rowIndex].DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(104, 112, 130)
         }
     }
@@ -484,7 +502,6 @@ function Invoke-ObjectScan {
     $settings = Collect-SettingsFromControls `
         -TextureFormatCombo $textureFormatCombo `
         -GeometryModeCombo $geometryModeCombo `
-        -QualityProfileCombo $qualityProfileCombo `
         -ColorMaxNumeric $colorMaxNumeric `
         -DataMaxNumeric $dataMaxNumeric `
         -WebPBaseNumeric $webpBaseNumeric `
@@ -549,7 +566,7 @@ $headerLabel = New-Object System.Windows.Forms.Label
 $headerLabel.Location = New-Object System.Drawing.Point(14, 34)
 $headerLabel.Size = New-Object System.Drawing.Size(820, 22)
 $headerLabel.ForeColor = [System.Drawing.Color]::FromArgb(86, 94, 112)
-$headerLabel.Text = "WebP + 局部几何优化。几何优化按模型内容自动判断。"
+$headerLabel.Text = "KTX2 + 局部几何优化。几何优化按模型内容自动判断。"
 $summaryPanel.Controls.Add($headerLabel)
 
 $inputLabel = New-Object System.Windows.Forms.Label
@@ -562,6 +579,24 @@ $form.Controls.Add($inputLabel)
 $inputTextBox = New-Object System.Windows.Forms.TextBox
 $inputTextBox.Location = New-Object System.Drawing.Point(96, 17)
 $inputTextBox.Size = New-Object System.Drawing.Size(672, 24)
+$inputTextBox.AllowDrop = $true
+$inputTextBox.Add_DragEnter({
+    if ($_.Data.GetDataPresent("FileNameDrop")) {
+        $_.Effect = "Copy"
+    }
+})
+$inputTextBox.Add_DragDrop({
+    $files = $_.Data.GetData("FileNameDrop")
+    if ($files -and $files.Length -gt 0) {
+        $path = $files[0]
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $inputTextBox.Text = (Resolve-Path -LiteralPath $path).Path
+            $defaultOutput = Get-DefaultOutputPath -PathValue $inputTextBox.Text
+            $outputTextBox.Text = $defaultOutput
+            $script:LastAutoOutputPath = $defaultOutput
+        }
+    }
+})
 $form.Controls.Add($inputTextBox)
 
 $inputBrowseButton = New-Object System.Windows.Forms.Button
@@ -621,44 +656,27 @@ $geometryModeCombo.DropDownStyle = "DropDownList"
 [void]$geometryModeCombo.Items.AddRange([object[]]$script:GeometryModeMap.Keys)
 $basicGroup.Controls.Add($geometryModeCombo)
 
-$qualityProfileLabel = New-Object System.Windows.Forms.Label
-$qualityProfileLabel.Location = New-Object System.Drawing.Point(488, 30)
-$qualityProfileLabel.Size = New-Object System.Drawing.Size(70, 24)
-$qualityProfileLabel.Text = "质量档位"
-$basicGroup.Controls.Add($qualityProfileLabel)
-
-$qualityProfileCombo = New-Object System.Windows.Forms.ComboBox
-$qualityProfileCombo.Location = New-Object System.Drawing.Point(562, 27)
-$qualityProfileCombo.Size = New-Object System.Drawing.Size(140, 24)
-$qualityProfileCombo.DropDownStyle = "DropDownList"
-[void]$qualityProfileCombo.Items.AddRange([object[]]$script:QualityProfileMap.Keys)
-$basicGroup.Controls.Add($qualityProfileCombo)
-
-$applyProfileButton = New-Object System.Windows.Forms.Button
-$applyProfileButton.Location = New-Object System.Drawing.Point(710, 26)
-$applyProfileButton.Size = New-Object System.Drawing.Size(58, 26)
-$applyProfileButton.Text = "套用"
-$basicGroup.Controls.Add($applyProfileButton)
-
 $advancedToggleButton = New-Object System.Windows.Forms.Button
-$advancedToggleButton.Location = New-Object System.Drawing.Point(780, 26)
+$advancedToggleButton.Location = New-Object System.Drawing.Point(488, 26)
 $advancedToggleButton.Size = New-Object System.Drawing.Size(86, 26)
 $advancedToggleButton.Text = "高级设置 ▼"
 $advancedToggleButton.Tag = $false
 $basicGroup.Controls.Add($advancedToggleButton)
 
-$textureGroup = New-Object System.Windows.Forms.GroupBox
-$textureGroup.Location = New-Object System.Drawing.Point(12, 158)
-$textureGroup.Size = New-Object System.Drawing.Size(876, 140)
-$textureGroup.Text = "纹理参数"
-$textureGroup.BackColor = [System.Drawing.Color]::White
-$form.Controls.Add($textureGroup)
+# WebP 纹理参数组
+$webpTextureGroup = New-Object System.Windows.Forms.GroupBox
+$webpTextureGroup.Location = New-Object System.Drawing.Point(12, 158)
+$webpTextureGroup.Size = New-Object System.Drawing.Size(876, 124)
+$webpTextureGroup.Text = "WebP 纹理参数"
+$webpTextureGroup.BackColor = [System.Drawing.Color]::White
+$webpTextureGroup.Visible = $false
+$form.Controls.Add($webpTextureGroup)
 
 $colorMaxLabel = New-Object System.Windows.Forms.Label
 $colorMaxLabel.Location = New-Object System.Drawing.Point(16, 28)
 $colorMaxLabel.Size = New-Object System.Drawing.Size(120, 24)
 $colorMaxLabel.Text = "颜色贴图最大边"
-$textureGroup.Controls.Add($colorMaxLabel)
+$webpTextureGroup.Controls.Add($colorMaxLabel)
 
 $colorMaxNumeric = New-Object System.Windows.Forms.NumericUpDown
 $colorMaxNumeric.Location = New-Object System.Drawing.Point(140, 26)
@@ -666,13 +684,13 @@ $colorMaxNumeric.Size = New-Object System.Drawing.Size(110, 24)
 $colorMaxNumeric.Minimum = 16
 $colorMaxNumeric.Maximum = 8192
 $colorMaxNumeric.Increment = 16
-$textureGroup.Controls.Add($colorMaxNumeric)
+$webpTextureGroup.Controls.Add($colorMaxNumeric)
 
 $dataMaxLabel = New-Object System.Windows.Forms.Label
 $dataMaxLabel.Location = New-Object System.Drawing.Point(280, 28)
 $dataMaxLabel.Size = New-Object System.Drawing.Size(120, 24)
 $dataMaxLabel.Text = "数据贴图最大边"
-$textureGroup.Controls.Add($dataMaxLabel)
+$webpTextureGroup.Controls.Add($dataMaxLabel)
 
 $dataMaxNumeric = New-Object System.Windows.Forms.NumericUpDown
 $dataMaxNumeric.Location = New-Object System.Drawing.Point(404, 26)
@@ -680,77 +698,171 @@ $dataMaxNumeric.Size = New-Object System.Drawing.Size(110, 24)
 $dataMaxNumeric.Minimum = 16
 $dataMaxNumeric.Maximum = 8192
 $dataMaxNumeric.Increment = 16
-$textureGroup.Controls.Add($dataMaxNumeric)
+$webpTextureGroup.Controls.Add($dataMaxNumeric)
 
 $webpBaseLabel = New-Object System.Windows.Forms.Label
 $webpBaseLabel.Location = New-Object System.Drawing.Point(544, 28)
 $webpBaseLabel.Size = New-Object System.Drawing.Size(120, 24)
 $webpBaseLabel.Text = "WebP 主颜色"
-$textureGroup.Controls.Add($webpBaseLabel)
+$webpTextureGroup.Controls.Add($webpBaseLabel)
 
 $webpBaseNumeric = New-Object System.Windows.Forms.NumericUpDown
 $webpBaseNumeric.Location = New-Object System.Drawing.Point(668, 26)
 $webpBaseNumeric.Size = New-Object System.Drawing.Size(70, 24)
 $webpBaseNumeric.Minimum = 0
 $webpBaseNumeric.Maximum = 100
-$textureGroup.Controls.Add($webpBaseNumeric)
+$webpTextureGroup.Controls.Add($webpBaseNumeric)
 
 $webpEmissiveLabel = New-Object System.Windows.Forms.Label
 $webpEmissiveLabel.Location = New-Object System.Drawing.Point(748, 28)
 $webpEmissiveLabel.Size = New-Object System.Drawing.Size(100, 24)
 $webpEmissiveLabel.Text = "自发光"
-$textureGroup.Controls.Add($webpEmissiveLabel)
+$webpTextureGroup.Controls.Add($webpEmissiveLabel)
 
 $webpEmissiveNumeric = New-Object System.Windows.Forms.NumericUpDown
 $webpEmissiveNumeric.Location = New-Object System.Drawing.Point(806, 26)
 $webpEmissiveNumeric.Size = New-Object System.Drawing.Size(56, 24)
 $webpEmissiveNumeric.Minimum = 0
 $webpEmissiveNumeric.Maximum = 100
-$textureGroup.Controls.Add($webpEmissiveNumeric)
+$webpTextureGroup.Controls.Add($webpEmissiveNumeric)
 
 $webpOtherLabel = New-Object System.Windows.Forms.Label
 $webpOtherLabel.Location = New-Object System.Drawing.Point(16, 64)
 $webpOtherLabel.Size = New-Object System.Drawing.Size(120, 24)
 $webpOtherLabel.Text = "WebP 其它"
-$textureGroup.Controls.Add($webpOtherLabel)
+$webpTextureGroup.Controls.Add($webpOtherLabel)
 
 $webpOtherNumeric = New-Object System.Windows.Forms.NumericUpDown
 $webpOtherNumeric.Location = New-Object System.Drawing.Point(140, 62)
 $webpOtherNumeric.Size = New-Object System.Drawing.Size(110, 24)
 $webpOtherNumeric.Minimum = 0
 $webpOtherNumeric.Maximum = 100
-$textureGroup.Controls.Add($webpOtherNumeric)
+$webpTextureGroup.Controls.Add($webpOtherNumeric)
 
 $webpEffortLabel = New-Object System.Windows.Forms.Label
 $webpEffortLabel.Location = New-Object System.Drawing.Point(280, 64)
 $webpEffortLabel.Size = New-Object System.Drawing.Size(120, 24)
 $webpEffortLabel.Text = "WebP 编码强度"
-$textureGroup.Controls.Add($webpEffortLabel)
+$webpTextureGroup.Controls.Add($webpEffortLabel)
 
 $webpEffortNumeric = New-Object System.Windows.Forms.NumericUpDown
 $webpEffortNumeric.Location = New-Object System.Drawing.Point(404, 62)
 $webpEffortNumeric.Size = New-Object System.Drawing.Size(110, 24)
 $webpEffortNumeric.Minimum = 0
 $webpEffortNumeric.Maximum = 6
-$textureGroup.Controls.Add($webpEffortNumeric)
+$webpTextureGroup.Controls.Add($webpEffortNumeric)
 
-$ktxPathLabel = New-Object System.Windows.Forms.Label
-$ktxPathLabel.Location = New-Object System.Drawing.Point(16, 100)
-$ktxPathLabel.Size = New-Object System.Drawing.Size(120, 24)
-$ktxPathLabel.Text = "KTX 路径"
-$textureGroup.Controls.Add($ktxPathLabel)
+# WebP 尺寸预设按钮
+$webpPresetLabel = New-Object System.Windows.Forms.Label
+$webpPresetLabel.Location = New-Object System.Drawing.Point(16, 92)
+$webpPresetLabel.Size = New-Object System.Drawing.Size(70, 24)
+$webpPresetLabel.Text = "预设尺寸"
+$webpTextureGroup.Controls.Add($webpPresetLabel)
 
-$ktxPathTextBox = New-Object System.Windows.Forms.TextBox
-$ktxPathTextBox.Location = New-Object System.Drawing.Point(140, 98)
-$ktxPathTextBox.Size = New-Object System.Drawing.Size(598, 24)
-$textureGroup.Controls.Add($ktxPathTextBox)
+$webpPresetX = 90
+foreach ($size in $script:SizePresets) {
+    $btn = New-Object System.Windows.Forms.Button
+    $btn.Location = New-Object System.Drawing.Point($webpPresetX, 92)
+    $btn.Size = New-Object System.Drawing.Size(56, 24)
+    $btn.Text = [string]$size
+    $btn.Tag = $size
+    $btn.Add_Click({
+        $s = [int]$this.Tag
+        $colorMaxNumeric.Value = [decimal]$s
+        $dataMaxNumeric.Value = [decimal]$s
+    })
+    $webpTextureGroup.Controls.Add($btn)
+    $webpPresetX += 62
+}
 
-$ktxBrowseButton = New-Object System.Windows.Forms.Button
-$ktxBrowseButton.Location = New-Object System.Drawing.Point(748, 97)
-$ktxBrowseButton.Size = New-Object System.Drawing.Size(114, 26)
-$ktxBrowseButton.Text = "浏览 KTX..."
-$textureGroup.Controls.Add($ktxBrowseButton)
+# KTX2 纹理参数组
+$ktx2TextureGroup = New-Object System.Windows.Forms.GroupBox
+$ktx2TextureGroup.Location = New-Object System.Drawing.Point(12, 158)
+$ktx2TextureGroup.Size = New-Object System.Drawing.Size(876, 130)
+$ktx2TextureGroup.Text = "KTX2 纹理参数"
+$ktx2TextureGroup.BackColor = [System.Drawing.Color]::White
+$ktx2TextureGroup.Visible = $true
+$form.Controls.Add($ktx2TextureGroup)
 
+$ktx2ModeLabel = New-Object System.Windows.Forms.Label
+$ktx2ModeLabel.Location = New-Object System.Drawing.Point(16, 28)
+$ktx2ModeLabel.Size = New-Object System.Drawing.Size(120, 24)
+$ktx2ModeLabel.Text = "KTX2 模式"
+$ktx2TextureGroup.Controls.Add($ktx2ModeLabel)
+
+$ktx2ModeCombo = New-Object System.Windows.Forms.ComboBox
+$ktx2ModeCombo.Location = New-Object System.Drawing.Point(140, 26)
+$ktx2ModeCombo.Size = New-Object System.Drawing.Size(200, 24)
+$ktx2ModeCombo.DropDownStyle = "DropDownList"
+[void]$ktx2ModeCombo.Items.AddRange([object[]]$script:Ktx2ModeMap.Keys)
+$ktx2TextureGroup.Controls.Add($ktx2ModeCombo)
+
+$colorMaxLabel2 = New-Object System.Windows.Forms.Label
+$colorMaxLabel2.Location = New-Object System.Drawing.Point(360, 28)
+$colorMaxLabel2.Size = New-Object System.Drawing.Size(120, 24)
+$colorMaxLabel2.Text = "颜色贴图最大边"
+$ktx2TextureGroup.Controls.Add($colorMaxLabel2)
+
+$colorMaxNumeric2 = New-Object System.Windows.Forms.NumericUpDown
+$colorMaxNumeric2.Location = New-Object System.Drawing.Point(484, 26)
+$colorMaxNumeric2.Size = New-Object System.Drawing.Size(110, 24)
+$colorMaxNumeric2.Minimum = 16
+$colorMaxNumeric2.Maximum = 8192
+$colorMaxNumeric2.Increment = 16
+$ktx2TextureGroup.Controls.Add($colorMaxNumeric2)
+
+$dataMaxLabel2 = New-Object System.Windows.Forms.Label
+$dataMaxLabel2.Location = New-Object System.Drawing.Point(620, 28)
+$dataMaxLabel2.Size = New-Object System.Drawing.Size(120, 24)
+$dataMaxLabel2.Text = "数据贴图最大边"
+$ktx2TextureGroup.Controls.Add($dataMaxLabel2)
+
+$dataMaxNumeric2 = New-Object System.Windows.Forms.NumericUpDown
+$dataMaxNumeric2.Location = New-Object System.Drawing.Point(744, 26)
+$dataMaxNumeric2.Size = New-Object System.Drawing.Size(110, 24)
+$dataMaxNumeric2.Minimum = 16
+$dataMaxNumeric2.Maximum = 8192
+$dataMaxNumeric2.Increment = 16
+$ktx2TextureGroup.Controls.Add($dataMaxNumeric2)
+
+$ktx2ZstdCheckBox = New-Object System.Windows.Forms.CheckBox
+$ktx2ZstdCheckBox.Location = New-Object System.Drawing.Point(20, 64)
+$ktx2ZstdCheckBox.Size = New-Object System.Drawing.Size(200, 24)
+$ktx2ZstdCheckBox.Text = "✓ 启用 ZSTD 传输压缩"
+$ktx2TextureGroup.Controls.Add($ktx2ZstdCheckBox)
+
+$fixTextureSizeCheckBox = New-Object System.Windows.Forms.CheckBox
+$fixTextureSizeCheckBox.Location = New-Object System.Drawing.Point(20, 94)
+$fixTextureSizeCheckBox.Size = New-Object System.Drawing.Size(300, 24)
+$fixTextureSizeCheckBox.Text = "✓ 自动修正纹理为 4 的倍数宽高"
+$fixTextureSizeCheckBox.Checked = $true
+$fixTextureSizeCheckBox.Enabled = $false
+$ktx2TextureGroup.Controls.Add($fixTextureSizeCheckBox)
+
+# KTX2 尺寸预设按钮
+$ktx2PresetLabel = New-Object System.Windows.Forms.Label
+$ktx2PresetLabel.Location = New-Object System.Drawing.Point(340, 94)
+$ktx2PresetLabel.Size = New-Object System.Drawing.Size(70, 24)
+$ktx2PresetLabel.Text = "预设尺寸"
+$ktx2TextureGroup.Controls.Add($ktx2PresetLabel)
+
+$ktx2PresetX = 414
+foreach ($size in $script:SizePresets) {
+    $btn = New-Object System.Windows.Forms.Button
+    $btn.Location = New-Object System.Drawing.Point($ktx2PresetX, 94)
+    $btn.Size = New-Object System.Drawing.Size(56, 24)
+    $btn.Text = [string]$size
+    $btn.Tag = $size
+    $btn.Add_Click({
+        $s = [int]$this.Tag
+        $colorMaxNumeric2.Value = [decimal]$s
+        $dataMaxNumeric2.Value = [decimal]$s
+    })
+    $ktx2TextureGroup.Controls.Add($btn)
+    $ktx2PresetX += 62
+}
+
+# 几何参数组
 $geometryGroup = New-Object System.Windows.Forms.GroupBox
 $geometryGroup.Location = New-Object System.Drawing.Point(12, 306)
 $geometryGroup.Size = New-Object System.Drawing.Size(876, 108)
@@ -821,6 +933,12 @@ $paletteMinNumeric.Maximum = 4096
 $paletteMinNumeric.Increment = 1
 $geometryGroup.Controls.Add($paletteMinNumeric)
 
+# 隐藏的 KTX 路径控件（保留兼容性，自动发现路径）
+$ktxPathTextBox = New-Object System.Windows.Forms.TextBox
+$ktxPathTextBox.Visible = $false
+$form.Controls.Add($ktxPathTextBox)
+
+# 对象组（扫描/网格/清单切换）
 $objectGroup = New-Object System.Windows.Forms.Panel
 $objectGroup.Location = New-Object System.Drawing.Point(12, 160)
 $objectGroup.Size = New-Object System.Drawing.Size(876, 432)
@@ -830,14 +948,14 @@ $form.Controls.Add($objectGroup)
 
 $objectTitleLabel = New-Object System.Windows.Forms.Label
 $objectTitleLabel.Location = New-Object System.Drawing.Point(10, 8)
-$objectTitleLabel.Size = New-Object System.Drawing.Size(120, 20)
-$objectTitleLabel.Text = "对象优化清单"
+$objectTitleLabel.Size = New-Object System.Drawing.Size(200, 20)
+$objectTitleLabel.Text = "对象列表"
 $objectTitleLabel.BackColor = [System.Drawing.Color]::White
 $objectGroup.Controls.Add($objectTitleLabel)
 
 $objectGrid = New-Object System.Windows.Forms.DataGridView
 $objectGrid.Location = New-Object System.Drawing.Point(14, 34)
-$objectGrid.Size = New-Object System.Drawing.Size(848, 368)
+$objectGrid.Size = New-Object System.Drawing.Size(848, 328)
 $objectGrid.AllowUserToAddRows = $false
 $objectGrid.AllowUserToDeleteRows = $false
 $objectGrid.RowHeadersVisible = $false
@@ -850,61 +968,153 @@ $objectGrid.BorderStyle = "FixedSingle"
 $objectGrid.ReadOnly = $false
 $objectGrid.ColumnHeadersHeightSizeMode = "DisableResizing"
 $objectGrid.ColumnHeadersHeight = 24
+$objectGroup.Controls.Add($objectGrid)
 
 $simplifyColumn = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
 $simplifyColumn.Name = "simplify"
-$simplifyColumn.HeaderText = "减面"
-$simplifyColumn.Width = 54
+$simplifyColumn.HeaderText = "简化"
+$simplifyColumn.Width = 50
+$simplifyColumn.ReadOnly = $false
 [void]$objectGrid.Columns.Add($simplifyColumn)
 
 $quantizeColumn = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
 $quantizeColumn.Name = "quantize"
 $quantizeColumn.HeaderText = "量化"
-$quantizeColumn.Width = 54
+$quantizeColumn.Width = 50
+$quantizeColumn.ReadOnly = $false
 [void]$objectGrid.Columns.Add($quantizeColumn)
 
-$nameColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-$nameColumn.Name = "name"
-$nameColumn.HeaderText = "对象"
-$nameColumn.Width = 240
-$nameColumn.ReadOnly = $true
-[void]$objectGrid.Columns.Add($nameColumn)
+$objNameColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+$objNameColumn.Name = "name"
+$objNameColumn.HeaderText = "对象"
+$objNameColumn.Width = 200
+$objNameColumn.ReadOnly = $true
+[void]$objectGrid.Columns.Add($objNameColumn)
 
-$triColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-$triColumn.Name = "triangles"
-$triColumn.HeaderText = "三角面"
-$triColumn.Width = 86
-$triColumn.ReadOnly = $true
-[void]$objectGrid.Columns.Add($triColumn)
+$objTriColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+$objTriColumn.Name = "triangleCount"
+$objTriColumn.HeaderText = "三角面"
+$objTriColumn.Width = 100
+$objTriColumn.ReadOnly = $true
+[void]$objectGrid.Columns.Add($objTriColumn)
 
-$reasonColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-$reasonColumn.Name = "reason"
-$reasonColumn.HeaderText = "判断"
-$reasonColumn.Width = 392
-$reasonColumn.ReadOnly = $true
-[void]$objectGrid.Columns.Add($reasonColumn)
+$objReasonColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+$objReasonColumn.Name = "reason"
+$objReasonColumn.HeaderText = "建议"
+$objReasonColumn.Width = 180
+$objReasonColumn.ReadOnly = $true
+[void]$objectGrid.Columns.Add($objReasonColumn)
 
-$idColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-$idColumn.Name = "id"
-$idColumn.HeaderText = "ID"
-$idColumn.Visible = $false
-$idColumn.ReadOnly = $true
-[void]$objectGrid.Columns.Add($idColumn)
-
-$objectGroup.Controls.Add($objectGrid)
+$objIdColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+$objIdColumn.Name = "id"
+$objIdColumn.HeaderText = "ID"
+$objIdColumn.Visible = $false
+[void]$objectGrid.Columns.Add($objIdColumn)
+$objectGrid.Add_DataError({ $_.ThrowException = $false })
 
 $scanObjectsButton = New-Object System.Windows.Forms.Button
 $scanObjectsButton.Location = New-Object System.Drawing.Point(14, 370)
-$scanObjectsButton.Size = New-Object System.Drawing.Size(112, 26)
+$scanObjectsButton.Size = New-Object System.Drawing.Size(120, 26)
 $scanObjectsButton.Text = "扫描对象"
+$scanObjectsButton.UseVisualStyleBackColor = $true
 $objectGroup.Controls.Add($scanObjectsButton)
 
 $objectSummaryLabel = New-Object System.Windows.Forms.Label
 $objectSummaryLabel.Location = New-Object System.Drawing.Point(140, 373)
-$objectSummaryLabel.Size = New-Object System.Drawing.Size(720, 22)
-$objectSummaryLabel.ForeColor = [System.Drawing.Color]::FromArgb(86, 94, 112)
-$objectSummaryLabel.Text = "先选择 GLB，然后扫描对象；勾选后只对选中对象执行对应几何优化。"
+$objectSummaryLabel.Size = New-Object System.Drawing.Size(500, 20)
+$objectSummaryLabel.Text = "尚未扫描对象。"
+$objectSummaryLabel.BackColor = [System.Drawing.Color]::White
 $objectGroup.Controls.Add($objectSummaryLabel)
+
+# 贴图优化清单（默认收起）
+$textureInfoToggleButton = New-Object System.Windows.Forms.Button
+$textureInfoToggleButton.Location = New-Object System.Drawing.Point(136, 370)
+$textureInfoToggleButton.Size = New-Object System.Drawing.Size(120, 26)
+$textureInfoToggleButton.Text = "贴图清单 ▼"
+$textureInfoToggleButton.Tag = $false
+$objectGroup.Controls.Add($textureInfoToggleButton)
+
+$textureInfoGroup = New-Object System.Windows.Forms.Panel
+$textureInfoGroup.Location = New-Object System.Drawing.Point(12, 418)
+$textureInfoGroup.Size = New-Object System.Drawing.Size(876, 180)
+$textureInfoGroup.BackColor = [System.Drawing.Color]::White
+$textureInfoGroup.BorderStyle = "FixedSingle"
+$textureInfoGroup.Visible = $false
+$form.Controls.Add($textureInfoGroup)
+
+$textureInfoTitleLabel = New-Object System.Windows.Forms.Label
+$textureInfoTitleLabel.Location = New-Object System.Drawing.Point(10, 8)
+$textureInfoTitleLabel.Size = New-Object System.Drawing.Size(200, 20)
+$textureInfoTitleLabel.Text = "贴图压缩模式覆盖"
+$textureInfoTitleLabel.BackColor = [System.Drawing.Color]::White
+$textureInfoGroup.Controls.Add($textureInfoTitleLabel)
+
+$textureGrid = New-Object System.Windows.Forms.DataGridView
+$textureGrid.Location = New-Object System.Drawing.Point(14, 34)
+$textureGrid.Size = New-Object System.Drawing.Size(848, 112)
+$textureGrid.AllowUserToAddRows = $false
+$textureGrid.AllowUserToDeleteRows = $false
+$textureGrid.RowHeadersVisible = $false
+$textureGrid.MultiSelect = $false
+$textureGrid.SelectionMode = "FullRowSelect"
+$textureGrid.AutoSizeColumnsMode = "None"
+$textureGrid.ScrollBars = "Both"
+$textureGrid.BackgroundColor = [System.Drawing.Color]::White
+$textureGrid.BorderStyle = "FixedSingle"
+$textureGrid.ReadOnly = $false
+$textureGrid.ColumnHeadersHeightSizeMode = "DisableResizing"
+$textureGrid.ColumnHeadersHeight = 24
+$textureInfoGroup.Controls.Add($textureGrid)
+$textureGrid.Add_DataError({ $_.ThrowException = $false })
+
+$texNameColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+$texNameColumn.Name = "texName"
+$texNameColumn.HeaderText = "贴图"
+$texNameColumn.Width = 200
+$texNameColumn.ReadOnly = $true
+[void]$textureGrid.Columns.Add($texNameColumn)
+
+$texSizeColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+$texSizeColumn.Name = "texSize"
+$texSizeColumn.HeaderText = "尺寸"
+$texSizeColumn.Width = 100
+$texSizeColumn.ReadOnly = $true
+[void]$textureGrid.Columns.Add($texSizeColumn)
+
+$texSlotColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+$texSlotColumn.Name = "texSlot"
+$texSlotColumn.HeaderText = "绑定槽位"
+$texSlotColumn.Width = 200
+$texSlotColumn.ReadOnly = $true
+[void]$textureGrid.Columns.Add($texSlotColumn)
+
+$texModeColumn = New-Object System.Windows.Forms.DataGridViewComboBoxColumn
+$texModeColumn.Name = "texMode"
+$texModeColumn.HeaderText = "压缩覆盖"
+$texModeColumn.Width = 180
+$texModeColumn.Items.AddRange(@("默认", "WebP", "KTX2 ETC1S", "KTX2 UASTC"))
+$texModeColumn.DefaultCellStyle.NullValue = "默认"
+[void]$textureGrid.Columns.Add($texModeColumn)
+
+$texIndexColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+$texIndexColumn.Name = "texIndex"
+$texIndexColumn.HeaderText = "Index"
+$texIndexColumn.Visible = $false
+$texIndexColumn.ReadOnly = $true
+[void]$textureGrid.Columns.Add($texIndexColumn)
+
+$scanTexturesButton = New-Object System.Windows.Forms.Button
+$scanTexturesButton.Location = New-Object System.Drawing.Point(14, 150)
+$scanTexturesButton.Size = New-Object System.Drawing.Size(112, 26)
+$scanTexturesButton.Text = "扫描贴图"
+$textureInfoGroup.Controls.Add($scanTexturesButton)
+
+$textureSummaryLabel = New-Object System.Windows.Forms.Label
+$textureSummaryLabel.Location = New-Object System.Drawing.Point(140, 153)
+$textureSummaryLabel.Size = New-Object System.Drawing.Size(720, 22)
+$textureSummaryLabel.ForeColor = [System.Drawing.Color]::FromArgb(86, 94, 112)
+$textureSummaryLabel.Text = "先选择 GLB，然后扫描贴图；可覆盖每张贴图的压缩模式。"
+$textureInfoGroup.Controls.Add($textureSummaryLabel)
 
 $buttonPanel = New-Object System.Windows.Forms.Panel
 $buttonPanel.Location = New-Object System.Drawing.Point(12, 600)
@@ -990,14 +1200,6 @@ $pollTimer.Add_Tick({
     }
 })
 
-$applyProfile = {
-    $preset = Get-ProfilePreset -Name (Get-ComboValue -Map $script:QualityProfileMap -SelectedItem $qualityProfileCombo.SelectedItem)
-    $colorMaxNumeric.Value = [decimal]$preset.colorMaxSize
-    $dataMaxNumeric.Value = [decimal]$preset.dataMaxSize
-}
-
-$qualityProfileCombo.Add_SelectedIndexChanged($applyProfile)
-$applyProfileButton.Add_Click($applyProfile)
 $advancedToggleButton.Add_Click({
     $expanded = -not [bool]$advancedToggleButton.Tag
     $advancedToggleButton.Tag = $expanded
@@ -1005,7 +1207,7 @@ $advancedToggleButton.Add_Click({
     Update-AdvancedLayout -Expanded $expanded
 })
 $textureFormatCombo.Add_SelectedIndexChanged({
-    Update-KtxVisibility -TextureFormatCombo $textureFormatCombo -KtxPathLabel $ktxPathLabel -KtxPathTextBox $ktxPathTextBox -KtxBrowseButton $ktxBrowseButton
+    Update-TextureGroupVisibility -TextureFormatCombo $textureFormatCombo
 })
 
 $paletteCheckBox.Add_CheckedChanged({
@@ -1018,6 +1220,67 @@ $scanObjectsButton.Add_Click({
     } catch {
         $statusLabel.Text = "对象扫描失败。"
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "对象扫描失败", "OK", "Warning") | Out-Null
+    }
+})
+
+$textureInfoToggleButton.Add_Click({
+    $expanded = -not [bool]$textureInfoToggleButton.Tag
+    $textureInfoToggleButton.Tag = $expanded
+    $textureInfoToggleButton.Text = if ($expanded) { "贴图清单 ▲" } else { "贴图清单 ▼" }
+    $textureInfoGroup.Visible = $expanded
+    Update-AdvancedLayout -Expanded ([bool]$advancedToggleButton.Tag)
+})
+
+$scanTexturesButton.Add_Click({
+    try {
+        $nodePath = Resolve-NodePath
+        Assert-ToolRuntimeDependencies
+        $inputValue = $inputTextBox.Text.Trim()
+
+        if ([string]::IsNullOrWhiteSpace($inputValue) -or -not (Test-Path -LiteralPath $inputValue)) {
+            throw "请先选择有效的 .glb 或 .gltf 输入文件。"
+        }
+
+        $inputItem = Get-Item -LiteralPath (Resolve-Path -LiteralPath $inputValue).Path
+        if ($inputItem.PSIsContainer) {
+            throw "输入必须是文件，不能是文件夹。"
+        }
+
+        $textureInfoPath = Join-Path ([System.IO.Path]::GetTempPath()) ("gltf-optimize-textures-" + [guid]::NewGuid().ToString() + ".json")
+        $script:LastTextureInfoPath = $textureInfoPath
+
+        $args = @(
+            $script:NodeScriptPath,
+            $inputItem.FullName,
+            "--texture-info=$textureInfoPath"
+        )
+
+        $statusLabel.Text = "正在扫描贴图..."
+        $process = Start-Process -FilePath $nodePath -ArgumentList $args -WorkingDirectory $script:ScriptDir -NoNewWindow -Wait -PassThru
+        if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $textureInfoPath)) {
+            throw "贴图扫描失败。"
+        }
+
+        $textureInfo = Get-Content -LiteralPath $textureInfoPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $textureGrid.Rows.Clear()
+
+        foreach ($tex in $textureInfo) {
+            $slotText = if ($tex.slots -and $tex.slots.Count -gt 0) { ($tex.slots -join ", ") } else { "未使用" }
+            $sizeText = "$($tex.width) x $($tex.height)"
+            [void]$textureGrid.Rows.Add(
+                [string]$tex.name,
+                $sizeText,
+                $slotText,
+                "默认",
+                [int]$tex.index
+            )
+        }
+
+        $textureSummaryLabel.Text = "贴图 $($textureInfo.Count) 张。可覆盖每张贴图的压缩模式。"
+        $statusLabel.Text = "贴图扫描完成。"
+    } catch {
+        $statusLabel.Text = "贴图扫描失败。"
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "贴图扫描失败", "OK", "Warning") | Out-Null
     }
 })
 
@@ -1034,6 +1297,8 @@ $inputBrowseButton.Add_Click({
         }
         $objectGrid.Rows.Clear()
         $objectSummaryLabel.Text = "输入文件已变化，请重新扫描对象。"
+        $textureGrid.Rows.Clear()
+        $textureSummaryLabel.Text = "先选择 GLB，然后扫描贴图；可覆盖每张贴图的压缩模式。"
     }
 })
 
@@ -1053,21 +1318,11 @@ $outputBrowseButton.Add_Click({
     }
 })
 
-$ktxBrowseButton.Add_Click({
-    $dialog = New-Object System.Windows.Forms.OpenFileDialog
-    $dialog.Filter = "KTX 程序 (ktx.exe)|ktx.exe|可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*"
-    $dialog.Multiselect = $false
-    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $ktxPathTextBox.Text = $dialog.FileName
-    }
-})
-
 $resetButton.Add_Click({
     $defaults = Get-DefaultSettings
     Apply-SettingsToControls -Settings $defaults `
         -TextureFormatCombo $textureFormatCombo `
         -GeometryModeCombo $geometryModeCombo `
-        -QualityProfileCombo $qualityProfileCombo `
         -ColorMaxNumeric $colorMaxNumeric `
         -DataMaxNumeric $dataMaxNumeric `
         -WebPBaseNumeric $webpBaseNumeric `
@@ -1079,9 +1334,11 @@ $resetButton.Add_Click({
         -SimplifyScaleNumeric $simplifyScaleNumeric `
         -SimplifyMinNumeric $simplifyMinNumeric `
         -QuantizeMinNumeric $quantizeMinNumeric `
-        -KtxPathTextBox $ktxPathTextBox
-    & $applyProfile
-    Update-KtxVisibility -TextureFormatCombo $textureFormatCombo -KtxPathLabel $ktxPathLabel -KtxPathTextBox $ktxPathTextBox -KtxBrowseButton $ktxBrowseButton
+        -KtxPathTextBox $ktxPathTextBox `
+        -Ktx2ModeCombo $ktx2ModeCombo `
+        -Ktx2ZstdCheckBox $ktx2ZstdCheckBox `
+        -FixTextureSizeCheckBox $fixTextureSizeCheckBox
+    Update-TextureGroupVisibility -TextureFormatCombo $textureFormatCombo
     Update-PaletteControls -PaletteCheckBox $paletteCheckBox -PaletteMinLabel $paletteMinLabel -PaletteMinNumeric $paletteMinNumeric
     $statusLabel.Text = "已恢复默认参数。"
 })
@@ -1133,7 +1390,6 @@ $runButton.Add_Click({
         $settings = Collect-SettingsFromControls `
             -TextureFormatCombo $textureFormatCombo `
             -GeometryModeCombo $geometryModeCombo `
-            -QualityProfileCombo $qualityProfileCombo `
             -ColorMaxNumeric $colorMaxNumeric `
             -DataMaxNumeric $dataMaxNumeric `
             -WebPBaseNumeric $webpBaseNumeric `
@@ -1145,7 +1401,10 @@ $runButton.Add_Click({
             -SimplifyScaleNumeric $simplifyScaleNumeric `
             -SimplifyMinNumeric $simplifyMinNumeric `
             -QuantizeMinNumeric $quantizeMinNumeric `
-            -KtxPathTextBox $ktxPathTextBox
+            -KtxPathTextBox $ktxPathTextBox `
+            -Ktx2ModeCombo $ktx2ModeCombo `
+            -Ktx2ZstdCheckBox $ktx2ZstdCheckBox `
+            -FixTextureSizeCheckBox $fixTextureSizeCheckBox
 
         Save-UiSettings -Settings $settings
 
@@ -1163,7 +1422,6 @@ $runButton.Add_Click({
             $outputValue,
             "--texture-format=$($settings.textureFormat)",
             "--geometry-mode=$($settings.geometryMode)",
-            "--quality-profile=$($settings.qualityProfile)",
             "--color-max-size=$($settings.colorMaxSize)",
             "--data-max-size=$($settings.dataMaxSize)",
             "--webp-quality-base=$($settings.webpQualityBase)",
@@ -1172,7 +1430,8 @@ $runButton.Add_Click({
             "--webp-effort=$($settings.webpEffort)",
             "--simplify-scale=$([System.String]::Format([System.Globalization.CultureInfo]::InvariantCulture, '{0:0.00}', $settings.simplifyScale))",
             "--simplify-min-triangles=$($settings.simplifyMinTriangles)",
-            "--quantize-min-triangles=$($settings.quantizeMinTriangles)"
+            "--quantize-min-triangles=$($settings.quantizeMinTriangles)",
+            "--ktx2-mode=$($settings.ktx2Mode)"
         )
 
         if (-not $settings.enablePalette) {
@@ -1190,6 +1449,44 @@ $runButton.Add_Click({
 
         if ($settings.textureFormat -eq "ktx2" -and -not [string]::IsNullOrWhiteSpace($settings.ktxPath)) {
             $argumentArray += "--ktx-path=$($settings.ktxPath)"
+        }
+
+        if ($settings.textureFormat -eq "ktx2") {
+            if (-not $settings.enableKtx2Zstd) {
+                $argumentArray += "--ktx2-zstd-level=0"
+            }
+            if (-not $settings.enableFixTextureSize) {
+                $argumentArray += "--no-fix-texture-size"
+            }
+        }
+
+        # 处理贴图覆盖
+        if ($textureGrid.Rows.Count -gt 0) {
+            $overrides = @()
+            foreach ($row in $textureGrid.Rows) {
+                if ($row.IsNewRow) { continue }
+                $modeValue = [string]$row.Cells["texMode"].Value
+                $texIndex = [int]$row.Cells["texIndex"].Value
+                if ([string]::IsNullOrWhiteSpace($modeValue) -or $modeValue -eq "默认") { continue }
+                $override = @{ index = $texIndex }
+                if ($modeValue -eq "WebP") {
+                    $override.format = "webp"
+                } else {
+                    $override.format = "ktx2"
+                    if ($modeValue -eq "KTX2 ETC1S") {
+                        $override.ktx2Mode = "etc1s"
+                    } elseif ($modeValue -eq "KTX2 UASTC") {
+                        $override.ktx2Mode = "uastc"
+                    }
+                }
+                $overrides += $override
+            }
+            if ($overrides.Count -gt 0) {
+                $overridePath = Join-Path ([System.IO.Path]::GetTempPath()) ("gltf-optimize-texture-override-" + [guid]::NewGuid().ToString() + ".json")
+                @{ overrides = $overrides } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $overridePath -Encoding UTF8
+                $argumentArray += "--texture-override=$overridePath"
+                $script:LastTextureOverridePath = $overridePath
+            }
         }
 
         $logTextBox.Clear()
@@ -1218,7 +1515,6 @@ $runButton.Add_Click({
 Apply-SettingsToControls -Settings $savedSettings `
     -TextureFormatCombo $textureFormatCombo `
     -GeometryModeCombo $geometryModeCombo `
-    -QualityProfileCombo $qualityProfileCombo `
     -ColorMaxNumeric $colorMaxNumeric `
     -DataMaxNumeric $dataMaxNumeric `
     -WebPBaseNumeric $webpBaseNumeric `
@@ -1230,9 +1526,12 @@ Apply-SettingsToControls -Settings $savedSettings `
     -SimplifyScaleNumeric $simplifyScaleNumeric `
     -SimplifyMinNumeric $simplifyMinNumeric `
     -QuantizeMinNumeric $quantizeMinNumeric `
-    -KtxPathTextBox $ktxPathTextBox
+    -KtxPathTextBox $ktxPathTextBox `
+    -Ktx2ModeCombo $ktx2ModeCombo `
+    -Ktx2ZstdCheckBox $ktx2ZstdCheckBox `
+    -FixTextureSizeCheckBox $fixTextureSizeCheckBox
 
-Update-KtxVisibility -TextureFormatCombo $textureFormatCombo -KtxPathLabel $ktxPathLabel -KtxPathTextBox $ktxPathTextBox -KtxBrowseButton $ktxBrowseButton
+Update-TextureGroupVisibility -TextureFormatCombo $textureFormatCombo
 Update-PaletteControls -PaletteCheckBox $paletteCheckBox -PaletteMinLabel $paletteMinLabel -PaletteMinNumeric $paletteMinNumeric
 Update-AdvancedLayout -Expanded ([bool]$advancedToggleButton.Tag)
 
