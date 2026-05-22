@@ -756,6 +756,20 @@ input[type="radio"]:checked + .tab {
   outline: none;
 }
 
+.tech-number {
+  width: 58px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  background: rgba(12, 14, 14, 0.65);
+  color: #e7ecea;
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  outline: none;
+}
+
 .tech-upload-btn {
   flex: 1;
   height: 28px;
@@ -772,6 +786,31 @@ input[type="radio"]:checked + .tab {
 
 .tech-upload-btn:hover {
   background: rgba(106, 144, 178, 0.3);
+}
+
+.tech-uv-toggle {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+}
+
+.tech-uv-btn {
+  flex: 1;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  background: rgba(12, 14, 14, 0.65);
+  color: #9aa4a1;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.tech-uv-btn.active {
+  background: rgba(74, 127, 168, 0.35);
+  color: #e7ecea;
+  border-color: rgba(74, 127, 168, 0.6);
 }
 
 .frame-toggle-button {

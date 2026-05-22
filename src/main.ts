@@ -26,9 +26,11 @@ import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipe
 import { SSRRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssrRenderingPipeline'
 import { GeometryBufferRenderer } from '@babylonjs/core/Rendering/geometryBufferRenderer'
 import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
+import { BaseTexture } from '@babylonjs/core/Materials/Textures/baseTexture'
+import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
+import { MultiMaterial } from '@babylonjs/core/Materials/multiMaterial'
 import { ImportMeshAsync } from '@babylonjs/core/Loading/sceneLoader'
 import { Scene } from '@babylonjs/core/scene'
-import { EngineInstrumentation } from '@babylonjs/core/Instrumentation/engineInstrumentation'
 import { SceneInstrumentation } from '@babylonjs/core/Instrumentation/sceneInstrumentation'
 import { configStorageKey } from './viewerConfig'
 import type { ColorConfig, VectorConfig, ViewerConfig } from './viewerConfig'
@@ -465,35 +467,67 @@ let ssao2Pipeline: SSAO2RenderingPipeline | null = null
 let ssrPipeline: SSRRenderingPipeline | null = null
 let shadowFilterMode = 6
 let savedSunIntensity = 0.62
+let savedLightmaps = new WeakMap<PBRMaterial, BaseTexture>()
 
 const disableRealtimeEffects = () => {
   savedSunIntensity = sunLight.intensity
   sunLight.intensity = 0
+  sunLight.shadowEnabled = false
   const map = shadowGenerator.getShadowMap()
   if (map) map.renderList = []
   if (ssao2Pipeline) ssao2Pipeline.totalStrength = 0
   if (ssrPipeline) ssrPipeline.isEnabled = false
+  importedMeshes.forEach((m) => { m.receiveShadows = false })
 }
-
-let geometryBufferRenderer: GeometryBufferRenderer | null = null
 
 const enableRealtimeEffects = () => {
   sunLight.intensity = savedSunIntensity
+  sunLight.shadowEnabled = true
   const map = shadowGenerator.getShadowMap()
   if (map) map.renderList = [...importedMeshes]
+  importedMeshes.forEach((m) => { m.receiveShadows = true })
   if (!geometryBufferRenderer) {
     geometryBufferRenderer = scene.enableGeometryBufferRenderer()
   }
   if (!ssao2Pipeline) {
     ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera], geometryBufferRenderer ?? true)
+    ssao2Pipeline.maxZ = Math.max(camera.maxZ, 120)
   } else {
     ssao2Pipeline.totalStrength = 1
   }
   if (!ssrPipeline) {
     ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera], true)
+    ssrPipeline.step = 5
+    ssrPipeline.maxSteps = 2000
+    ssrPipeline.thickness = 2
   } else {
     ssrPipeline.isEnabled = true
   }
+  scene.materials.forEach((mat) => {
+    if (mat instanceof PBRMaterial && savedLightmaps.has(mat)) {
+      mat.lightmapTexture = null
+    }
+  })
+}
+
+let geometryBufferRenderer: GeometryBufferRenderer | null = null
+
+const disableLightmaps = () => {
+  scene.materials.forEach((mat) => {
+    if (mat instanceof PBRMaterial && mat.lightmapTexture) {
+      savedLightmaps.set(mat, mat.lightmapTexture)
+      mat.lightmapTexture = null
+    }
+  })
+}
+
+const enableLightmaps = () => {
+  scene.materials.forEach((mat) => {
+    if (mat instanceof PBRMaterial && savedLightmaps.has(mat)) {
+      const tex = savedLightmaps.get(mat)
+      if (tex) mat.lightmapTexture = tex
+    }
+  })
 }
 
 const createSlider = (label: string, value: number, min: number, max: number, step: number, onChange: (v: number) => void) => {
@@ -678,7 +712,29 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   })
   ssaoBody.push(ssaoToggle)
   ssaoBody.push(createSlider('\u906e\u853d\u5f3a\u5ea6', ssao2Pipeline?.totalStrength ?? 1, 0, 3, 0.01, (v) => { if (ssao2Pipeline) ssao2Pipeline.totalStrength = v }))
-  ssaoBody.push(createSlider('\u91c7\u6837\u534a\u5f84', ssao2Pipeline?.radius ?? 2, 0.1, 10, 0.1, (v) => { if (ssao2Pipeline) ssao2Pipeline.radius = v }))
+  const radiusRow = document.createElement('div')
+  radiusRow.className = 'tech-row'
+  const radiusLabel = document.createElement('span')
+  radiusLabel.className = 'tech-label'
+  radiusLabel.textContent = '\u91c7\u6837\u534a\u5f84'
+  const radiusInput = document.createElement('input')
+  radiusInput.type = 'range'
+  radiusInput.min = '0.1'
+  radiusInput.max = '100'
+  radiusInput.step = '0.1'
+  radiusInput.value = String(ssao2Pipeline?.radius ?? 2)
+  const radiusNum = document.createElement('input')
+  radiusNum.type = 'number'
+  radiusNum.className = 'tech-number'
+  radiusNum.min = '0.1'
+  radiusNum.max = '100'
+  radiusNum.step = '0.1'
+  radiusNum.value = String(ssao2Pipeline?.radius ?? 2)
+  const onRadiusChange = (v: number) => { if (ssao2Pipeline) ssao2Pipeline.radius = v; radiusInput.value = String(v); radiusNum.value = String(v) }
+  radiusInput.addEventListener('input', () => onRadiusChange(parseFloat(radiusInput.value)))
+  radiusNum.addEventListener('change', () => onRadiusChange(parseFloat(radiusNum.value)))
+  radiusRow.append(radiusLabel, radiusInput, radiusNum)
+  ssaoBody.push(radiusRow)
   ssaoBody.push(createSlider('\u91c7\u6837\u6570', ssao2Pipeline?.samples ?? 8, 4, 64, 1, (v) => { if (ssao2Pipeline) ssao2Pipeline.samples = v }))
   panel.append(createModule('SSAO 2', ssaoBody))
 
@@ -688,6 +744,9 @@ const renderRealtimePanel = (panel: HTMLElement) => {
     if (v) {
       if (!ssrPipeline) {
         ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera], true)
+        ssrPipeline.step = 5
+        ssrPipeline.maxSteps = 2000
+        ssrPipeline.thickness = 2
       }
       ssrPipeline.isEnabled = true
     } else {
@@ -696,12 +755,216 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   })
   ssrBody.push(ssrToggle)
   ssrBody.push(createSlider('\u53cd\u5c04\u5f3a\u5ea6', ssrPipeline?.strength ?? 1, 0, 2, 0.01, (v) => { if (ssrPipeline) ssrPipeline.strength = v }))
-  ssrBody.push(createSlider('\u6700\u5927\u8ddd\u79bb', ssrPipeline?.maxDistance ?? 1000, 0, 1000, 1, (v) => { if (ssrPipeline) ssrPipeline.maxDistance = v }))
+  const ssrMaxDistRow = document.createElement('div')
+  ssrMaxDistRow.className = 'tech-row'
+  const ssrMaxDistLabel = document.createElement('span')
+  ssrMaxDistLabel.className = 'tech-label'
+  ssrMaxDistLabel.textContent = '\u6700\u5927\u8ddd\u79bb'
+  const ssrMaxDistInput = document.createElement('input')
+  ssrMaxDistInput.type = 'range'
+  ssrMaxDistInput.min = '0'
+  ssrMaxDistInput.max = '5000'
+  ssrMaxDistInput.step = '1'
+  ssrMaxDistInput.value = String(ssrPipeline?.maxDistance ?? 1000)
+  const ssrMaxDistNum = document.createElement('input')
+  ssrMaxDistNum.type = 'number'
+  ssrMaxDistNum.className = 'tech-number'
+  ssrMaxDistNum.min = '0'
+  ssrMaxDistNum.max = '5000'
+  ssrMaxDistNum.step = '1'
+  ssrMaxDistNum.value = String(ssrPipeline?.maxDistance ?? 1000)
+  const onMaxDistChange = (v: number) => { if (ssrPipeline) ssrPipeline.maxDistance = v; ssrMaxDistInput.value = String(v); ssrMaxDistNum.value = String(v) }
+  ssrMaxDistInput.addEventListener('input', () => onMaxDistChange(parseFloat(ssrMaxDistInput.value)))
+  ssrMaxDistNum.addEventListener('change', () => onMaxDistChange(parseFloat(ssrMaxDistNum.value)))
+  ssrMaxDistRow.append(ssrMaxDistLabel, ssrMaxDistInput, ssrMaxDistNum)
+  ssrBody.push(ssrMaxDistRow)
+  const ssrStepRow = document.createElement('div')
+  ssrStepRow.className = 'tech-row'
+  const ssrStepLabel = document.createElement('span')
+  ssrStepLabel.className = 'tech-label'
+  ssrStepLabel.textContent = '\u6b65\u957f (Step)'
+  const ssrStepInput = document.createElement('input')
+  ssrStepInput.type = 'range'
+  ssrStepInput.min = '1'
+  ssrStepInput.max = '20'
+  ssrStepInput.step = '1'
+  ssrStepInput.value = String(ssrPipeline?.step ?? 5)
+  const ssrStepNum = document.createElement('input')
+  ssrStepNum.type = 'number'
+  ssrStepNum.className = 'tech-number'
+  ssrStepNum.min = '1'
+  ssrStepNum.max = '20'
+  ssrStepNum.step = '1'
+  ssrStepNum.value = String(ssrPipeline?.step ?? 5)
+  const onStepChange = (v: number) => { if (ssrPipeline) ssrPipeline.step = v; ssrStepInput.value = String(v); ssrStepNum.value = String(v) }
+  ssrStepInput.addEventListener('input', () => onStepChange(parseFloat(ssrStepInput.value)))
+  ssrStepNum.addEventListener('change', () => onStepChange(parseFloat(ssrStepNum.value)))
+  ssrStepRow.append(ssrStepLabel, ssrStepInput, ssrStepNum)
+  ssrBody.push(ssrStepRow)
+  const ssrThickRow = document.createElement('div')
+  ssrThickRow.className = 'tech-row'
+  const ssrThickLabel = document.createElement('span')
+  ssrThickLabel.className = 'tech-label'
+  ssrThickLabel.textContent = '\u539a\u5ea6 (Thickness)'
+  const ssrThickInput = document.createElement('input')
+  ssrThickInput.type = 'range'
+  ssrThickInput.min = '0.1'
+  ssrThickInput.max = '20'
+  ssrThickInput.step = '0.1'
+  ssrThickInput.value = String(ssrPipeline?.thickness ?? 2)
+  const ssrThickNum = document.createElement('input')
+  ssrThickNum.type = 'number'
+  ssrThickNum.className = 'tech-number'
+  ssrThickNum.min = '0.1'
+  ssrThickNum.max = '20'
+  ssrThickNum.step = '0.1'
+  ssrThickNum.value = String(ssrPipeline?.thickness ?? 2)
+  const onThickChange = (v: number) => { if (ssrPipeline) ssrPipeline.thickness = v; ssrThickInput.value = String(v); ssrThickNum.value = String(v) }
+  ssrThickInput.addEventListener('input', () => onThickChange(parseFloat(ssrThickInput.value)))
+  ssrThickNum.addEventListener('change', () => onThickChange(parseFloat(ssrThickNum.value)))
+  ssrThickRow.append(ssrThickLabel, ssrThickInput, ssrThickNum)
+  ssrBody.push(ssrThickRow)
   ssrBody.push(createSlider('\u7c97\u7cd9\u5ea6', ssrPipeline?.roughnessFactor ?? 0.2, 0, 1, 0.01, (v) => { if (ssrPipeline) ssrPipeline.roughnessFactor = v }))
   panel.append(createModule('SSR', ssrBody))
 }
 
+let selectedBakeMeshName = ''
+let selectedUVChannel = 1
+let lightmapInvertY = false
+let lastLightmapUrl = ''
+let lastLightmapTexture: Texture | null = null
+
+const getBakeTargetMeshes = () => {
+  if (selectedBakeMeshName) {
+    const mesh = scene.getMeshByName(selectedBakeMeshName)
+    return mesh ? [mesh] : []
+  }
+  return []
+}
+
+const applyLightmapToTarget = (texture: Texture) => {
+  const targets = getBakeTargetMeshes()
+  if (targets.length > 0) {
+    targets.forEach((mesh) => {
+      if (mesh.material instanceof MultiMaterial) {
+        mesh.material.subMaterials.forEach((sm) => {
+          if (sm instanceof PBRMaterial) {
+            sm.lightmapTexture = texture
+            sm.useLightmapAsShadowmap = true
+          }
+        })
+      } else if (mesh.material instanceof PBRMaterial) {
+        mesh.material.lightmapTexture = texture
+        mesh.material.useLightmapAsShadowmap = true
+      }
+    })
+  } else {
+    scene.materials.forEach((mat) => {
+      if (mat instanceof PBRMaterial) {
+        mat.lightmapTexture = texture
+        mat.useLightmapAsShadowmap = true
+      }
+    })
+  }
+}
+
+const setLightmapLevelForTarget = (level: number) => {
+  const targets = getBakeTargetMeshes()
+  if (targets.length > 0) {
+    targets.forEach((mesh) => {
+      if (mesh.material instanceof MultiMaterial) {
+        mesh.material.subMaterials.forEach((sm) => {
+          if (sm instanceof PBRMaterial && sm.lightmapTexture) {
+            sm.lightmapTexture.level = level
+          }
+        })
+      } else if (mesh.material instanceof PBRMaterial && mesh.material.lightmapTexture) {
+        mesh.material.lightmapTexture.level = level
+      }
+    })
+  } else {
+    scene.materials.forEach((mat) => {
+      if (mat instanceof PBRMaterial && mat.lightmapTexture) {
+        mat.lightmapTexture.level = level
+      }
+    })
+  }
+}
+
+const updateBakeMeshSelect = (sel: HTMLSelectElement) => {
+  const prev = sel.value
+  sel.textContent = ''
+  const names = importedMeshes.filter((m) => m.name !== '_root' && m.name !== '__root__').map((m) => m.name)
+  if (names.length === 0) {
+    const el = document.createElement('option')
+    el.value = ''
+    el.textContent = '\u8bf7\u5148\u52a0\u8f7d\u6a21\u578b'
+    el.disabled = true
+    sel.append(el)
+    return
+  }
+  names.forEach((name) => {
+    const el = document.createElement('option')
+    el.value = name
+    el.textContent = name
+    if (name === (prev || selectedBakeMeshName || names[0])) el.selected = true
+    sel.append(el)
+  })
+}
+
 const renderBakePanel = (panel: HTMLElement) => {
+  const body: HTMLElement[] = []
+
+  const meshSelect = createSelect('\u9009\u62e9\u76ee\u6807\u7f51\u683c', [], '', (v) => {
+    selectedBakeMeshName = v
+  })
+  const sel = meshSelect.querySelector('select')!
+  updateBakeMeshSelect(sel)
+  body.push(meshSelect)
+
+  const uvRow = document.createElement('div')
+  uvRow.className = 'tech-row'
+  const uvLabel = document.createElement('span')
+  uvLabel.className = 'tech-label'
+  uvLabel.textContent = 'UV \u901a\u9053'
+  const uvToggle = document.createElement('div')
+  uvToggle.className = 'tech-uv-toggle'
+  ;['UV1', 'UV2'].forEach((label) => {
+    const btn = document.createElement('button')
+    btn.className = 'tech-uv-btn'
+    btn.textContent = label
+    const idx = label === 'UV2' ? 1 : 0
+    if (idx === selectedUVChannel) btn.classList.add('active')
+    btn.addEventListener('click', () => {
+      selectedUVChannel = idx
+      uvToggle.querySelectorAll('.tech-uv-btn').forEach((b) => b.classList.remove('active'))
+      btn.classList.add('active')
+    })
+    uvToggle.append(btn)
+  })
+  uvRow.append(uvLabel, uvToggle)
+  body.push(uvRow)
+
+  const invYRow = document.createElement('label')
+  invYRow.className = 'tech-row tech-row-checkbox'
+  const invYCb = document.createElement('input')
+  invYCb.type = 'checkbox'
+  invYCb.checked = lightmapInvertY
+  invYCb.addEventListener('change', () => {
+    lightmapInvertY = invYCb.checked
+    if (lastLightmapUrl && lastLightmapTexture) {
+      lastLightmapTexture.dispose()
+      const texture = new Texture(lastLightmapUrl, scene, undefined, lightmapInvertY)
+      texture.coordinatesIndex = selectedUVChannel
+      applyLightmapToTarget(texture)
+      lastLightmapTexture = texture
+    }
+  })
+  const invYSpan = document.createElement('span')
+  invYSpan.textContent = '\u53cd\u8f6c Y \u8f74 (Invert Y)'
+  invYRow.append(invYCb, invYSpan)
+  body.push(invYRow)
+
   const uploadRow = document.createElement('div')
   uploadRow.className = 'tech-row'
   const uploadLabel = document.createElement('span')
@@ -719,24 +982,23 @@ const renderBakePanel = (panel: HTMLElement) => {
     const file = fileInput.files?.[0]
     if (!file) return
     const url = URL.createObjectURL(file)
-    const texture = new Texture(url, scene)
-    scene.materials.forEach((mat) => {
-      if (mat instanceof PBRMaterial) {
-        mat.lightmapTexture = texture
-      }
-    })
+    if (lastLightmapUrl) URL.revokeObjectURL(lastLightmapUrl)
+    lastLightmapUrl = url
+    if (lastLightmapTexture) lastLightmapTexture.dispose()
+    const texture = new Texture(url, scene, undefined, lightmapInvertY)
+    texture.coordinatesIndex = selectedUVChannel
+    applyLightmapToTarget(texture)
+    lastLightmapTexture = texture
     fileInput.value = ''
   })
   uploadRow.append(uploadLabel, uploadBtn, fileInput)
-  panel.append(createModule('\u5149\u7167\u8d34\u56fe\u69fd\u4f4d', [uploadRow]))
+  body.push(uploadRow)
+
+  panel.append(createModule('\u5149\u7167\u8d34\u56fe\u69fd\u4f4d', body))
 
   const bakeBody: HTMLElement[] = []
   bakeBody.push(createSlider('\u5149\u7167\u8d34\u56fe\u5f3a\u5ea6', 1, 0, 2, 0.01, (v) => {
-    scene.materials.forEach((mat) => {
-      if (mat instanceof PBRMaterial && mat.lightmapTexture) {
-        mat.lightmapTexture.level = v
-      }
-    })
+    setLightmapLevelForTarget(v)
   }))
   panel.append(createModule('\u70d8\u70e4\u5149\u5f71\u5fae\u8c03', bakeBody, false))
 }
@@ -746,6 +1008,7 @@ let techPanelCache: {
   subTabs: HTMLElement
   realtimePanel: HTMLElement
   bakePanel: HTMLElement
+  shadowToggle: HTMLInputElement | null
 } | null = null
 
 const renderTechPanel = () => {
@@ -771,8 +1034,10 @@ const renderTechPanel = () => {
         try {
           if (label === '\u6a21\u578b\u70d8\u70e4') {
             disableRealtimeEffects()
+            disableLightmaps()
           } else {
             enableRealtimeEffects()
+            enableLightmaps()
           }
         } catch (e) {
           console.error('Tech mode switch error', e)
@@ -798,13 +1063,20 @@ const renderTechPanel = () => {
 
     panel.append(subTabs, realtimePanel, bakePanel)
     sceneOutline.append(panel)
-    techPanelCache = { panel, subTabs, realtimePanel, bakePanel }
+    const st = realtimePanel.querySelector('.tech-row-checkbox input[type=\'checkbox\']') as HTMLInputElement | null
+    techPanelCache = { panel, subTabs, realtimePanel, bakePanel, shadowToggle: st }
   } else {
     techPanelCache.subTabs.querySelectorAll('.tech-sub-tab').forEach((b) => {
       ;(b as HTMLElement).ariaSelected = String((b as HTMLElement).textContent === techActiveSubTab)
     })
     techPanelCache.realtimePanel.hidden = techActiveSubTab !== '\u5b9e\u65f6\u6e32\u67d3'
     techPanelCache.bakePanel.hidden = techActiveSubTab !== '\u6a21\u578b\u70d8\u70e4'
+    if (techPanelCache.shadowToggle) {
+      const sm = shadowGenerator.getShadowMap()
+      techPanelCache.shadowToggle.checked = sm ? (sm.renderList?.length ?? 0) > 0 : false
+    }
+    const sel = techPanelCache.bakePanel.querySelector('select')
+    if (sel) updateBakeMeshSelect(sel)
     sceneOutline.append(techPanelCache.panel)
   }
 }
@@ -1304,9 +1576,9 @@ const updateCameraDepthRange = () => {
   const effectiveRadius = Math.max(camera.radius, camera.lowerRadiusLimit ?? 0.35, 0.35)
   const effectiveSceneRadius = Math.max(sceneRadius, effectiveRadius, 1)
 
-  // Keep the camera frustum tight enough to preserve depth precision on distant meshes.
   camera.minZ = clamp(effectiveRadius * 0.005, 0.05, 2.5)
   camera.maxZ = Math.max(effectiveSceneRadius * 20, effectiveRadius * 12, 120)
+  if (ssao2Pipeline) ssao2Pipeline.maxZ = Math.max(ssao2Pipeline.maxZ, camera.maxZ)
 }
 
 const assignVector = (target: Vector3, config: VectorConfig) => {
@@ -1914,6 +2186,12 @@ detailRegistry.set('camera:main', () => ({
         numberItem('Beta', camera.beta, camera.lowerBetaLimit ?? 0.01, camera.upperBetaLimit ?? Math.PI, 0.01, (value) => {
           camera.beta = value
         }),
+        numberItem('minZ', camera.minZ, 0.001, 100, 0.001, (value) => {
+          camera.minZ = value
+        }),
+        numberItem('maxZ', camera.maxZ, 10, 50000, 1, (value) => {
+          camera.maxZ = value
+        }),
       ],
     },
     {
@@ -2196,7 +2474,7 @@ const disposeCurrentModels = () => {
 }
 
 const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
-  meshes.map((mesh) => ({
+  meshes.filter((m) => m.name !== '_root' && m.name !== '__root__').map((mesh) => ({
     name: mesh.name || `Mesh ${mesh.uniqueId}`,
     kind: 'mesh',
     detailId: `mesh:${mesh.uniqueId}`,
@@ -2459,47 +2737,29 @@ loadDefaultModels().catch((error) => {
   setStatus('Failed to load assets GLB files')
 })
 
-let engineInstrumentation: EngineInstrumentation | undefined
 let sceneInstrumentation: SceneInstrumentation | undefined
 try {
-  engineInstrumentation = new EngineInstrumentation(engine)
-  engineInstrumentation.captureGPUFrameTime = true
-  engineInstrumentation.captureShaderCompilationTime = true
-} catch {
-  // GPU timer not supported
-}
-try {
   sceneInstrumentation = new SceneInstrumentation(scene)
-  sceneInstrumentation.captureActiveMeshesEvaluationTime = true
-  sceneInstrumentation.captureRenderTargetsRenderTime = true
   sceneInstrumentation.captureFrameTime = true
-  sceneInstrumentation.captureRenderTime = true
-  sceneInstrumentation.captureInterFrameTime = true
-  sceneInstrumentation.captureParticlesRenderTime = true
-  sceneInstrumentation.captureAnimationsTime = true
-  sceneInstrumentation.captureCameraRenderTime = true
 } catch {
   // scene instrumentation not supported
 }
 
-const cnt = (v: number | undefined, d: number) => v != null ? String(Math.round(v * 10) / 10) : String(d)
+let frameUpdateTimer = 0
+const frameUpdateInterval = 0.8
+
 const frameMetrics: { label: string; get: () => string }[] = [
-  { label: 'FPS', get: () => String(Math.round(engine.getFps())) },
-  { label: '帧时间', get: () => cnt(sceneInstrumentation?.frameTimeCounter.current, 0) + ' ms' },
-  { label: '渲染时间', get: () => cnt(sceneInstrumentation?.renderTimeCounter.current, 0) + ' ms' },
-  { label: '间隔时间', get: () => cnt(sceneInstrumentation?.interFrameTimeCounter.current, 0) + ' ms' },
-  { label: '活跃网格', get: () => String(scene.getActiveMeshes().length) + ' / ' + String(scene.meshes.length) },
-  { label: '网格评估', get: () => cnt(sceneInstrumentation?.activeMeshesEvaluationTimeCounter.current, 0) + ' ms' },
-  { label: '渲染目标', get: () => cnt(sceneInstrumentation?.renderTargetsRenderTimeCounter.current, 0) + ' ms' },
-  { label: '相机渲染', get: () => cnt(sceneInstrumentation?.cameraRenderTimeCounter.current, 0) + ' ms' },
-  { label: '动画时间', get: () => cnt(sceneInstrumentation?.animationsTimeCounter.current, 0) + ' ms' },
-  { label: 'GPU帧时间', get: () => cnt(engineInstrumentation?.gpuFrameTimeCounter.current, 0) + ' ms' },
-  { label: '着色编译', get: () => cnt(engineInstrumentation?.shaderCompilationTimeCounter.current, 0) + ' ms' },
-  { label: '着色次数', get: () => String(engineInstrumentation?.shaderCompilationTimeCounter.total ?? 0) },
-  { label: 'MRT/纹理', get: () => {
-    const caps = engine.getCaps()
-    return String(caps.maxDrawBuffers ?? 'N/A') + ' / ' + String(caps.maxCombinedTexturesImageUnits ?? 'N/A')
+  { label: '帧率 (FPS)', get: () => String(Math.round(engine.getFps())) },
+  { label: '渲染调用 (Draw Calls)', get: () => String(sceneInstrumentation?.drawCallsCounter.current ?? 0) },
+  { label: '逻辑耗时 (CPU Time)', get: () => {
+    const v = sceneInstrumentation?.frameTimeCounter.current
+    return v != null ? String(Math.round(v * 10) / 10) + ' ms' : '0 ms'
   }},
+  { label: '场景面数 (Triangles)', get: () => {
+    const v = scene.totalVerticesPerfCounter.current
+    return String(v ?? 0)
+  }},
+  { label: '活动网格 (Meshes)', get: () => String(scene.getActiveMeshes().length) + ' / ' + String(scene.meshes.length) },
 ]
 
 let frameOverlayVisible = false
@@ -2539,7 +2799,13 @@ engine.runRenderLoop(() => {
     updateFocusAnimation()
     updateSelectionBox()
     updateCameraDepthRange()
-    if (frameOverlayVisible) updateFrameGrid()
+    if (frameOverlayVisible) {
+      frameUpdateTimer += engine.getDeltaTime()
+      if (frameUpdateTimer >= frameUpdateInterval * 1000) {
+        frameUpdateTimer = 0
+        updateFrameGrid()
+      }
+    }
   } catch (error) {
     console.error(error)
     pressedKeys.clear()
