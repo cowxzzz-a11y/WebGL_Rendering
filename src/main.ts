@@ -13,6 +13,7 @@ import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture'
+import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
@@ -21,6 +22,8 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { KhronosTextureContainer2 } from '@babylonjs/core/Misc/khronosTextureContainer2'
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
+import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline'
+import { SSRRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssrRenderingPipeline'
 import { ImportMeshAsync } from '@babylonjs/core/Loading/sceneLoader'
 import { Scene } from '@babylonjs/core/scene'
 import { configStorageKey } from './viewerConfig'
@@ -329,11 +332,6 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
     ],
   },
   {
-    id: 'camera',
-    label: '\u6444\u50cf\u673a',
-    nodes: [{ name: 'Camera', kind: 'camera', detailId: 'camera:main' }],
-  },
-  {
     id: 'lights',
     label: '\u706f\u5149',
     nodes: [
@@ -350,7 +348,7 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
   },
   {
     id: 'world',
-    label: 'World',
+    label: '\u540e\u671f',
     nodes: [
       {
         name: 'World',
@@ -366,8 +364,13 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
     ],
   },
   {
+    id: 'camera',
+    label: '\u6444\u50cf\u673a',
+    nodes: [{ name: 'Camera', kind: 'camera', detailId: 'camera:main' }],
+  },
+  {
     id: 'tech',
-    label: '\u6280\u672f\u6d41',
+    label: '\u5149\u5f71\u6a21\u5f0f',
     nodes: [],
   },
 ]
@@ -430,34 +433,341 @@ const renderPanelTabs = (tabs: PanelTab[]) => {
 }
 
 let techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
+let ssao2Pipeline: SSAO2RenderingPipeline | null = null
+let ssrPipeline: SSRRenderingPipeline | null = null
+let shadowFilterMode = 6
+let savedSunIntensity = 0.62
+
+const disableRealtimeEffects = () => {
+  savedSunIntensity = sunLight.intensity
+  sunLight.intensity = 0
+  const map = shadowGenerator.getShadowMap()
+  if (map) map.renderList = []
+  if (ssao2Pipeline) ssao2Pipeline.totalStrength = 0
+  if (ssrPipeline) ssrPipeline.isEnabled = false
+}
+
+const enableRealtimeEffects = () => {
+  sunLight.intensity = savedSunIntensity
+  const map = shadowGenerator.getShadowMap()
+  if (map) map.renderList = [...importedMeshes]
+  if (!ssao2Pipeline) {
+    ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera])
+  } else {
+    ssao2Pipeline.totalStrength = 1
+  }
+  if (!ssrPipeline) {
+    ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera])
+  } else {
+    ssrPipeline.isEnabled = true
+  }
+}
+
+const createSlider = (label: string, value: number, min: number, max: number, step: number, onChange: (v: number) => void) => {
+  const row = document.createElement('div')
+  row.className = 'tech-row'
+  const lbl = document.createElement('span')
+  lbl.className = 'tech-label'
+  lbl.textContent = label
+  const val = document.createElement('span')
+  val.className = 'tech-value'
+  val.textContent = String(value)
+  const input = document.createElement('input')
+  input.type = 'range'
+  input.min = String(min)
+  input.max = String(max)
+  input.step = String(step)
+  input.value = String(value)
+  input.addEventListener('input', () => {
+    const v = parseFloat(input.value)
+    val.textContent = String(v)
+    onChange(v)
+  })
+  row.append(lbl, input, val)
+  return row
+}
+
+const createCheckbox = (label: string, value: boolean, onChange: (v: boolean) => void) => {
+  const row = document.createElement('label')
+  row.className = 'tech-row tech-row-checkbox'
+  const cb = document.createElement('input')
+  cb.type = 'checkbox'
+  cb.checked = value
+  cb.addEventListener('change', () => onChange(cb.checked))
+  const span = document.createElement('span')
+  span.textContent = label
+  row.append(cb, span)
+  return row
+}
+
+const createSelect = (label: string, options: string[], value: string, onChange: (v: string) => void) => {
+  const row = document.createElement('div')
+  row.className = 'tech-row'
+  const lbl = document.createElement('span')
+  lbl.className = 'tech-label'
+  lbl.textContent = label
+  const sel = document.createElement('select')
+  sel.className = 'tech-select'
+  options.forEach((opt) => {
+    const el = document.createElement('option')
+    el.value = opt
+    el.textContent = opt
+    if (opt === value) el.selected = true
+    sel.append(el)
+  })
+  sel.addEventListener('change', () => onChange(sel.value))
+  row.append(lbl, sel)
+  return row
+}
+
+const createColorInput = (label: string, color: Color3, onChange: (c: Color3) => void) => {
+  const row = document.createElement('div')
+  row.className = 'tech-row'
+  const lbl = document.createElement('span')
+  lbl.className = 'tech-label'
+  lbl.textContent = label
+  const hex = colorToHex(color)
+  const input = document.createElement('input')
+  input.type = 'color'
+  input.value = hex
+  input.addEventListener('input', () => {
+    onChange(hexToColor3(input.value))
+  })
+  row.append(lbl, input)
+  return row
+}
+
+const createModule = (title: string, bodyContent: HTMLElement[], open = true) => {
+  const mod = document.createElement('div')
+  mod.className = 'tech-module'
+  const header = document.createElement('div')
+  header.className = 'tech-module-header'
+  header.textContent = title
+  const body = document.createElement('div')
+  body.className = 'tech-module-body'
+  if (!open) body.hidden = true
+  bodyContent.forEach((el) => body.append(el))
+  header.addEventListener('click', () => {
+    body.hidden = !body.hidden
+  })
+  mod.append(header, body)
+  return mod
+}
+
+const renderRealtimePanel = (panel: HTMLElement) => {
+  // --- Sun Light ---
+  const sunBody: HTMLElement[] = []
+  sunBody.push(createColorInput('\u5149\u6e90\u989c\u8272', sunLight.diffuse, (c) => { sunLight.diffuse = c }))
+  sunBody.push(createSlider('\u5149\u6e90\u5f3a\u5ea6', sunLight.intensity, 0, 3, 0.01, (v) => { sunLight.intensity = v }))
+
+  const dirRow = document.createElement('div')
+  dirRow.className = 'tech-row'
+  const dirLabel = document.createElement('span')
+  dirLabel.className = 'tech-label'
+  dirLabel.textContent = '\u65b9\u5411'
+  const dirVals = document.createElement('div')
+  dirVals.style.cssText = 'display:flex;gap:4px;flex:1'
+  ;['X', 'Y', 'Z'].forEach((axis, i) => {
+    const axisWrap = document.createElement('div')
+    axisWrap.style.cssText = 'display:flex;align-items:center;gap:2px'
+    const axisLabel = document.createElement('span')
+    axisLabel.style.cssText = 'font-size:10px;color:#9aa4a1;width:12px'
+    axisLabel.textContent = axis
+    const inp = document.createElement('input')
+    inp.type = 'range'
+    inp.min = '-1'
+    inp.max = '1'
+    inp.step = '0.01'
+    inp.value = String(sunLight.direction.asArray()[i])
+    inp.style.cssText = 'width:100%'
+    inp.addEventListener('input', () => {
+      const arr = sunLight.direction.asArray()
+      arr[i] = parseFloat(inp.value)
+      sunLight.direction = Vector3.FromArray(arr)
+      updateLightDirectionHelpers()
+    })
+    axisWrap.append(axisLabel, inp)
+    dirVals.append(axisWrap)
+  })
+  dirRow.append(dirLabel, dirVals)
+  sunBody.push(dirRow)
+  panel.append(createModule('\u592a\u9633\u5149', sunBody))
+
+  // --- Real-time Shadow ---
+  const shadowBody: HTMLElement[] = []
+  const shadowMap = shadowGenerator.getShadowMap()
+  let shadowEnabled = shadowMap ? (shadowMap.renderList?.length ?? 0) > 0 : false
+  const shadowToggle = createCheckbox('\u9634\u5f71\u5f00\u5173', shadowEnabled, (v) => {
+    const map = shadowGenerator.getShadowMap()
+    if (map) {
+      map.renderList = v ? [...importedMeshes] : []
+    }
+  })
+  shadowBody.push(shadowToggle)
+
+  const filterNames = ['PCF', 'PCSS', 'ESM']
+  const filterMap: Record<string, number> = { PCF: 6, PCSS: 7, ESM: 1 }
+  const currentFilter = filterNames.find((k) => filterMap[k] === shadowFilterMode) || 'PCF'
+  shadowBody.push(createSelect('\u9634\u5f71\u7c7b\u578b', filterNames, currentFilter, (v) => {
+    shadowFilterMode = filterMap[v]
+    if (shadowFilterMode === 1) {
+      shadowGenerator.useExponentialShadowMap = true
+    } else if (shadowFilterMode === 6) {
+      shadowGenerator.usePercentageCloserFiltering = true
+    } else if (shadowFilterMode === 7) {
+      shadowGenerator.useContactHardeningShadow = true
+    }
+  }))
+
+  shadowBody.push(createSlider('\u9634\u5f71\u900f\u660e\u5ea6', shadowGenerator.darkness, 0, 1, 0.01, (v) => { shadowGenerator.darkness = v }))
+  shadowBody.push(createSlider('Bias', shadowGenerator.bias, 0, 0.01, 0.0001, (v) => { shadowGenerator.bias = v }))
+  shadowBody.push(createSlider('\u6b63\u5e38\u504f\u7f6e', shadowGenerator.normalBias, 0, 0.1, 0.001, (v) => { shadowGenerator.normalBias = v }))
+  shadowBody.push(createSlider('\u8d28\u91cf', shadowMapSize, 512, 4096, 512, (v) => {
+    shadowMapSize = v
+    initShadowGenerator()
+  }))
+  panel.append(createModule('\u5b9e\u65f6\u9634\u5f71', shadowBody))
+
+  // --- SSAO 2 ---
+  const ssaoBody: HTMLElement[] = []
+  const ssaoToggle = createCheckbox('SSAO \u5f00\u5173', !!ssao2Pipeline, (v) => {
+    if (v) {
+      if (!ssao2Pipeline) {
+        ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera])
+      }
+    } else {
+      ssao2Pipeline?.dispose()
+      ssao2Pipeline = null
+    }
+  })
+  ssaoBody.push(ssaoToggle)
+  ssaoBody.push(createSlider('\u906e\u853d\u5f3a\u5ea6', ssao2Pipeline?.totalStrength ?? 1, 0, 3, 0.01, (v) => { if (ssao2Pipeline) ssao2Pipeline.totalStrength = v }))
+  ssaoBody.push(createSlider('\u91c7\u6837\u534a\u5f84', ssao2Pipeline?.radius ?? 2, 0.1, 10, 0.1, (v) => { if (ssao2Pipeline) ssao2Pipeline.radius = v }))
+  ssaoBody.push(createSlider('\u91c7\u6837\u6570', ssao2Pipeline?.samples ?? 8, 4, 64, 1, (v) => { if (ssao2Pipeline) ssao2Pipeline.samples = v }))
+  panel.append(createModule('SSAO 2', ssaoBody))
+
+  // --- SSR ---
+  const ssrBody: HTMLElement[] = []
+  const ssrToggle = createCheckbox('SSR \u5f00\u5173', !!ssrPipeline, (v) => {
+    if (v) {
+      if (!ssrPipeline) {
+        ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera])
+      }
+      ssrPipeline.isEnabled = true
+    } else {
+      if (ssrPipeline) ssrPipeline.isEnabled = false
+    }
+  })
+  ssrBody.push(ssrToggle)
+  ssrBody.push(createSlider('\u53cd\u5c04\u5f3a\u5ea6', ssrPipeline?.strength ?? 1, 0, 2, 0.01, (v) => { if (ssrPipeline) ssrPipeline.strength = v }))
+  ssrBody.push(createSlider('\u6700\u5927\u8ddd\u79bb', ssrPipeline?.maxDistance ?? 1000, 0, 1000, 1, (v) => { if (ssrPipeline) ssrPipeline.maxDistance = v }))
+  ssrBody.push(createSlider('\u7c97\u7cd9\u5ea6', ssrPipeline?.roughnessFactor ?? 0.2, 0, 1, 0.01, (v) => { if (ssrPipeline) ssrPipeline.roughnessFactor = v }))
+  panel.append(createModule('SSR', ssrBody))
+}
+
+const renderBakePanel = (panel: HTMLElement) => {
+  const uploadRow = document.createElement('div')
+  uploadRow.className = 'tech-row'
+  const uploadLabel = document.createElement('span')
+  uploadLabel.className = 'tech-label'
+  uploadLabel.textContent = '\u5149\u7167\u8d34\u56fe'
+  const uploadBtn = document.createElement('button')
+  uploadBtn.className = 'tech-upload-btn'
+  uploadBtn.textContent = 'Lightmap Upload'
+  const fileInput = document.createElement('input')
+  fileInput.type = 'file'
+  fileInput.accept = '.png,.jpg,.exr,.hdr'
+  fileInput.hidden = true
+  uploadBtn.addEventListener('click', () => fileInput.click())
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0]
+    if (!file) return
+    const url = URL.createObjectURL(file)
+    const texture = new Texture(url, scene)
+    scene.materials.forEach((mat) => {
+      if (mat instanceof PBRMaterial) {
+        mat.lightmapTexture = texture
+      }
+    })
+    fileInput.value = ''
+  })
+  uploadRow.append(uploadLabel, uploadBtn, fileInput)
+  panel.append(createModule('\u5149\u7167\u8d34\u56fe\u69fd\u4f4d', [uploadRow]))
+
+  const bakeBody: HTMLElement[] = []
+  bakeBody.push(createSlider('\u5149\u7167\u8d34\u56fe\u5f3a\u5ea6', 1, 0, 2, 0.01, (v) => {
+    scene.materials.forEach((mat) => {
+      if (mat instanceof PBRMaterial && mat.lightmapTexture) {
+        mat.lightmapTexture.level = v
+      }
+    })
+  }))
+  panel.append(createModule('\u70d8\u70e4\u5149\u5f71\u5fae\u8c03', bakeBody, false))
+}
+
+let techPanelCache: {
+  panel: HTMLElement
+  subTabs: HTMLElement
+  realtimePanel: HTMLElement
+  bakePanel: HTMLElement
+} | null = null
+
 const renderTechPanel = () => {
   sceneOutline.textContent = ''
 
-  const panel = document.createElement('div')
-  panel.className = 'tech-panel'
+  if (!techPanelCache) {
+    const panel = document.createElement('div')
+    panel.className = 'tech-panel'
 
-  const subTabs = document.createElement('div')
-  subTabs.className = 'tech-sub-tabs'
+    const subTabs = document.createElement('div')
+    subTabs.className = 'tech-sub-tabs'
 
-  const tabs = ['\u5b9e\u65f6\u6e32\u67d3', '\u6a21\u578b\u70d8\u70e4']
-  tabs.forEach((label) => {
-    const btn = document.createElement('button')
-    btn.className = 'tech-sub-tab'
-    btn.textContent = label
-    btn.ariaSelected = String(label === techActiveSubTab)
-    btn.addEventListener('click', () => {
-      techActiveSubTab = label
-      renderTechPanel()
+    const realtimePanel = document.createElement('div')
+    const bakePanel = document.createElement('div')
+
+    const tabs = ['\u5b9e\u65f6\u6e32\u67d3', '\u6a21\u578b\u70d8\u70e4']
+    tabs.forEach((label) => {
+      const btn = document.createElement('button')
+      btn.className = 'tech-sub-tab'
+      btn.textContent = label
+      btn.ariaSelected = String(label === techActiveSubTab)
+      btn.addEventListener('click', () => {
+        try {
+          if (label === '\u6a21\u578b\u70d8\u70e4') {
+            disableRealtimeEffects()
+          } else {
+            enableRealtimeEffects()
+          }
+        } catch (e) {
+          console.error('Tech mode switch error', e)
+        }
+        techActiveSubTab = label
+        subTabs.querySelectorAll('.tech-sub-tab').forEach((b) => {
+          ;(b as HTMLElement).ariaSelected = String((b as HTMLElement).textContent === label)
+        })
+        realtimePanel.hidden = label !== '\u5b9e\u65f6\u6e32\u67d3'
+        bakePanel.hidden = label !== '\u6a21\u578b\u70d8\u70e4'
+      })
+      subTabs.append(btn)
     })
-    subTabs.append(btn)
-  })
 
-  const content = document.createElement('div')
-  content.className = 'tech-content'
-  content.textContent = techActiveSubTab
+    renderRealtimePanel(realtimePanel)
+    renderBakePanel(bakePanel)
 
-  panel.append(subTabs, content)
-  sceneOutline.append(panel)
+    if (techActiveSubTab !== '\u5b9e\u65f6\u6e32\u67d3') realtimePanel.hidden = true
+    if (techActiveSubTab !== '\u6a21\u578b\u70d8\u70e4') bakePanel.hidden = true
+
+    panel.append(subTabs, realtimePanel, bakePanel)
+    sceneOutline.append(panel)
+    techPanelCache = { panel, subTabs, realtimePanel, bakePanel }
+  } else {
+    techPanelCache.subTabs.querySelectorAll('.tech-sub-tab').forEach((b) => {
+      ;(b as HTMLElement).ariaSelected = String((b as HTMLElement).textContent === techActiveSubTab)
+    })
+    techPanelCache.realtimePanel.hidden = techActiveSubTab !== '\u5b9e\u65f6\u6e32\u67d3'
+    techPanelCache.bakePanel.hidden = techActiveSubTab !== '\u6a21\u578b\u70d8\u70e4'
+    sceneOutline.append(techPanelCache.panel)
+  }
 }
 
 const setOutline = (meshNodes: OutlineNode[] = []) => {

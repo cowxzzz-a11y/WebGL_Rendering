@@ -649,13 +649,129 @@ input[type="radio"]:checked + .tab {
   color: #d6e2ed;
 }
 
-.tech-content {
-  padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
+.outliner-tree {
+  padding-top: 4px;
+}
+
+.tech-module {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.tech-module-header {
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #d6e2ed;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.tech-module-header:hover {
+  background: rgba(106, 144, 178, 0.15);
+}
+
+.tech-module-body {
+  padding: 6px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tech-module-body[hidden] {
+  display: none;
+}
+
+.tech-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.tech-row-checkbox {
+  cursor: pointer;
+}
+
+.tech-row-checkbox input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #8cb2cf;
+}
+
+.tech-row-checkbox span {
+  color: #c8d0ce;
   font-size: 12px;
+}
+
+.tech-label {
+  flex: 0 0 auto;
+  width: 64px;
   color: #aab4b1;
-  min-height: 60px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tech-value {
+  flex: 0 0 auto;
+  width: 32px;
+  color: #c8d0ce;
+  font-size: 11px;
+  text-align: right;
+}
+
+.tech-row input[type='range'] {
+  flex: 1;
+  height: 4px;
+  margin: 0;
+  accent-color: #8cb2cf;
+  cursor: pointer;
+}
+
+.tech-row input[type='color'] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tech-select {
+  flex: 1;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  background: rgba(12, 14, 14, 0.65);
+  color: #e7ecea;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+}
+
+.tech-upload-btn {
+  flex: 1;
+  height: 28px;
+  border: 1px dashed rgba(151, 186, 209, 0.34);
+  border-radius: 4px;
+  background: rgba(92, 123, 155, 0.15);
+  color: #d6e2ed;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.tech-upload-btn:hover {
+  background: rgba(106, 144, 178, 0.3);
 }
 
 @media (max-width: 760px) {
