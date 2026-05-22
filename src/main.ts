@@ -24,8 +24,12 @@ import { KhronosTextureContainer2 } from '@babylonjs/core/Misc/khronosTextureCon
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
 import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline'
 import { SSRRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssrRenderingPipeline'
+import { GeometryBufferRenderer } from '@babylonjs/core/Rendering/geometryBufferRenderer'
+import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
 import { ImportMeshAsync } from '@babylonjs/core/Loading/sceneLoader'
 import { Scene } from '@babylonjs/core/scene'
+import { EngineInstrumentation } from '@babylonjs/core/Instrumentation/engineInstrumentation'
+import { SceneInstrumentation } from '@babylonjs/core/Instrumentation/sceneInstrumentation'
 import { configStorageKey } from './viewerConfig'
 import type { ColorConfig, VectorConfig, ViewerConfig } from './viewerConfig'
 import mscBasisTranscoderJsUrl from '@babylonjs/ktx2decoder/wasm/msc_basis_transcoder.js?url'
@@ -161,16 +165,23 @@ if (!app) {
 app.innerHTML = `
   <canvas id="renderCanvas" aria-label="Babylon building render"></canvas>
   <div class="share-actions" data-url="${shareUrl}" data-title="${shareTitle}" data-desc="${shareDescription}">
-    <button id="importButton" class="share-button import-button-icon" type="button" aria-label="\u5bfc\u5165 GLB" title="\u5bfc\u5165 GLB">
+    <button id="frameToggle" class="frame-toggle-button share-button" type="button" aria-label="性能指标" title="性能指标">
+      <svg viewBox="0 0 100 80" aria-hidden="true" width="24" height="20">
+        <rect x="25" y="45" width="10" height="20" rx="4" fill="currentColor" />
+        <rect x="42" y="20" width="10" height="45" rx="4" fill="currentColor" />
+        <rect x="59" y="34" width="10" height="31" rx="4" fill="currentColor" />
+      </svg>
+    </button>
+    <button id="importButton" class="import-button-icon share-button" type="button" aria-label="导入 GLB" title="导入 GLB">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" />
       </svg>
     </button>
     <div id="importModePopup" class="import-mode-popup" hidden>
-      <button type="button" data-mode="replace">\u66ff\u6362</button>
-      <button type="button" data-mode="insert">\u7f6e\u5165</button>
+      <button type="button" data-mode="replace">替换</button>
+      <button type="button" data-mode="insert">置入</button>
     </div>
-    <button id="shareWechat" class="share-button" type="button" aria-label="\u5fae\u4fe1\u5206\u4eab" title="\u5fae\u4fe1\u5206\u4eab">
+    <button id="shareWechat" class="share-button" type="button" aria-label="微信分享" title="微信分享">
       <svg viewBox="0 0 1024 1024" aria-hidden="true">
         <path d="M690.1 377.4c5.9 0 11.8.2 17.6.5-24.4-128.7-158.3-227.1-319.9-227.1C209 150.8 64 270.8 64 420.2c0 81.1 43.6 154.2 111.9 203.6l-29.5 88.3 99.4-49.7c37.4 9.8 75.2 14.8 105 14.8 11.1 0 21.9-1 32.5-2.4C377 637.9 369.6 598.9 369.6 558.2c0-99.8 88-180.8 320.5-180.8zM445.8 276c21.2 0 36.8 15.6 36.8 36.8s-15.6 36.8-36.8 36.8-36.8-15.6-36.8-36.8 15.7-36.8 36.8-36.8zm-159.2 73.6c-21.2 0-36.8-15.6-36.8-36.8s15.6-36.8 36.8-36.8 36.8 15.6 36.8 36.8-15.6 36.8-36.8 36.8z" />
         <path d="M912 558.2c0-122.7-122.5-222.5-273.2-222.5-160.1 0-273.2 99.8-273.2 222.5s113.1 222.5 273.2 222.5c31.4 0 62.8-9.8 94.2-19.6l80.6 49.7-19.6-78.5C862 693.4 912 631.7 912 558.2zM554 534.4c-15.6 0-29.5-13.9-29.5-29.5s13.9-29.5 29.5-29.5 29.5 13.9 29.5 29.5-13.9 29.5-29.5 29.5zm185.8 0c-15.6 0-29.5-13.9-29.5-29.5s13.9-29.5 29.5-29.5 29.5 13.9 29.5 29.5-13.9 29.5-29.5 29.5z" />
@@ -196,7 +207,16 @@ app.innerHTML = `
     <div id="shareQrPopup" class="share-qr-popup" hidden>
       <canvas id="shareQrCanvas" aria-label="\u5fae\u4fe1\u5206\u4eab\u4e8c\u7ef4\u7801"></canvas>
       <p>\u6253\u5f00\u5fae\u4fe1\u626b\u4e00\u626b\u5206\u4eab</p>
-      <button id="shareQrClose" class="share-qr-close" type="button">\u5173\u95ed</button>
+      <button id="shareQrClose" class="share-qr-close" type="button">关闭</button>
+    </div>
+  </div>
+  <div id="frameOverlay" class="frame-overlay">
+    <div class="frame-overlay-content">
+      <header class="frame-overlay-header">
+        <h2>性能指标</h2>
+        <button id="frameOverlayClose" class="frame-overlay-close" type="button">&times;</button>
+      </header>
+      <div id="frameGrid" class="frame-grid"></div>
     </div>
   </div>
 `
@@ -218,6 +238,10 @@ const detailPanel = document.querySelector<HTMLElement>('#detailPanel')
 const glbImportInput = document.querySelector<HTMLInputElement>('#glbImportInput')
 const importButton = document.querySelector<HTMLButtonElement>('#importButton')
 const importModePopup = document.querySelector<HTMLDivElement>('#importModePopup')
+const frameToggle = document.querySelector<HTMLButtonElement>('#frameToggle')
+const frameOverlay = document.querySelector<HTMLDivElement>('#frameOverlay')
+const frameOverlayClose = document.querySelector<HTMLButtonElement>('#frameOverlayClose')
+const frameGrid = document.querySelector<HTMLDivElement>('#frameGrid')
 
 if (
   !canvas ||
@@ -236,12 +260,16 @@ if (
   !detailPanel ||
   !glbImportInput ||
   !importButton ||
-  !importModePopup
+  !importModePopup ||
+  !frameToggle ||
+  !frameOverlay ||
+  !frameOverlayClose ||
+  !frameGrid
 ) {
   throw new Error('Scene elements were not created.')
 }
 
-let activeTabId = 'outline'
+let activeTabId = 'tech'
 let selectedDetailId: string | null = null
 let currentMeshNodes: OutlineNode[] = []
 let importedFileName = '\u672a\u5bfc\u5165'
@@ -447,17 +475,22 @@ const disableRealtimeEffects = () => {
   if (ssrPipeline) ssrPipeline.isEnabled = false
 }
 
+let geometryBufferRenderer: GeometryBufferRenderer | null = null
+
 const enableRealtimeEffects = () => {
   sunLight.intensity = savedSunIntensity
   const map = shadowGenerator.getShadowMap()
   if (map) map.renderList = [...importedMeshes]
+  if (!geometryBufferRenderer) {
+    geometryBufferRenderer = scene.enableGeometryBufferRenderer()
+  }
   if (!ssao2Pipeline) {
-    ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera])
+    ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera], geometryBufferRenderer ?? true)
   } else {
     ssao2Pipeline.totalStrength = 1
   }
   if (!ssrPipeline) {
-    ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera])
+    ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera], true)
   } else {
     ssrPipeline.isEnabled = true
   }
@@ -630,14 +663,17 @@ const renderRealtimePanel = (panel: HTMLElement) => {
 
   // --- SSAO 2 ---
   const ssaoBody: HTMLElement[] = []
-  const ssaoToggle = createCheckbox('SSAO \u5f00\u5173', !!ssao2Pipeline, (v) => {
+  const ssaoToggle = createCheckbox('SSAO \u5f00\u5173', ssao2Pipeline ? ssao2Pipeline.totalStrength > 0 : false, (v) => {
     if (v) {
       if (!ssao2Pipeline) {
-        ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera])
+        if (!geometryBufferRenderer) {
+          geometryBufferRenderer = scene.enableGeometryBufferRenderer()
+        }
+        ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera], geometryBufferRenderer ?? true)
       }
+      ssao2Pipeline.totalStrength = 1
     } else {
-      ssao2Pipeline?.dispose()
-      ssao2Pipeline = null
+      if (ssao2Pipeline) ssao2Pipeline.totalStrength = 0
     }
   })
   ssaoBody.push(ssaoToggle)
@@ -648,10 +684,10 @@ const renderRealtimePanel = (panel: HTMLElement) => {
 
   // --- SSR ---
   const ssrBody: HTMLElement[] = []
-  const ssrToggle = createCheckbox('SSR \u5f00\u5173', !!ssrPipeline, (v) => {
+  const ssrToggle = createCheckbox('SSR \u5f00\u5173', ssrPipeline ? ssrPipeline.isEnabled : false, (v) => {
     if (v) {
       if (!ssrPipeline) {
-        ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera])
+        ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera], true)
       }
       ssrPipeline.isEnabled = true
     } else {
@@ -751,6 +787,9 @@ const renderTechPanel = () => {
       subTabs.append(btn)
     })
 
+    if (techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3') {
+      enableRealtimeEffects()
+    }
     renderRealtimePanel(realtimePanel)
     renderBakePanel(bakePanel)
 
@@ -1063,8 +1102,6 @@ const updateFocusAnimation = () => {
   }
 }
 
-setOutline()
-
 const engine = new Engine(canvas, true, {
   antialias: true,
   preserveDrawingBuffer: true,
@@ -1245,6 +1282,7 @@ pipeline.sharpenEnabled = false
 
 let importedMeshes: AbstractMesh[] = []
 initShadowGenerator()
+setOutline()
 let importedMaterialTotal = 0
 let currentModelRoots: TransformNode[] = []
 let importedFileNames: string[] = []
@@ -2421,12 +2459,87 @@ loadDefaultModels().catch((error) => {
   setStatus('Failed to load assets GLB files')
 })
 
+let engineInstrumentation: EngineInstrumentation | undefined
+let sceneInstrumentation: SceneInstrumentation | undefined
+try {
+  engineInstrumentation = new EngineInstrumentation(engine)
+  engineInstrumentation.captureGPUFrameTime = true
+  engineInstrumentation.captureShaderCompilationTime = true
+} catch {
+  // GPU timer not supported
+}
+try {
+  sceneInstrumentation = new SceneInstrumentation(scene)
+  sceneInstrumentation.captureActiveMeshesEvaluationTime = true
+  sceneInstrumentation.captureRenderTargetsRenderTime = true
+  sceneInstrumentation.captureFrameTime = true
+  sceneInstrumentation.captureRenderTime = true
+  sceneInstrumentation.captureInterFrameTime = true
+  sceneInstrumentation.captureParticlesRenderTime = true
+  sceneInstrumentation.captureAnimationsTime = true
+  sceneInstrumentation.captureCameraRenderTime = true
+} catch {
+  // scene instrumentation not supported
+}
+
+const cnt = (v: number | undefined, d: number) => v != null ? String(Math.round(v * 10) / 10) : String(d)
+const frameMetrics: { label: string; get: () => string }[] = [
+  { label: 'FPS', get: () => String(Math.round(engine.getFps())) },
+  { label: '帧时间', get: () => cnt(sceneInstrumentation?.frameTimeCounter.current, 0) + ' ms' },
+  { label: '渲染时间', get: () => cnt(sceneInstrumentation?.renderTimeCounter.current, 0) + ' ms' },
+  { label: '间隔时间', get: () => cnt(sceneInstrumentation?.interFrameTimeCounter.current, 0) + ' ms' },
+  { label: '活跃网格', get: () => String(scene.getActiveMeshes().length) + ' / ' + String(scene.meshes.length) },
+  { label: '网格评估', get: () => cnt(sceneInstrumentation?.activeMeshesEvaluationTimeCounter.current, 0) + ' ms' },
+  { label: '渲染目标', get: () => cnt(sceneInstrumentation?.renderTargetsRenderTimeCounter.current, 0) + ' ms' },
+  { label: '相机渲染', get: () => cnt(sceneInstrumentation?.cameraRenderTimeCounter.current, 0) + ' ms' },
+  { label: '动画时间', get: () => cnt(sceneInstrumentation?.animationsTimeCounter.current, 0) + ' ms' },
+  { label: 'GPU帧时间', get: () => cnt(engineInstrumentation?.gpuFrameTimeCounter.current, 0) + ' ms' },
+  { label: '着色编译', get: () => cnt(engineInstrumentation?.shaderCompilationTimeCounter.current, 0) + ' ms' },
+  { label: '着色次数', get: () => String(engineInstrumentation?.shaderCompilationTimeCounter.total ?? 0) },
+  { label: 'MRT/纹理', get: () => {
+    const caps = engine.getCaps()
+    return String(caps.maxDrawBuffers ?? 'N/A') + ' / ' + String(caps.maxCombinedTexturesImageUnits ?? 'N/A')
+  }},
+]
+
+let frameOverlayVisible = false
+
+const updateFrameGrid = () => {
+  frameGrid.textContent = ''
+  for (const metric of frameMetrics) {
+    const row = document.createElement('div')
+    row.className = 'frame-metric'
+    const label = document.createElement('span')
+    label.className = 'frame-metric-label'
+    label.textContent = metric.label
+    const value = document.createElement('span')
+    value.className = 'frame-metric-value'
+    value.textContent = metric.get()
+    row.append(label, value)
+    frameGrid.append(row)
+  }
+}
+
+frameToggle.addEventListener('click', () => {
+  frameOverlayVisible = !frameOverlayVisible
+  frameOverlay.classList.toggle('frame-overlay-open', frameOverlayVisible)
+  frameToggle.classList.toggle('frame-toggle-active', frameOverlayVisible)
+  if (frameOverlayVisible) updateFrameGrid()
+})
+
+frameOverlayClose.addEventListener('click', () => {
+  frameOverlayVisible = false
+  frameOverlay.classList.remove('frame-overlay-open')
+  frameToggle.classList.remove('frame-toggle-active')
+})
+
 engine.runRenderLoop(() => {
   try {
     updateKeyboardNavigation()
     updateFocusAnimation()
     updateSelectionBox()
     updateCameraDepthRange()
+    if (frameOverlayVisible) updateFrameGrid()
   } catch (error) {
     console.error(error)
     pressedKeys.clear()
