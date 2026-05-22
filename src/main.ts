@@ -158,6 +158,15 @@ if (!app) {
 app.innerHTML = `
   <canvas id="renderCanvas" aria-label="Babylon building render"></canvas>
   <div class="share-actions" data-url="${shareUrl}" data-title="${shareTitle}" data-desc="${shareDescription}">
+    <button id="importButton" class="share-button import-button-icon" type="button" aria-label="\u5bfc\u5165 GLB" title="\u5bfc\u5165 GLB">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" />
+      </svg>
+    </button>
+    <div id="importModePopup" class="import-mode-popup" hidden>
+      <button type="button" data-mode="replace">\u66ff\u6362</button>
+      <button type="button" data-mode="insert">\u7f6e\u5165</button>
+    </div>
     <button id="shareWechat" class="share-button" type="button" aria-label="\u5fae\u4fe1\u5206\u4eab" title="\u5fae\u4fe1\u5206\u4eab">
       <svg viewBox="0 0 1024 1024" aria-hidden="true">
         <path d="M690.1 377.4c5.9 0 11.8.2 17.6.5-24.4-128.7-158.3-227.1-319.9-227.1C209 150.8 64 270.8 64 420.2c0 81.1 43.6 154.2 111.9 203.6l-29.5 88.3 99.4-49.7c37.4 9.8 75.2 14.8 105 14.8 11.1 0 21.9-1 32.5-2.4C377 637.9 369.6 598.9 369.6 558.2c0-99.8 88-180.8 320.5-180.8zM445.8 276c21.2 0 36.8 15.6 36.8 36.8s-15.6 36.8-36.8 36.8-36.8-15.6-36.8-36.8 15.7-36.8 36.8-36.8zm-159.2 73.6c-21.2 0-36.8-15.6-36.8-36.8s15.6-36.8 36.8-36.8 36.8 15.6 36.8 36.8-15.6 36.8-36.8 36.8z" />
@@ -204,6 +213,8 @@ const resetConfigButton = document.querySelector<HTMLButtonElement>('#resetConfi
 const sceneOutline = document.querySelector<HTMLElement>('#sceneOutline')
 const detailPanel = document.querySelector<HTMLElement>('#detailPanel')
 const glbImportInput = document.querySelector<HTMLInputElement>('#glbImportInput')
+const importButton = document.querySelector<HTMLButtonElement>('#importButton')
+const importModePopup = document.querySelector<HTMLDivElement>('#importModePopup')
 
 if (
   !canvas ||
@@ -220,7 +231,9 @@ if (
   !resetConfigButton ||
   !sceneOutline ||
   !detailPanel ||
-  !glbImportInput
+  !glbImportInput ||
+  !importButton ||
+  !importModePopup
 ) {
   throw new Error('Scene elements were not created.')
 }
@@ -353,69 +366,97 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
     ],
   },
   {
-    id: 'import',
-    label: '\u5bfc\u5165',
+    id: 'tech',
+    label: '\u6280\u672f\u6d41',
     nodes: [],
   },
 ]
 
-const renderPanelTabs = (tabs: PanelTab[]) => {
-  sceneTabs.textContent = ''
-  tabs.forEach((tab) => {
-    const button = document.createElement('button')
+let cachedTabsContainer: HTMLElement | null = null
 
-    button.className = 'outliner-tab'
-    button.type = 'button'
-    button.textContent = tab.label
-    button.ariaSelected = String(tab.id === activeTabId)
-    button.addEventListener('click', () => {
-      activeTabId = tab.id
-      setOutline(currentMeshNodes)
+const renderPanelTabs = (tabs: PanelTab[]) => {
+  let container = cachedTabsContainer
+
+  if (!container || !sceneTabs.contains(container)) {
+    sceneTabs.textContent = ''
+
+    container = document.createElement('div')
+    container.className = 'tabs'
+
+    tabs.forEach((tab) => {
+      const input = document.createElement('input')
+      input.type = 'radio'
+      input.id = `tab-${tab.id}`
+      input.name = 'tabs'
+      input.checked = tab.id === activeTabId
+      input.addEventListener('change', () => {
+        if (input.checked) {
+          activeTabId = tab.id
+          setOutline(currentMeshNodes)
+        }
+      })
+      const label = document.createElement('label')
+      label.className = 'tab'
+      label.htmlFor = `tab-${tab.id}`
+      label.textContent = tab.label
+      container!.append(input, label)
     })
-    sceneTabs.append(button)
+
+    const glider = document.createElement('span')
+    glider.className = 'glider'
+    container!.append(glider)
+
+    sceneTabs.append(container!)
+    cachedTabsContainer = container
+  }
+
+  const radios = container.querySelectorAll<HTMLInputElement>('input[type="radio"]')
+  tabs.forEach((tab, i) => {
+    radios[i].checked = tab.id === activeTabId
   })
+
+  const updateGlider = () => {
+    const labels = container.querySelectorAll<HTMLLabelElement>('.tab')
+    const glider = container.querySelector<HTMLSpanElement>('.glider')!
+    const activeIndex = tabs.findIndex((t) => t.id === activeTabId)
+    const activeLabel = labels[activeIndex]
+    if (activeLabel) {
+      glider.style.width = `${activeLabel.offsetWidth}px`
+      glider.style.transform = `translateX(${activeLabel.offsetLeft}px)`
+    }
+  }
+
+  requestAnimationFrame(updateGlider)
 }
 
-const renderImportPanel = () => {
+let techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
+const renderTechPanel = () => {
   sceneOutline.textContent = ''
 
   const panel = document.createElement('div')
-  const title = document.createElement('div')
-  const fileRow = document.createElement('div')
-  const fileLabel = document.createElement('span')
-  const fileName = document.createElement('strong')
-  const modeRow = document.createElement('label')
-  const modeText = document.createElement('span')
-  const replaceCheckbox = document.createElement('input')
-  const importButton = document.createElement('button')
-  const note = document.createElement('p')
+  panel.className = 'tech-panel'
 
-  panel.className = 'import-panel'
-  title.className = 'import-title'
-  title.textContent = 'GLB'
-  fileRow.className = 'import-file-row'
-  fileLabel.textContent = '\u5f53\u524d'
-  fileName.textContent = importedFileName
-  modeRow.className = 'import-mode-row'
-  modeText.textContent = '\u5bfc\u5165\u65f6\u66ff\u6362\u5f53\u524d\u6a21\u578b'
-  replaceCheckbox.type = 'checkbox'
-  replaceCheckbox.checked = importShouldReplace
-  replaceCheckbox.addEventListener('change', () => {
-    importShouldReplace = replaceCheckbox.checked
-  })
-  importButton.className = 'import-button'
-  importButton.type = 'button'
-  importButton.textContent = '\u5bfc\u5165 GLB'
-  importButton.addEventListener('click', () => {
-    glbImportInput.value = ''
-    glbImportInput.click()
-  })
-  note.className = 'import-note'
-  note.textContent = '\u9ed8\u8ba4\u4e0e\u5f53\u524d\u6a21\u578b\u5171\u5b58\uff1b\u52fe\u9009\u66ff\u6362\u540e\uff0c\u5bfc\u5165\u65f6\u4f1a\u5148\u6e05\u6389\u5df2\u6709 GLB\u3002'
+  const subTabs = document.createElement('div')
+  subTabs.className = 'tech-sub-tabs'
 
-  fileRow.append(fileLabel, fileName)
-  modeRow.append(replaceCheckbox, modeText)
-  panel.append(title, fileRow, modeRow, importButton, note)
+  const tabs = ['\u5b9e\u65f6\u6e32\u67d3', '\u6a21\u578b\u70d8\u70e4']
+  tabs.forEach((label) => {
+    const btn = document.createElement('button')
+    btn.className = 'tech-sub-tab'
+    btn.textContent = label
+    btn.ariaSelected = String(label === techActiveSubTab)
+    btn.addEventListener('click', () => {
+      techActiveSubTab = label
+      renderTechPanel()
+    })
+    subTabs.append(btn)
+  })
+
+  const content = document.createElement('div')
+  content.className = 'tech-content'
+  content.textContent = techActiveSubTab
+
+  panel.append(subTabs, content)
   sceneOutline.append(panel)
 }
 
@@ -427,8 +468,8 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
   renderPanelTabs(tabs)
   sceneOutline.textContent = ''
 
-  if (activeTab.id === 'import') {
-    renderImportPanel()
+  if (activeTab.id === 'tech') {
+    renderTechPanel()
     return
   }
 
@@ -1333,6 +1374,26 @@ glbImportInput.addEventListener('change', () => {
     .finally(() => {
       glbImportInput.value = ''
     })
+})
+
+importButton.addEventListener('click', (event) => {
+  event.stopPropagation()
+  importModePopup.hidden = !importModePopup.hidden
+})
+
+importModePopup.querySelectorAll('button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    importShouldReplace = btn.dataset.mode === 'replace'
+    importModePopup.hidden = true
+    glbImportInput.value = ''
+    glbImportInput.click()
+  })
+})
+
+document.addEventListener('click', (event) => {
+  if (!importButton.contains(event.target as Node) && !importModePopup.contains(event.target as Node)) {
+    importModePopup.hidden = true
+  }
 })
 
 const numberItem = (
