@@ -2,6 +2,8 @@ export type VectorConfig = [number, number, number]
 export type ColorConfig = [number, number, number]
 
 export type ViewerConfig = {
+  configVersion?: number
+  modelSignature?: string | null
   camera: {
     fov: number
     radius: number

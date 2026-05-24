@@ -26,8 +26,9 @@ import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipe
 import { SSRRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssrRenderingPipeline'
 import { GeometryBufferRenderer } from '@babylonjs/core/Rendering/geometryBufferRenderer'
 import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
+import '@babylonjs/core/Rendering/prePassRendererSceneComponent'
 import { BaseTexture } from '@babylonjs/core/Materials/Textures/baseTexture'
-import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
+import { Material } from '@babylonjs/core/Materials/material'
 import { MultiMaterial } from '@babylonjs/core/Materials/multiMaterial'
 import { ImportMeshAsync } from '@babylonjs/core/Loading/sceneLoader'
 import { Scene } from '@babylonjs/core/scene'
@@ -126,6 +127,7 @@ type ArcRotateTouchInput = {
 const shareTitle = '3D \u5efa\u7b51\u6a21\u578b\u67e5\u770b\u5668'
 const shareDescription = '\u5728\u7ebf\u67e5\u770b\u548c\u5206\u4eab 3D \u5efa\u7b51\u6a21\u578b\uff0c\u652f\u6301\u706f\u5149\u3001\u6750\u8d28\u548c\u6a21\u578b\u5bfc\u5165\u8c03\u8282\u3002'
 const shareUrl = 'https://3d.puffina.xyz/'
+const viewerConfigVersion = 2
 const desktopPanningSensibility = 45
 const mobilePanningSensibility = 18
 const defaultModelUrls = import.meta.glob<string>('../assets/target.glb', {
@@ -465,9 +467,82 @@ const renderPanelTabs = (tabs: PanelTab[]) => {
 let techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
 let ssao2Pipeline: SSAO2RenderingPipeline | null = null
 let ssrPipeline: SSRRenderingPipeline | null = null
+let ssaoEnabledPreference = true
+let ssrEnabledPreference = true
 let shadowFilterMode = 6
 let savedSunIntensity = 0.62
 let savedLightmaps = new WeakMap<PBRMaterial, BaseTexture>()
+let geometryBufferRenderer: GeometryBufferRenderer | null = null
+
+const ensureGeometryBufferRenderer = (enableReflectivity = false) => {
+  geometryBufferRenderer ??= scene.enableGeometryBufferRenderer()
+
+  if (geometryBufferRenderer) {
+    geometryBufferRenderer.useSpecificClearForDepthTexture = true
+
+    if (enableReflectivity) {
+      geometryBufferRenderer.enableReflectivity = true
+    }
+  }
+
+  return geometryBufferRenderer
+}
+
+const configureSsaoPipelineDefaults = (pipeline: SSAO2RenderingPipeline) => {
+  pipeline.maxZ = Math.max(camera.maxZ, 120)
+}
+
+const configureSsrPipelineDefaults = (pipeline: SSRRenderingPipeline) => {
+  pipeline.step = 2
+  pipeline.maxSteps = 512
+  pipeline.thickness = 1
+  pipeline.strength = 1
+  pipeline.roughnessFactor = 0.2
+  pipeline.enableAutomaticThicknessComputation = true
+  pipeline.backfaceForceDepthWriteTransparentMeshes = false
+  pipeline.attenuateBackfaceReflection = true
+
+  if (scene.environmentTexture instanceof CubeTexture) {
+    pipeline.environmentTexture = scene.environmentTexture
+  }
+}
+
+const ensureSsaoPipeline = () => {
+  const renderer = ensureGeometryBufferRenderer()
+  updateGBufferRenderList()
+
+  if (!ssao2Pipeline) {
+    ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera], renderer ?? true)
+  }
+
+  configureSsaoPipelineDefaults(ssao2Pipeline)
+  return ssao2Pipeline
+}
+
+const ensureSsrPipeline = () => {
+  ensureGeometryBufferRenderer(true)
+  updateGBufferRenderList()
+
+  if (!ssrPipeline) {
+    ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera], true)
+  }
+
+  configureSsrPipelineDefaults(ssrPipeline)
+  return ssrPipeline
+}
+
+const resetRealtimePipelines = () => {
+  ssao2Pipeline?.dispose()
+  ssao2Pipeline = null
+
+  ssrPipeline?.dispose(true)
+  ssrPipeline = null
+
+  scene.disableGeometryBufferRenderer()
+  scene.disablePrePassRenderer()
+  scene.resetCachedMaterial()
+  geometryBufferRenderer = null
+}
 
 const disableRealtimeEffects = () => {
   savedSunIntensity = sunLight.intensity
@@ -483,26 +558,23 @@ const disableRealtimeEffects = () => {
 const enableRealtimeEffects = () => {
   sunLight.intensity = savedSunIntensity
   sunLight.shadowEnabled = true
-  const map = shadowGenerator.getShadowMap()
-  if (map) map.renderList = [...importedMeshes]
-  importedMeshes.forEach((m) => { m.receiveShadows = true })
-  if (!geometryBufferRenderer) {
-    geometryBufferRenderer = scene.enableGeometryBufferRenderer()
+  refreshImportedRenderingState()
+
+  if (ssaoEnabledPreference) {
+    const pipeline = ensureSsaoPipeline()
+    if (pipeline.totalStrength <= 0) {
+      pipeline.totalStrength = 1
+    }
+  } else if (ssao2Pipeline) {
+    ssao2Pipeline.totalStrength = 0
   }
-  if (!ssao2Pipeline) {
-    ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera], geometryBufferRenderer ?? true)
-    ssao2Pipeline.maxZ = Math.max(camera.maxZ, 120)
-  } else {
-    ssao2Pipeline.totalStrength = 1
+
+  if (ssrEnabledPreference) {
+    ensureSsrPipeline().isEnabled = true
+  } else if (ssrPipeline) {
+    ssrPipeline.isEnabled = false
   }
-  if (!ssrPipeline) {
-    ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera], true)
-    ssrPipeline.step = 5
-    ssrPipeline.maxSteps = 2000
-    ssrPipeline.thickness = 2
-  } else {
-    ssrPipeline.isEnabled = true
-  }
+
   scene.materials.forEach((mat) => {
     if (mat instanceof PBRMaterial && savedLightmaps.has(mat)) {
       mat.lightmapTexture = null
@@ -510,7 +582,48 @@ const enableRealtimeEffects = () => {
   })
 }
 
-let geometryBufferRenderer: GeometryBufferRenderer | null = null
+const meshFXFlags = new WeakMap<AbstractMesh, { receiveSSAO: boolean }>()
+
+const updateGBufferRenderList = () => {
+  if (!geometryBufferRenderer) return
+  const list = importedMeshes.filter((m) => (meshFXFlags.get(m)?.receiveSSAO ?? true) && !isTransparentMesh(m))
+  geometryBufferRenderer.renderList = list.length > 0 ? list : null
+}
+
+const syncImportedMaterialRenderingState = (material: PBRMaterial) => {
+  const transparent = isTransparentPbrMaterial(material)
+
+  material.needDepthPrePass = transparent
+  material.separateCullingPass = transparent
+  material.forceDepthWrite = false
+  material.twoSidedLighting = !material.backFaceCulling
+}
+
+const syncImportedMeshRenderingState = (mesh: AbstractMesh) => {
+  const transparent = isTransparentMesh(mesh)
+  const currentFlags = meshFXFlags.get(mesh)
+
+  meshFXFlags.set(mesh, {
+    receiveSSAO: transparent ? false : (currentFlags?.receiveSSAO ?? true),
+  })
+
+  mesh.renderingGroupId = transparent ? 1 : 0
+  mesh.receiveShadows = !transparent && techActiveSubTab === '实时渲染'
+}
+
+const refreshImportedRenderingState = () => {
+  const materials = new Set<PBRMaterial>()
+
+  importedMeshes.forEach((mesh) => {
+    collectPbrMaterialsFromMaterial(mesh.material, materials)
+  })
+
+  materials.forEach(syncImportedMaterialRenderingState)
+  importedMeshes.forEach(syncImportedMeshRenderingState)
+  initShadowGenerator()
+  updateGBufferRenderList()
+  flushSceneRenderCaches()
+}
 
 const disableLightmaps = () => {
   scene.materials.forEach((mat) => {
@@ -667,7 +780,7 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   const shadowToggle = createCheckbox('\u9634\u5f71\u5f00\u5173', shadowEnabled, (v) => {
     const map = shadowGenerator.getShadowMap()
     if (map) {
-      map.renderList = v ? [...importedMeshes] : []
+      map.renderList = v ? [...importedMeshes.filter((mesh) => !isTransparentMesh(mesh))] : []
     }
   })
   shadowBody.push(shadowToggle)
@@ -698,17 +811,15 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   // --- SSAO 2 ---
   const ssaoBody: HTMLElement[] = []
   const ssaoToggle = createCheckbox('SSAO \u5f00\u5173', ssao2Pipeline ? ssao2Pipeline.totalStrength > 0 : false, (v) => {
+    ssaoEnabledPreference = v
+
     if (v) {
-      if (!ssao2Pipeline) {
-        if (!geometryBufferRenderer) {
-          geometryBufferRenderer = scene.enableGeometryBufferRenderer()
-        }
-        ssao2Pipeline = new SSAO2RenderingPipeline('SSAO2', scene, { ssaoRatio: 0.5, blurRatio: 1.0 }, [camera], geometryBufferRenderer ?? true)
-      }
-      ssao2Pipeline.totalStrength = 1
+      ensureSsaoPipeline().totalStrength = 1
     } else {
       if (ssao2Pipeline) ssao2Pipeline.totalStrength = 0
     }
+
+    refreshImportedRenderingState()
   })
   ssaoBody.push(ssaoToggle)
   ssaoBody.push(createSlider('\u906e\u853d\u5f3a\u5ea6', ssao2Pipeline?.totalStrength ?? 1, 0, 3, 0.01, (v) => { if (ssao2Pipeline) ssao2Pipeline.totalStrength = v }))
@@ -741,17 +852,15 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   // --- SSR ---
   const ssrBody: HTMLElement[] = []
   const ssrToggle = createCheckbox('SSR \u5f00\u5173', ssrPipeline ? ssrPipeline.isEnabled : false, (v) => {
+    ssrEnabledPreference = v
+
     if (v) {
-      if (!ssrPipeline) {
-        ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera], true)
-        ssrPipeline.step = 5
-        ssrPipeline.maxSteps = 2000
-        ssrPipeline.thickness = 2
-      }
-      ssrPipeline.isEnabled = true
+      ensureSsrPipeline().isEnabled = true
     } else {
       if (ssrPipeline) ssrPipeline.isEnabled = false
     }
+
+    refreshImportedRenderingState()
   })
   ssrBody.push(ssrToggle)
   ssrBody.push(createSlider('\u53cd\u5c04\u5f3a\u5ea6', ssrPipeline?.strength ?? 1, 0, 2, 0.01, (v) => { if (ssrPipeline) ssrPipeline.strength = v }))
@@ -1535,7 +1644,7 @@ const initShadowGenerator = () => {
   shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH
   shadowGenerator.bias = shadowBias
   shadowGenerator.normalBias = shadowNormalBias
-  importedMeshes.forEach((mesh) => shadowGenerator.addShadowCaster(mesh))
+  importedMeshes.filter((mesh) => !isTransparentMesh(mesh)).forEach((mesh) => shadowGenerator.addShadowCaster(mesh))
 }
 
 const pipeline = new DefaultRenderingPipeline('ClassicPipeline', true, scene, [camera])
@@ -1568,6 +1677,57 @@ const lightHelperVisible = {
 }
 const lightHelperMeshes = new Map<keyof typeof lightHelperVisible, LinesMesh>()
 
+const collectPbrMaterialsFromMaterial = (material: unknown, target: Set<PBRMaterial>) => {
+  if (material instanceof PBRMaterial) {
+    target.add(material)
+    return
+  }
+
+  if (material instanceof MultiMaterial) {
+    material.subMaterials.forEach((subMaterial) => {
+      if (subMaterial instanceof PBRMaterial) {
+        target.add(subMaterial)
+      }
+    })
+  }
+}
+
+const isTransparentPbrMaterial = (material: PBRMaterial) => {
+  return (
+    material.alpha < 0.999 ||
+    material.needAlphaBlending() ||
+    material.transparencyMode === Material.MATERIAL_ALPHABLEND ||
+    material.transparencyMode === Material.MATERIAL_ALPHATESTANDBLEND ||
+    material.subSurface.isRefractionEnabled
+  )
+}
+
+const isTransparentMaterial = (material: unknown) => {
+  if (material instanceof PBRMaterial) {
+    return isTransparentPbrMaterial(material)
+  }
+
+  if (material instanceof MultiMaterial) {
+    return material.subMaterials.some((subMaterial) => subMaterial instanceof PBRMaterial && isTransparentPbrMaterial(subMaterial))
+  }
+
+  return false
+}
+
+const isTransparentMesh = (mesh: AbstractMesh) => {
+  return mesh.visibility < 0.999 || isTransparentMaterial(mesh.material)
+}
+
+const getMeshesUsingPbrMaterial = (material: PBRMaterial) => {
+  return importedMeshes.filter((mesh) => {
+    if (mesh.material === material) {
+      return true
+    }
+
+    return mesh.material instanceof MultiMaterial && mesh.material.subMaterials.includes(material)
+  })
+}
+
 const vectorToConfig = (vector: Vector3): VectorConfig => [vector.x, vector.y, vector.z]
 
 const colorToConfig = (color: Color3 | Color4): ColorConfig => [color.r, color.g, color.b]
@@ -1578,7 +1738,9 @@ const updateCameraDepthRange = () => {
 
   camera.minZ = clamp(effectiveRadius * 0.005, 0.05, 2.5)
   camera.maxZ = Math.max(effectiveSceneRadius * 20, effectiveRadius * 12, 120)
-  if (ssao2Pipeline) ssao2Pipeline.maxZ = Math.max(ssao2Pipeline.maxZ, camera.maxZ)
+  if (ssao2Pipeline) {
+    ssao2Pipeline.maxZ = Math.max(camera.maxZ, 120)
+  }
 }
 
 const assignVector = (target: Vector3, config: VectorConfig) => {
@@ -1593,9 +1755,101 @@ const assignColor3 = (target: Color3, config: ColorConfig) => {
   target.b = config[2]
 }
 
-const getMaterialKey = (material: PBRMaterial) => material.name || String(material.uniqueId)
+const getNodeIdentity = (name: string | null | undefined, fallback: string) => {
+  const normalized = name?.trim()
+  return normalized && normalized !== '__root__' ? normalized : fallback
+}
 
-const getMeshKey = (mesh: AbstractMesh) => mesh.name || String(mesh.uniqueId)
+const getMeshKey = (mesh: AbstractMesh) => {
+  const segments: string[] = []
+  let current: TransformNode | AbstractMesh | null = mesh
+
+  while (current) {
+    segments.push(getNodeIdentity(current.name, `${current.getClassName()}:${current.uniqueId}`))
+    current = current.parent instanceof TransformNode || current.parent instanceof AbstractMesh ? current.parent : null
+  }
+
+  return segments.reverse().join('/')
+}
+
+const getMaterialKey = (material: PBRMaterial) => {
+  const materialName = material.name?.trim()
+
+  if (materialName) {
+    return `name:${materialName}`
+  }
+
+  const linkedMeshes = getMeshesUsingPbrMaterial(material)
+    .map((mesh) => getMeshKey(mesh))
+    .sort()
+
+  return linkedMeshes.length > 0 ? `meshes:${linkedMeshes.join('|')}` : `id:${material.uniqueId}`
+}
+
+const getCurrentModelSignature = () => {
+  if (currentModelRoots.length === 0 || importedMeshes.length === 0) {
+    return null
+  }
+
+  const roots = currentModelRoots.map((root) => root.name).sort()
+  const meshes = importedMeshes.map((mesh) => getMeshKey(mesh)).sort()
+  return `${roots.join('|')}::${meshes.join('|')}`
+}
+
+const hasCompatibleModelSignature = (config: ViewerConfig) => {
+  const currentSignature = getCurrentModelSignature()
+  return Boolean(config.modelSignature && currentSignature && config.modelSignature === currentSignature)
+}
+
+const updateSceneBoundsFromCurrentModels = () => {
+  if (currentModelRoots.length === 0) {
+    sceneCenter = Vector3.Zero()
+    sceneRadius = 8
+    updateCameraDepthRange()
+    updateLightDirectionHelpers()
+    return
+  }
+
+  let aggregateMin = Vector3.Zero()
+  let aggregateMax = Vector3.Zero()
+  let hasBounds = false
+  const frameMeshes = importedMeshes.filter((mesh) => !isBakedFloor(mesh))
+
+  currentModelRoots.forEach((root) => {
+    root.computeWorldMatrix(true)
+
+    const bounds =
+      frameMeshes.length > 0
+        ? root.getHierarchyBoundingVectors(true, (mesh) => frameMeshes.includes(mesh))
+        : root.getHierarchyBoundingVectors(true)
+
+    if (!hasBounds) {
+      aggregateMin = bounds.min.clone()
+      aggregateMax = bounds.max.clone()
+      hasBounds = true
+      return
+    }
+
+    aggregateMin = Vector3.Minimize(aggregateMin, bounds.min)
+    aggregateMax = Vector3.Maximize(aggregateMax, bounds.max)
+  })
+
+  if (!hasBounds) {
+    return
+  }
+
+  const size = aggregateMax.subtract(aggregateMin)
+  sceneCenter = aggregateMin.add(aggregateMax).scale(0.5)
+  sceneRadius = Math.max(Math.max(size.x, size.y, size.z, 0.001) * 1.48, 4)
+  updateCameraDepthRange()
+  updateLightDirectionHelpers()
+}
+
+type ApplyViewerConfigOptions = {
+  includeCamera?: boolean
+  includeMaterials?: boolean
+  includeMeshes?: boolean
+}
 
 const getArrowLines = (direction: Vector3) => {
   const normalized = direction.lengthSquared() > 0.0001 ? direction.normalizeToNew() : new Vector3(0, -1, 0)
@@ -1683,6 +1937,8 @@ const createViewerConfig = (): ViewerConfig => {
   })
 
   return {
+    configVersion: viewerConfigVersion,
+    modelSignature: getCurrentModelSignature(),
     camera: {
       fov: camera.fov,
       radius: camera.radius,
@@ -1731,15 +1987,24 @@ const createViewerConfig = (): ViewerConfig => {
   }
 }
 
-const applyViewerConfig = (config: ViewerConfig) => {
-  camera.fov = config.camera.fov
-  camera.radius = config.camera.radius
-  camera.alpha = config.camera.alpha
-  camera.beta = config.camera.beta
-  assignVector(camera.target, config.camera.target)
-  camera.wheelPrecision = config.camera.wheelPrecision
-  camera.panningSensibility = config.camera.panningSensibility
-  tuneTouchCameraControls()
+const applyViewerConfig = (
+  config: ViewerConfig,
+  {
+    includeCamera = true,
+    includeMaterials = true,
+    includeMeshes = true,
+  }: ApplyViewerConfigOptions = {},
+) => {
+  if (includeCamera) {
+    camera.fov = config.camera.fov
+    camera.radius = config.camera.radius
+    camera.alpha = config.camera.alpha
+    camera.beta = config.camera.beta
+    assignVector(camera.target, config.camera.target)
+    camera.wheelPrecision = config.camera.wheelPrecision
+    camera.panningSensibility = config.camera.panningSensibility
+    tuneTouchCameraControls()
+  }
 
   hemiLight.intensity = config.lights.hemi.intensity
   assignColor3(hemiLight.diffuse, config.lights.hemi.diffuse)
@@ -1777,43 +2042,49 @@ const applyViewerConfig = (config: ViewerConfig) => {
   pipeline.sharpenEnabled = config.pipeline.sharpenEnabled
   pipeline.grainEnabled = config.pipeline.grainEnabled
 
-  scene.materials.forEach((material) => {
-    if (!(material instanceof PBRMaterial)) {
-      return
-    }
+  if (includeMaterials) {
+    scene.materials.forEach((material) => {
+      if (!(material instanceof PBRMaterial)) {
+        return
+      }
 
-    const materialConfig = config.materials[getMaterialKey(material)]
+      const materialConfig = config.materials[getMaterialKey(material)]
 
-    if (!materialConfig) {
-      return
-    }
+      if (!materialConfig) {
+        return
+      }
 
-    material.alpha = materialConfig.alpha
-    material.metallic = materialConfig.metallic
-    material.roughness = materialConfig.roughness
-    assignColor3(material.albedoColor, materialConfig.albedoColor)
-    assignColor3(material.emissiveColor, materialConfig.emissiveColor)
-    material.directIntensity = materialConfig.directIntensity
-    material.environmentIntensity = materialConfig.environmentIntensity
-    material.specularIntensity = materialConfig.specularIntensity
-    material.maxSimultaneousLights = materialConfig.maxSimultaneousLights
-  })
+      material.alpha = materialConfig.alpha
+      material.metallic = materialConfig.metallic
+      material.roughness = materialConfig.roughness
+      assignColor3(material.albedoColor, materialConfig.albedoColor)
+      assignColor3(material.emissiveColor, materialConfig.emissiveColor)
+      material.directIntensity = materialConfig.directIntensity
+      material.environmentIntensity = materialConfig.environmentIntensity
+      material.specularIntensity = materialConfig.specularIntensity
+      material.maxSimultaneousLights = materialConfig.maxSimultaneousLights
+    })
+  }
 
-  importedMeshes.forEach((mesh) => {
-    const meshConfig = config.meshes[getMeshKey(mesh)]
+  if (includeMeshes) {
+    importedMeshes.forEach((mesh) => {
+      const meshConfig = config.meshes[getMeshKey(mesh)]
 
-    if (!meshConfig) {
-      return
-    }
+      if (!meshConfig) {
+        return
+      }
 
-    mesh.isVisible = meshConfig.isVisible
-    mesh.visibility = meshConfig.visibility
-    mesh.receiveShadows = meshConfig.receiveShadows
-    assignVector(mesh.position, meshConfig.position)
-    assignVector(mesh.rotation, meshConfig.rotation)
-    assignVector(mesh.scaling, meshConfig.scaling)
-  })
+      mesh.isVisible = meshConfig.isVisible
+      mesh.visibility = meshConfig.visibility
+      mesh.receiveShadows = meshConfig.receiveShadows
+      assignVector(mesh.position, meshConfig.position)
+      assignVector(mesh.rotation, meshConfig.rotation)
+      assignVector(mesh.scaling, meshConfig.scaling)
+    })
+  }
 
+  updateSceneBoundsFromCurrentModels()
+  updateGBufferRenderList()
   updateLightDirectionHelpers()
 
   if (selectedDetailId) {
@@ -1839,6 +2110,22 @@ const loadStoredConfig = () => {
 }
 
 let pendingStoredConfig = loadStoredConfig()
+
+const applyPendingStoredConfig = () => {
+  if (!pendingStoredConfig) {
+    return
+  }
+
+  const canApplyModelScopedSettings = hasCompatibleModelSignature(pendingStoredConfig)
+
+  applyViewerConfig(pendingStoredConfig, {
+    includeCamera: canApplyModelScopedSettings,
+    includeMaterials: canApplyModelScopedSettings,
+    includeMeshes: canApplyModelScopedSettings,
+  })
+
+  pendingStoredConfig = null
+}
 
 const showTemporaryStatus = (message: string) => {
   setStatus(message)
@@ -2091,6 +2378,10 @@ const createMeshDetail = (mesh: AbstractMesh): DetailDescriptor => ({
         checkboxItem('\u63a5\u6536\u9634\u5f71', mesh.receiveShadows, (value) => {
           mesh.receiveShadows = value
         }),
+        checkboxItem('\u63a5\u6536 SSAO', meshFXFlags.get(mesh)?.receiveSSAO ?? true, (value) => {
+          meshFXFlags.set(mesh, { receiveSSAO: value })
+          updateGBufferRenderList()
+        }),
       ],
     },
     {
@@ -2117,6 +2408,7 @@ const createMaterialDetail = (material: PBRMaterial): DetailDescriptor => ({
       items: [
         numberItem('Alpha', material.alpha, 0, 1, 0.01, (value) => {
           material.alpha = value
+          refreshImportedRenderingState()
         }),
         numberItem('Metallic', material.metallic ?? 0, 0, 1, 0.01, (value) => {
           material.metallic = value
@@ -2129,6 +2421,10 @@ const createMaterialDetail = (material: PBRMaterial): DetailDescriptor => ({
         }),
         colorItem('Emissive', material.emissiveColor, (value) => {
           material.emissiveColor = value
+        }),
+        checkboxItem('\u53cc\u9762\u6e32\u67d3', !material.backFaceCulling, (value) => {
+          material.backFaceCulling = !value
+          refreshImportedRenderingState()
         }),
       ],
     },
@@ -2438,6 +2734,7 @@ const tuneImportedMaterial = (material: PBRMaterial) => {
   if (material.roughness === null || material.roughness === undefined) {
     material.roughness = 0.78
   }
+  syncImportedMaterialRenderingState(material)
 }
 
 const unregisterImportedDetails = () => {
@@ -2471,6 +2768,12 @@ const disposeCurrentModels = () => {
     shadowMap.renderList = []
   }
   setOutline([])
+}
+
+function flushSceneRenderCaches() {
+  scene.resetCachedMaterial()
+  scene.cleanCachedTextureBuffer()
+  engine.wipeCaches(true)
 }
 
 const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
@@ -2525,6 +2828,12 @@ const getImportProgressMessage = (
 const loadModel = async (source: string | File, fileName: string, shouldApplyStoredConfig = false, replaceExisting = false) => {
   setStatus(`\u6b63\u5728\u5bfc\u5165 ${fileName}...`)
 
+  if (replaceExisting) {
+    disposeCurrentModels()
+    resetRealtimePipelines()
+    flushSceneRenderCaches()
+  }
+
   const result = await ImportMeshAsync(source, scene, {
     pluginExtension: '.glb',
     name: fileName,
@@ -2536,26 +2845,19 @@ const loadModel = async (source: string | File, fileName: string, shouldApplySto
   const topLevelNodes = [...result.transformNodes, ...result.meshes].filter((node) => !node.parent)
   const materials = new Set<PBRMaterial>()
 
-  if (replaceExisting) {
-    disposeCurrentModels()
-  }
-
   topLevelNodes.forEach((node) => {
     node.parent = root
   })
 
   result.meshes.forEach((mesh) => {
     mesh.receiveShadows = true
-    shadowGenerator.addShadowCaster(mesh)
-
-    if (mesh.material instanceof PBRMaterial) {
-      materials.add(mesh.material)
-    }
+    collectPbrMaterialsFromMaterial(mesh.material, materials)
   })
 
   materials.forEach(tuneImportedMaterial)
   currentModelRoots.push(root)
   importedMeshes = [...importedMeshes, ...result.meshes]
+  refreshImportedRenderingState()
   importedMaterialTotal += materials.size
   importedFileNames.push(fileName)
   importedFileName = getImportedDisplayName()
@@ -2582,11 +2884,16 @@ const loadModel = async (source: string | File, fileName: string, shouldApplySto
   )
   frameHierarchy(root, result.meshes)
 
+  if (replaceExisting && techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3') {
+    enableRealtimeEffects()
+  }
+
+  flushSceneRenderCaches()
+
   defaultConfig = createViewerConfig()
 
   if (shouldApplyStoredConfig && pendingStoredConfig) {
-    applyViewerConfig(pendingStoredConfig)
-    pendingStoredConfig = null
+    applyPendingStoredConfig()
   }
 
   setStatus(null)
@@ -2720,8 +3027,7 @@ const loadDefaultModels = async () => {
   }
 
   if (importedMeshes.length > 0 && pendingStoredConfig) {
-    applyViewerConfig(pendingStoredConfig)
-    pendingStoredConfig = null
+    applyPendingStoredConfig()
   }
 
   if (failedModels.length > 0) {
