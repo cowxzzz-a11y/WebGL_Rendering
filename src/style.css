@@ -601,6 +601,11 @@ input[type="radio"]:checked + .tab {
   accent-color: #8cb2cf;
 }
 
+.detail-field select {
+  width: 100%;
+  min-width: 0;
+}
+
 .status {
   position: absolute;
   left: 18px;
@@ -692,6 +697,10 @@ input[type="radio"]:checked + .tab {
   min-height: 24px;
 }
 
+.tech-row-stack {
+  align-items: flex-start;
+}
+
 .tech-row-checkbox {
   cursor: pointer;
 }
@@ -722,6 +731,15 @@ input[type="radio"]:checked + .tab {
   color: #c8d0ce;
   font-size: 11px;
   text-align: right;
+}
+
+.tech-text {
+  flex: 1;
+  min-width: 0;
+  color: #c8d0ce;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-all;
 }
 
 .tech-row input[type='range'] {

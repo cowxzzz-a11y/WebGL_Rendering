@@ -1,5 +1,6 @@
 import './style.css'
 import '@babylonjs/core/Culling/ray'
+import '@babylonjs/core/Helpers/sceneHelpers'
 import '@babylonjs/core/Materials/Textures/Loaders/envTextureLoader'
 import '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
 import '@babylonjs/loaders/glTF'
@@ -13,6 +14,7 @@ import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture'
+import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
@@ -86,6 +88,16 @@ type DetailItem =
       label: string
       value: string
     }
+  | {
+      type: 'select'
+      label: string
+      value: string
+      options: Array<{
+        label: string
+        value: string
+      }>
+      onChange: (value: string) => void
+    }
 
 type DetailSection = {
   title: string
@@ -101,6 +113,13 @@ type DetailDescriptor = {
 type DefaultModel = {
   url: string
   fileName: string
+}
+
+type EnvironmentOption = {
+  key: string
+  label: string
+  loadUrl: () => Promise<string>
+  resolvedUrl: string | null
 }
 
 type QRCodeInstance = {
@@ -140,7 +159,24 @@ const defaultModels: DefaultModel[] = Object.entries(defaultModelUrls)
     url,
     fileName: path.replace(/^\.\.\/assets\//, 'assets/'),
   }))
-const environmentUrl = '/environment.env'
+const hdrEnvironmentUrls = import.meta.glob<string>('./assets/hdr/*.hdr', {
+  query: '?url',
+  import: 'default',
+})
+const hdrEnvironmentOptions: EnvironmentOption[] = Object.entries(hdrEnvironmentUrls)
+  .map(([path, loadUrl]) => ({
+    key: path.replace(/^\.\/assets\/hdr\//, ''),
+    label: path.replace(/^\.\/assets\/hdr\//, ''),
+    loadUrl,
+    resolvedUrl: null,
+  }))
+  .sort((a, b) => a.label.localeCompare(b.label, 'en'))
+const legacyEnvironmentUrl = '/environment.env'
+const preferredDefaultEnvironmentKey = 'studio_small_09_4k.hdr'
+const defaultEnvironmentKey =
+  hdrEnvironmentOptions.find((option) => option.key === preferredDefaultEnvironmentKey)?.key ??
+  hdrEnvironmentOptions[0]?.key ??
+  null
 
 const configureLocalKtx2Decoder = () => {
   KTX2DECODER.LiteTranscoder_UASTC_ASTC.WasmModuleURL = uastcAstcWasmUrl
@@ -278,6 +314,10 @@ let selectedDetailId: string | null = null
 let currentMeshNodes: OutlineNode[] = []
 let importedFileName = '\u672a\u5bfc\u5165'
 let importShouldReplace = false
+let selectedEnvironmentKey = defaultEnvironmentKey
+let generalActiveSubTab = '\u540e\u671f'
+let environmentBackgroundEnabled = false
+let environmentRotationY = 0
 const detailRegistry = new Map<string, () => DetailDescriptor>()
 let selectedMesh: AbstractMesh | null = null
 let selectionBox: LinesMesh | null = null
@@ -290,6 +330,44 @@ let focusAnimation:
       mesh: AbstractMesh
     }
   | null = null
+let environmentSkybox: AbstractMesh | null = null
+
+const getSelectedEnvironmentOption = () =>
+  hdrEnvironmentOptions.find((option) => option.key === selectedEnvironmentKey) ?? null
+
+const getCurrentEnvironmentLabel = () => getSelectedEnvironmentOption()?.label ?? 'environment.env'
+
+const getCurrentEnvironmentUrl = () => getSelectedEnvironmentOption()?.resolvedUrl ?? '按需加载'
+
+const degreesToRadians = (value: number) => (value * Math.PI) / 180
+
+const applyEnvironmentRotation = () => {
+  const rotation = degreesToRadians(environmentRotationY)
+  const environmentTexture = scene.environmentTexture as (BaseTexture & { rotationY?: number }) | null
+
+  if (environmentTexture && typeof environmentTexture.rotationY === 'number') {
+    environmentTexture.rotationY = rotation
+  }
+
+  const skyboxTexture = (environmentSkybox?.material as { reflectionTexture?: BaseTexture } | null | undefined)
+    ?.reflectionTexture as (BaseTexture & { rotationY?: number }) | null | undefined
+
+  if (skyboxTexture && typeof skyboxTexture.rotationY === 'number') {
+    skyboxTexture.rotationY = rotation
+  }
+}
+
+const updateEnvironmentBackground = () => {
+  environmentSkybox?.dispose()
+  environmentSkybox = null
+
+  if (!environmentBackgroundEnabled || !scene.environmentTexture) {
+    return
+  }
+
+  environmentSkybox = scene.createDefaultSkybox(scene.environmentTexture, true, 1000, 0, false)
+  applyEnvironmentRotation()
+}
 
 const setStatus = (message: string | null) => {
   status.textContent = message ?? ''
@@ -379,21 +457,9 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
     ],
   },
   {
-    id: 'world',
-    label: '\u540e\u671f',
-    nodes: [
-      {
-        name: 'World',
-        kind: 'world',
-        detailId: 'world:main',
-        open: true,
-        children: [
-          { name: 'environment.env', kind: 'texture', detailId: 'texture:environment' },
-          { name: 'KHR PBR Neutral', kind: 'color', detailId: 'color:image-processing' },
-          { name: 'ClassicPipeline', kind: 'pipeline', detailId: 'pipeline:classic' },
-        ],
-      },
-    ],
+    id: 'general',
+    label: '\u901a\u7528',
+    nodes: [],
   },
   {
     id: 'camera',
@@ -467,7 +533,10 @@ const renderPanelTabs = (tabs: PanelTab[]) => {
 let techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
 let ssao2Pipeline: SSAO2RenderingPipeline | null = null
 let ssrPipeline: SSRRenderingPipeline | null = null
-let ssaoEnabledPreference = true
+let ssaoEnabledPreference = false
+let ssaoStrength = 0.55
+let ssaoRadius = 0.75
+let ssaoSamples = 16
 let ssrEnabledPreference = true
 let shadowFilterMode = 6
 let savedSunIntensity = 0.62
@@ -490,6 +559,9 @@ const ensureGeometryBufferRenderer = (enableReflectivity = false) => {
 
 const configureSsaoPipelineDefaults = (pipeline: SSAO2RenderingPipeline) => {
   pipeline.maxZ = Math.max(camera.maxZ, 120)
+  pipeline.radius = ssaoRadius
+  pipeline.samples = ssaoSamples
+  pipeline.totalStrength = ssaoEnabledPreference ? ssaoStrength : 0
 }
 
 const configureSsrPipelineDefaults = (pipeline: SSRRenderingPipeline) => {
@@ -517,6 +589,14 @@ const ensureSsaoPipeline = () => {
 
   configureSsaoPipelineDefaults(ssao2Pipeline)
   return ssao2Pipeline
+}
+
+const applySsaoSettings = () => {
+  if (!ssao2Pipeline) {
+    return
+  }
+
+  configureSsaoPipelineDefaults(ssao2Pipeline)
 }
 
 const ensureSsrPipeline = () => {
@@ -561,10 +641,8 @@ const enableRealtimeEffects = () => {
   refreshImportedRenderingState()
 
   if (ssaoEnabledPreference) {
-    const pipeline = ensureSsaoPipeline()
-    if (pipeline.totalStrength <= 0) {
-      pipeline.totalStrength = 1
-    }
+    ensureSsaoPipeline()
+    applySsaoSettings()
   } else if (ssao2Pipeline) {
     ssao2Pipeline.totalStrength = 0
   }
@@ -734,6 +812,114 @@ const createModule = (title: string, bodyContent: HTMLElement[], open = true) =>
   return mod
 }
 
+const renderGeneralPostPanel = (panel: HTMLElement) => {
+  const postBody: HTMLElement[] = []
+
+  postBody.push(createColorInput('\u80cc\u666f\u8272', new Color3(scene.clearColor.r, scene.clearColor.g, scene.clearColor.b), (color) => {
+    scene.clearColor = new Color4(color.r, color.g, color.b, 1)
+  }))
+  postBody.push(createSlider('Exposure', imageProcessing.exposure, 0, 3, 0.01, (value) => {
+    imageProcessing.exposure = value
+    pipeline.imageProcessing.exposure = value
+  }))
+  postBody.push(createSlider('Contrast', imageProcessing.contrast, 0, 3, 0.01, (value) => {
+    imageProcessing.contrast = value
+    pipeline.imageProcessing.contrast = value
+  }))
+  postBody.push(createCheckbox('Tone Mapping', imageProcessing.toneMappingEnabled, (value) => {
+    imageProcessing.toneMappingEnabled = value
+    pipeline.imageProcessing.toneMappingEnabled = value
+  }))
+  postBody.push(createCheckbox('Dithering', imageProcessing.ditheringEnabled, (value) => {
+    imageProcessing.ditheringEnabled = value
+    pipeline.imageProcessing.ditheringEnabled = value
+  }))
+
+  panel.append(createModule('\u540e\u671f', postBody))
+}
+
+const renderGeneralEnvironmentPanel = (panel: HTMLElement) => {
+  const environmentBody: HTMLElement[] = []
+
+  if (hdrEnvironmentOptions.length > 0) {
+    environmentBody.push(
+      createSelect(
+        'HDR',
+        hdrEnvironmentOptions.map((option) => option.key),
+        selectedEnvironmentKey ?? hdrEnvironmentOptions[0].key,
+        (value) => {
+          void setSceneEnvironmentTexture(value)
+        },
+      ),
+    )
+  }
+
+  environmentBody.push(createCheckbox('显示环境背景', environmentBackgroundEnabled, (value) => {
+    environmentBackgroundEnabled = value
+    updateEnvironmentBackground()
+  }))
+  environmentBody.push(createSlider('HDR 旋转', environmentRotationY, -180, 180, 1, (value) => {
+    environmentRotationY = value
+    applyEnvironmentRotation()
+  }))
+  environmentBody.push(createSlider('\u73af\u5883\u5f3a\u5ea6', scene.environmentIntensity, 0, 2, 0.01, (value) => {
+    scene.environmentIntensity = value
+  }))
+
+  const sourceRow = document.createElement('div')
+  sourceRow.className = 'tech-row tech-row-stack'
+  const sourceLabel = document.createElement('span')
+  sourceLabel.className = 'tech-label'
+  sourceLabel.textContent = 'Source'
+  const sourceValue = document.createElement('span')
+  sourceValue.className = 'tech-text'
+  sourceValue.textContent = getCurrentEnvironmentUrl()
+  sourceRow.append(sourceLabel, sourceValue)
+  environmentBody.push(sourceRow)
+
+  panel.append(createModule('\u73af\u5883', environmentBody))
+}
+
+const renderGeneralPanel = () => {
+  sceneOutline.textContent = ''
+
+  const panel = document.createElement('div')
+  panel.className = 'tech-panel'
+
+  const subTabs = document.createElement('div')
+  subTabs.className = 'tech-sub-tabs'
+
+  const postPanel = document.createElement('div')
+  const environmentPanel = document.createElement('div')
+
+  const tabs = ['\u540e\u671f', '\u73af\u5883']
+  tabs.forEach((label) => {
+    const button = document.createElement('button')
+
+    button.className = 'tech-sub-tab'
+    button.textContent = label
+    button.ariaSelected = String(label === generalActiveSubTab)
+    button.addEventListener('click', () => {
+      generalActiveSubTab = label
+      subTabs.querySelectorAll('.tech-sub-tab').forEach((tab) => {
+        ;(tab as HTMLElement).ariaSelected = String((tab as HTMLElement).textContent === label)
+      })
+      postPanel.hidden = label !== '\u540e\u671f'
+      environmentPanel.hidden = label !== '\u73af\u5883'
+    })
+    subTabs.append(button)
+  })
+
+  renderGeneralPostPanel(postPanel)
+  renderGeneralEnvironmentPanel(environmentPanel)
+
+  postPanel.hidden = generalActiveSubTab !== '\u540e\u671f'
+  environmentPanel.hidden = generalActiveSubTab !== '\u73af\u5883'
+
+  panel.append(subTabs, postPanel, environmentPanel)
+  sceneOutline.append(panel)
+}
+
 const renderRealtimePanel = (panel: HTMLElement) => {
   // --- Sun Light ---
   const sunBody: HTMLElement[] = []
@@ -810,11 +996,12 @@ const renderRealtimePanel = (panel: HTMLElement) => {
 
   // --- SSAO 2 ---
   const ssaoBody: HTMLElement[] = []
-  const ssaoToggle = createCheckbox('SSAO \u5f00\u5173', ssao2Pipeline ? ssao2Pipeline.totalStrength > 0 : false, (v) => {
+  const ssaoToggle = createCheckbox('SSAO \u5f00\u5173', ssaoEnabledPreference, (v) => {
     ssaoEnabledPreference = v
 
     if (v) {
-      ensureSsaoPipeline().totalStrength = 1
+      ensureSsaoPipeline()
+      applySsaoSettings()
     } else {
       if (ssao2Pipeline) ssao2Pipeline.totalStrength = 0
     }
@@ -822,7 +1009,10 @@ const renderRealtimePanel = (panel: HTMLElement) => {
     refreshImportedRenderingState()
   })
   ssaoBody.push(ssaoToggle)
-  ssaoBody.push(createSlider('\u906e\u853d\u5f3a\u5ea6', ssao2Pipeline?.totalStrength ?? 1, 0, 3, 0.01, (v) => { if (ssao2Pipeline) ssao2Pipeline.totalStrength = v }))
+  ssaoBody.push(createSlider('\u906e\u853d\u5f3a\u5ea6', ssaoStrength, 0, 3, 0.01, (v) => {
+    ssaoStrength = v
+    applySsaoSettings()
+  }))
   const radiusRow = document.createElement('div')
   radiusRow.className = 'tech-row'
   const radiusLabel = document.createElement('span')
@@ -833,20 +1023,28 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   radiusInput.min = '0.1'
   radiusInput.max = '100'
   radiusInput.step = '0.1'
-  radiusInput.value = String(ssao2Pipeline?.radius ?? 2)
+  radiusInput.value = String(ssaoRadius)
   const radiusNum = document.createElement('input')
   radiusNum.type = 'number'
   radiusNum.className = 'tech-number'
   radiusNum.min = '0.1'
   radiusNum.max = '100'
   radiusNum.step = '0.1'
-  radiusNum.value = String(ssao2Pipeline?.radius ?? 2)
-  const onRadiusChange = (v: number) => { if (ssao2Pipeline) ssao2Pipeline.radius = v; radiusInput.value = String(v); radiusNum.value = String(v) }
+  radiusNum.value = String(ssaoRadius)
+  const onRadiusChange = (v: number) => {
+    ssaoRadius = v
+    applySsaoSettings()
+    radiusInput.value = String(v)
+    radiusNum.value = String(v)
+  }
   radiusInput.addEventListener('input', () => onRadiusChange(parseFloat(radiusInput.value)))
   radiusNum.addEventListener('change', () => onRadiusChange(parseFloat(radiusNum.value)))
   radiusRow.append(radiusLabel, radiusInput, radiusNum)
   ssaoBody.push(radiusRow)
-  ssaoBody.push(createSlider('\u91c7\u6837\u6570', ssao2Pipeline?.samples ?? 8, 4, 64, 1, (v) => { if (ssao2Pipeline) ssao2Pipeline.samples = v }))
+  ssaoBody.push(createSlider('\u91c7\u6837\u6570', ssaoSamples, 4, 64, 1, (v) => {
+    ssaoSamples = v
+    applySsaoSettings()
+  }))
   panel.append(createModule('SSAO 2', ssaoBody))
 
   // --- SSR ---
@@ -1203,6 +1401,11 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
     return
   }
 
+  if (activeTab.id === 'general') {
+    renderGeneralPanel()
+    return
+  }
+
   activeTab.nodes.forEach((node) => sceneOutline.append(makeOutlineBranch(node)))
 }
 
@@ -1332,6 +1535,22 @@ const renderDetail = (descriptor: DetailDescriptor) => {
 
         value.textContent = item.value
         row.append(value)
+      }
+
+      if (item.type === 'select') {
+        const select = document.createElement('select')
+
+        select.className = 'tech-select'
+        item.options.forEach((option) => {
+          const optionElement = document.createElement('option')
+
+          optionElement.value = option.value
+          optionElement.textContent = option.label
+          optionElement.selected = option.value === item.value
+          select.append(optionElement)
+        })
+        select.addEventListener('change', () => item.onChange(select.value))
+        row.append(select)
       }
 
       sectionElement.append(row)
@@ -1493,7 +1712,7 @@ engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 1.6))
 
 const scene = new Scene(engine)
 scene.clearColor = new Color4(0.79, 0.82, 0.84, 1)
-scene.environmentTexture = CubeTexture.CreateFromPrefilteredData(environmentUrl, scene)
+scene.environmentTexture = hdrEnvironmentOptions.length > 0 ? null : CubeTexture.CreateFromPrefilteredData(legacyEnvironmentUrl, scene)
 scene.environmentIntensity = 0.55
 
 const imageProcessing = scene.imageProcessingConfiguration
@@ -1661,9 +1880,104 @@ pipeline.chromaticAberrationEnabled = false
 pipeline.grainEnabled = false
 pipeline.sharpenEnabled = false
 
+const resolveEnvironmentUrl = async (option: EnvironmentOption) => {
+  option.resolvedUrl ??= await option.loadUrl()
+  return option.resolvedUrl
+}
+
+let environmentLoadToken = 0
+
+const setSceneEnvironmentTexture = async (
+  environmentKey: string,
+  {
+    force = false,
+    showLoadingStatus = true,
+    refreshOutline = true,
+  }: {
+    force?: boolean
+    showLoadingStatus?: boolean
+    refreshOutline?: boolean
+  } = {},
+) => {
+  if (!force && selectedEnvironmentKey === environmentKey) {
+    return
+  }
+
+  const option = hdrEnvironmentOptions.find((entry) => entry.key === environmentKey)
+
+  if (!option) {
+    return
+  }
+
+  selectedEnvironmentKey = option.key
+  const loadToken = ++environmentLoadToken
+
+  if (showLoadingStatus) {
+    setStatus(`加载环境贴图: ${option.label}`)
+  }
+
+  try {
+    const previousTexture = scene.environmentTexture
+    const url = await resolveEnvironmentUrl(option)
+
+    if (loadToken !== environmentLoadToken) {
+      return
+    }
+
+    const nextTexture = new HDRCubeTexture(
+      url,
+      scene,
+      256,
+      false,
+      true,
+      false,
+      true,
+      () => {
+        if (loadToken === environmentLoadToken) {
+          setStatus(null)
+          if (refreshOutline) {
+            setOutline(currentMeshNodes)
+          }
+        }
+      },
+      (message, exception) => {
+        if (loadToken === environmentLoadToken) {
+          console.error('Environment texture load failed', message, exception)
+          setStatus(`环境贴图加载失败: ${option.label}`)
+        }
+      },
+    )
+
+    nextTexture.rotationY = degreesToRadians(environmentRotationY)
+    scene.environmentTexture = nextTexture
+    updateEnvironmentBackground()
+
+    if (previousTexture && previousTexture !== nextTexture) {
+      previousTexture.dispose()
+    }
+  } catch (error) {
+    if (loadToken === environmentLoadToken) {
+      console.error('Environment texture resolve failed', error)
+      setStatus(`环境贴图加载失败: ${option.label}`)
+    }
+    return
+  }
+
+  if (refreshOutline) {
+    setOutline(currentMeshNodes)
+  }
+}
+
 let importedMeshes: AbstractMesh[] = []
 initShadowGenerator()
 setOutline()
+if (hdrEnvironmentOptions.length > 0 && selectedEnvironmentKey) {
+  await setSceneEnvironmentTexture(selectedEnvironmentKey, {
+    force: true,
+    showLoadingStatus: false,
+    refreshOutline: false,
+  })
+}
 let importedMaterialTotal = 0
 let currentModelRoots: TransformNode[] = []
 let importedFileNames: string[] = []
@@ -1968,6 +2282,9 @@ const createViewerConfig = (): ViewerConfig => {
       },
     },
     world: {
+      environmentTexture: selectedEnvironmentKey ?? undefined,
+      environmentBackgroundEnabled,
+      environmentRotationY,
       environmentIntensity: scene.environmentIntensity,
       clearColor: colorToConfig(scene.clearColor),
       exposure: imageProcessing.exposure,
@@ -2024,6 +2341,15 @@ const applyViewerConfig = (
     shadowBias = config.lights.sun.shadowBias
     initShadowGenerator()
   }
+
+  if (config.world.environmentTexture) {
+    void setSceneEnvironmentTexture(config.world.environmentTexture)
+  }
+
+  environmentBackgroundEnabled = config.world.environmentBackgroundEnabled ?? false
+  environmentRotationY = config.world.environmentRotationY ?? 0
+  updateEnvironmentBackground()
+  applyEnvironmentRotation()
 
   scene.environmentIntensity = config.world.environmentIntensity
   scene.clearColor = new Color4(config.world.clearColor[0], config.world.clearColor[1], config.world.clearColor[2], 1)
@@ -2340,6 +2666,22 @@ const textItem = (label: string, value: string): DetailItem => ({
   value,
 })
 
+const selectItem = (
+  label: string,
+  value: string,
+  options: Array<{
+    label: string
+    value: string
+  }>,
+  onChange: (value: string) => void,
+): DetailItem => ({
+  type: 'select',
+  label,
+  value,
+  options,
+  onChange,
+})
+
 const vectorItems = (
   vector: Vector3,
   labels: [string, string, string],
@@ -2594,6 +2936,21 @@ detailRegistry.set('world:main', () => ({
     {
       title: '\u73af\u5883',
       items: [
+        ...(hdrEnvironmentOptions.length > 0
+          ? [
+              selectItem(
+                'HDR',
+                selectedEnvironmentKey ?? '',
+                hdrEnvironmentOptions.map((option) => ({
+                  label: option.label,
+                  value: option.key,
+                })),
+                (value) => {
+                  void setSceneEnvironmentTexture(value)
+                },
+              ),
+            ]
+          : []),
         numberItem('\u73af\u5883\u5f3a\u5ea6', scene.environmentIntensity, 0, 2, 0.01, (value) => {
           scene.environmentIntensity = value
         }),
@@ -2623,12 +2980,15 @@ detailRegistry.set('world:main', () => ({
 }))
 
 detailRegistry.set('texture:environment', () => ({
-  title: 'environment.env',
+  title: getCurrentEnvironmentLabel(),
   kind: '\u73af\u5883\u8d34\u56fe',
   sections: [
     {
       title: '\u8d44\u6e90',
-      items: [textItem('URL', environmentUrl), textItem('\u7c7b\u578b', 'Prefiltered CubeTexture')],
+      items: [
+        textItem('URL', getCurrentEnvironmentUrl()),
+        textItem('\u7c7b\u578b', hdrEnvironmentOptions.length > 0 ? 'HDRCubeTexture' : 'Prefiltered CubeTexture'),
+      ],
     },
   ],
 }))

@@ -33,6 +33,9 @@ export type ViewerConfig = {
     }
   }
   world: {
+    environmentTexture?: string
+    environmentBackgroundEnabled?: boolean
+    environmentRotationY?: number
     environmentIntensity: number
     clearColor: ColorConfig
     exposure: number
