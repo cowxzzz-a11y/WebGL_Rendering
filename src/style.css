@@ -36,10 +36,13 @@ body,
 .outliner-panel {
   position: absolute;
   top: 12px;
+  bottom: 12px;
   right: 12px;
+  display: flex;
+  flex-direction: column;
   width: min(380px, calc(100vw - 24px));
-  max-height: calc(100vh - 24px);
-  overflow: auto;
+  height: auto;
+  overflow: hidden;
   border: 1px solid rgba(12, 15, 14, 0.26);
   border-radius: 8px;
   background: rgba(34, 38, 39, 0.9);
@@ -48,7 +51,41 @@ body,
   backdrop-filter: blur(10px);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
-  transition: width 0.2s ease;
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease;
+}
+
+.outliner-panel-collapsed {
+  transform: translateX(calc(100% + 12px));
+}
+
+.panel-collapse-toggle {
+  position: absolute;
+  top: 22px;
+  right: calc(18px + min(380px, calc(100vw - 24px)));
+  z-index: 12;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #dfe5e3;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: right 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.16s ease, transform 0.16s ease;
+}
+
+.panel-collapse-toggle-collapsed {
+  right: 12px;
+}
+
+.panel-collapse-toggle:hover {
+  color: #ffffff;
+  background: rgba(58, 66, 68, 0.96);
+  transform: scale(1.04);
 }
 
 .outliner-panel::-webkit-scrollbar {
@@ -153,9 +190,14 @@ input[type="radio"]:checked + .tab {
 }
 
 .outliner-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   padding: 6px 0 8px;
   font-size: 12px;
   line-height: 1.35;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 .outliner-branch,
@@ -230,11 +272,56 @@ input[type="radio"]:checked + .tab {
 }
 
 .outliner-icon {
+  position: relative;
   width: 13px;
   height: 13px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 2px;
   background: #8b9495;
+}
+
+button.outliner-icon {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9fc79c;
+  cursor: pointer;
+}
+
+.outliner-visibility::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 3px;
+  width: 11px;
+  height: 7px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.outliner-visibility::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.outliner-visibility[data-visible='false'] {
+  color: #68706f;
+}
+
+.outliner-visibility[data-visible='false']::after {
+  left: 1px;
+  top: 6px;
+  width: 12px;
+  height: 1.5px;
+  border-radius: 0;
+  background: currentColor;
+  transform: rotate(-35deg);
 }
 
 .outliner-icon[data-kind='scene'],
@@ -267,13 +354,18 @@ input[type="radio"]:checked + .tab {
   background: #7b83ad;
 }
 
+button.outliner-icon.outliner-visibility {
+  border: 0;
+  background: transparent;
+}
+
 .import-file-input {
   display: none;
 }
 
 .share-actions {
   position: absolute;
-  right: 18px;
+  left: 18px;
   bottom: 18px;
   z-index: 2;
 }
@@ -321,7 +413,7 @@ input[type="radio"]:checked + .tab {
 
 .import-mode-popup {
   position: absolute;
-  right: 0;
+  left: 0;
   bottom: 52px;
   z-index: 3;
   display: flex;
@@ -459,9 +551,16 @@ input[type="radio"]:checked + .tab {
 }
 
 .detail-panel {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(25, 28, 29, 0.78);
+  flex: 0 0 auto;
+  max-height: min(360px, 46vh);
+  margin: 10px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(25, 28, 29, 0.9);
   font-size: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 .detail-panel[hidden] {
@@ -505,16 +604,16 @@ input[type="radio"]:checked + .tab {
 
 .detail-close {
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.04);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   color: #d9dddc;
   font-family: inherit;
-  font-size: 12px;
-  line-height: 1;
+  font-size: 18px;
+  line-height: 20px;
   cursor: pointer;
 }
 
@@ -937,8 +1036,12 @@ input[type="radio"]:checked + .tab {
     display: none;
   }
 
+  .panel-collapse-toggle {
+    display: none;
+  }
+
   .share-actions {
-    right: 18px;
+    left: 18px;
     bottom: 18px;
   }
 }

@@ -13,11 +13,12 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture'
 import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
-import { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { LinesMesh } from '@babylonjs/core/Meshes/linesMesh'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
@@ -51,6 +52,7 @@ type OutlineNode = {
   name: string
   kind: string
   detailId?: string
+  visibilityTarget?: AbstractMesh
   open?: boolean
   children?: OutlineNode[]
 }
@@ -228,7 +230,8 @@ app.innerHTML = `
       </svg>
     </button>
   </div>
-  <aside class="outliner-panel" aria-label="Scene panel">
+  <button id="panelCollapseToggle" class="panel-collapse-toggle" type="button" aria-label="收起参数面板" title="收起参数面板">&gt;</button>
+  <aside id="outlinerPanel" class="outliner-panel" aria-label="Scene panel">
     <header id="sceneTabs" class="outliner-tabs" aria-label="Scene panel tabs"></header>
     <div class="config-actions" aria-label="Config actions">
       <button id="saveConfig" type="button">\u4fdd\u5b58</button>
@@ -271,6 +274,8 @@ const shareQrPopup = document.querySelector<HTMLDivElement>('#shareQrPopup')
 const shareQrCanvas = document.querySelector<HTMLCanvasElement>('#shareQrCanvas')
 const shareQrClose = document.querySelector<HTMLButtonElement>('#shareQrClose')
 const sceneTabs = document.querySelector<HTMLElement>('#sceneTabs')
+const outlinerPanel = document.querySelector<HTMLElement>('#outlinerPanel')
+const panelCollapseToggle = document.querySelector<HTMLButtonElement>('#panelCollapseToggle')
 const saveConfigButton = document.querySelector<HTMLButtonElement>('#saveConfig')
 const resetConfigButton = document.querySelector<HTMLButtonElement>('#resetConfig')
 const sceneOutline = document.querySelector<HTMLElement>('#sceneOutline')
@@ -294,6 +299,8 @@ if (
   !shareQrCanvas ||
   !shareQrClose ||
   !sceneTabs ||
+  !outlinerPanel ||
+  !panelCollapseToggle ||
   !saveConfigButton ||
   !resetConfigButton ||
   !sceneOutline ||
@@ -319,6 +326,24 @@ let generalActiveSubTab = '\u540e\u671f'
 let environmentBackgroundEnabled = false
 let environmentRotationY = 0
 const detailRegistry = new Map<string, () => DetailDescriptor>()
+let importedMeshes: AbstractMesh[] = []
+let importedMaterialTotal = 0
+let currentModelRoots: TransformNode[] = []
+let importedFileNames: string[] = []
+let sceneCenter = Vector3.Zero()
+let sceneRadius = 8
+let defaultConfig: ViewerConfig | null = null
+const dynamicDetailIds = new Set<string>()
+const lightHelperVisible = {
+  hemi: false,
+  sun: false,
+}
+const lightHelperTouched = {
+  hemi: false,
+  sun: false,
+}
+const lightHelperMeshes = new Map<keyof typeof lightHelperVisible, TransformNode>()
+let panelCollapsed = false
 let selectedMesh: AbstractMesh | null = null
 let selectionBox: LinesMesh | null = null
 let focusAnimation:
@@ -340,6 +365,15 @@ const getCurrentEnvironmentLabel = () => getSelectedEnvironmentOption()?.label ?
 const getCurrentEnvironmentUrl = () => getSelectedEnvironmentOption()?.resolvedUrl ?? '按需加载'
 
 const degreesToRadians = (value: number) => (value * Math.PI) / 180
+
+panelCollapseToggle.addEventListener('click', () => {
+  panelCollapsed = !panelCollapsed
+  outlinerPanel.classList.toggle('outliner-panel-collapsed', panelCollapsed)
+  panelCollapseToggle.classList.toggle('panel-collapse-toggle-collapsed', panelCollapsed)
+  panelCollapseToggle.textContent = panelCollapsed ? '<' : '>'
+  panelCollapseToggle.ariaLabel = panelCollapsed ? '展开参数面板' : '收起参数面板'
+  panelCollapseToggle.title = panelCollapsed ? '展开参数面板' : '收起参数面板'
+})
 
 const applyEnvironmentRotation = () => {
   const rotation = degreesToRadians(environmentRotationY)
@@ -376,13 +410,28 @@ const setStatus = (message: string | null) => {
 
 const makeOutlineRow = (node: OutlineNode) => {
   const row = document.createElement('div')
-  const icon = document.createElement('span')
+  const icon = node.visibilityTarget ? document.createElement('button') : document.createElement('span')
   const name = document.createElement('span')
 
   row.className = 'outliner-row'
   row.dataset.detailActive = String(node.detailId === selectedDetailId)
   icon.className = 'outliner-icon'
   icon.dataset.kind = node.kind
+  if (node.visibilityTarget) {
+    const button = icon as HTMLButtonElement
+    button.type = 'button'
+    icon.classList.add('outliner-visibility')
+    icon.dataset.visible = String(node.visibilityTarget.isVisible)
+    icon.ariaLabel = node.visibilityTarget.isVisible ? '隐藏网格' : '显示网格'
+    icon.addEventListener('click', (event) => {
+      event.stopPropagation()
+      node.visibilityTarget!.isVisible = !node.visibilityTarget!.isVisible
+      setOutline(currentMeshNodes)
+      if (node.detailId === selectedDetailId) {
+        selectDetail(node.detailId)
+      }
+    })
+  }
   name.className = 'outliner-name'
   name.textContent = node.name
   row.append(icon, name)
@@ -442,21 +491,6 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
     ],
   },
   {
-    id: 'lights',
-    label: '\u706f\u5149',
-    nodes: [
-      {
-        name: 'Lights',
-        kind: 'collection',
-        open: true,
-        children: [
-          { name: 'HemiLight', kind: 'light', detailId: 'light:hemi' },
-          { name: 'SunLight', kind: 'light', detailId: 'light:sun' },
-        ],
-      },
-    ],
-  },
-  {
     id: 'general',
     label: '\u901a\u7528',
     nodes: [],
@@ -464,7 +498,7 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
   {
     id: 'camera',
     label: '\u6444\u50cf\u673a',
-    nodes: [{ name: 'Camera', kind: 'camera', detailId: 'camera:main' }],
+    nodes: [],
   },
   {
     id: 'tech',
@@ -750,11 +784,18 @@ const createCheckbox = (label: string, value: boolean, onChange: (v: boolean) =>
   row.className = 'tech-row tech-row-checkbox'
   const cb = document.createElement('input')
   cb.type = 'checkbox'
+  cb.autocomplete = 'off'
+  cb.defaultChecked = value
   cb.checked = value
-  cb.addEventListener('change', () => onChange(cb.checked))
+  cb.addEventListener('click', () => onChange(cb.checked))
   const span = document.createElement('span')
   span.textContent = label
   row.append(cb, span)
+  ;[0, 100, 500, 1500, 3000].forEach((delay) => {
+    window.setTimeout(() => {
+      cb.checked = value
+    }, delay)
+  })
   return row
 }
 
@@ -790,6 +831,29 @@ const createColorInput = (label: string, color: Color3, onChange: (c: Color3) =>
   input.value = hex
   input.addEventListener('input', () => {
     onChange(hexToColor3(input.value))
+  })
+  row.append(lbl, input)
+  return row
+}
+
+const createNumberInput = (label: string, value: number, min: number, max: number, step: number, onChange: (v: number) => void) => {
+  const row = document.createElement('div')
+  row.className = 'tech-row'
+  const lbl = document.createElement('span')
+  lbl.className = 'tech-label'
+  lbl.textContent = label
+  const input = document.createElement('input')
+  input.type = 'number'
+  input.className = 'tech-number'
+  input.min = String(min)
+  input.max = String(max)
+  input.step = String(step)
+  input.value = String(Number(value.toFixed(4)))
+  input.addEventListener('input', () => {
+    const nextValue = Number.parseFloat(input.value)
+    if (!Number.isNaN(nextValue)) {
+      onChange(clamp(nextValue, min, max))
+    }
   })
   row.append(lbl, input)
   return row
@@ -878,6 +942,51 @@ const renderGeneralEnvironmentPanel = (panel: HTMLElement) => {
   environmentBody.push(sourceRow)
 
   panel.append(createModule('\u73af\u5883', environmentBody))
+
+  const hemiBody: HTMLElement[] = []
+  lightHelperTouched.hemi = false
+  lightHelperVisible.hemi = false
+  hemiBody.push(createSlider('\u534a\u7403\u5149\u5f3a\u5ea6', hemiLight.intensity, 0, 3, 0.01, (value) => {
+    hemiLight.intensity = value
+  }))
+  hemiBody.push(createColorInput('Diffuse', hemiLight.diffuse, (value) => {
+    hemiLight.diffuse = value
+  }))
+  hemiBody.push(createColorInput('Ground', hemiLight.groundColor, (value) => {
+    hemiLight.groundColor = value
+  }))
+  const directionRow = document.createElement('div')
+  directionRow.className = 'tech-row'
+  const directionLabel = document.createElement('span')
+  directionLabel.className = 'tech-label'
+  directionLabel.textContent = '\u65b9\u5411'
+  const directionWrap = document.createElement('div')
+  directionWrap.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;flex:1'
+  ;(['x', 'y', 'z'] as const).forEach((axis) => {
+    const input = document.createElement('input')
+    input.type = 'number'
+    input.step = '0.01'
+    input.min = '-1'
+    input.max = '1'
+    input.value = String(hemiLight.direction[axis])
+    input.style.cssText = 'min-width:0;width:100%'
+    input.addEventListener('input', () => {
+      const value = Number.parseFloat(input.value)
+      if (!Number.isNaN(value)) {
+        hemiLight.direction[axis] = value
+        updateLightDirectionHelpers()
+      }
+    })
+    directionWrap.append(input)
+  })
+  directionRow.append(directionLabel, directionWrap)
+  hemiBody.push(directionRow)
+  hemiBody.push(createCheckbox('\u65b9\u5411\u53ef\u89c6\u5316', lightHelperTouched.hemi && lightHelperVisible.hemi, (value) => {
+    lightHelperTouched.hemi = true
+    lightHelperVisible.hemi = value
+    updateLightDirectionHelpers()
+  }))
+  panel.append(createModule('\u534a\u7403\u5149', hemiBody))
 }
 
 const renderGeneralPanel = () => {
@@ -920,11 +1029,69 @@ const renderGeneralPanel = () => {
   sceneOutline.append(panel)
 }
 
+const renderCameraPanel = () => {
+  selectedDetailId = null
+  detailPanel.hidden = true
+  detailPanel.textContent = ''
+  sceneOutline.textContent = ''
+
+  const panel = document.createElement('div')
+  panel.className = 'tech-panel'
+
+  const lensBody: HTMLElement[] = []
+  lensBody.push(createSlider('FOV', camera.fov, 0.1, 1.6, 0.01, (value) => {
+    camera.fov = value
+  }))
+  lensBody.push(createSlider('\u534a\u5f84', camera.radius, 0.35, Math.max(camera.upperRadiusLimit ?? 500, 1), 0.1, (value) => {
+    camera.radius = value
+  }))
+  lensBody.push(createSlider('Alpha', camera.alpha, -Math.PI * 2, Math.PI * 2, 0.01, (value) => {
+    camera.alpha = value
+  }))
+  lensBody.push(createSlider('Beta', camera.beta, camera.lowerBetaLimit ?? 0.01, camera.upperBetaLimit ?? Math.PI, 0.01, (value) => {
+    camera.beta = value
+  }))
+  lensBody.push(createNumberInput('minZ', camera.minZ, 0.001, 100, 0.001, (value) => {
+    camera.minZ = value
+  }))
+  lensBody.push(createNumberInput('maxZ', camera.maxZ, 10, 50000, 1, (value) => {
+    camera.maxZ = value
+  }))
+
+  const targetBody: HTMLElement[] = []
+  ;(['x', 'y', 'z'] as const).forEach((axis) => {
+    targetBody.push(createNumberInput(axis.toUpperCase(), camera.target[axis], -200, 200, 0.01, (value) => {
+      camera.target[axis] = value
+    }))
+  })
+
+  const controlsBody: HTMLElement[] = []
+  controlsBody.push(createSlider('\u6eda\u8f6e\u7cbe\u5ea6', camera.wheelPrecision, 1, 80, 1, (value) => {
+    camera.wheelPrecision = value
+  }))
+  controlsBody.push(createSlider('\u5e73\u79fb\u7075\u654f\u5ea6', camera.panningSensibility, 1, 200, 1, (value) => {
+    camera.panningSensibility = value
+  }))
+
+  panel.append(createModule('\u955c\u5934', lensBody))
+  panel.append(createModule('\u76ee\u6807', targetBody))
+  panel.append(createModule('\u63a7\u5236', controlsBody))
+  sceneOutline.append(panel)
+}
+
 const renderRealtimePanel = (panel: HTMLElement) => {
   // --- Sun Light ---
   const sunBody: HTMLElement[] = []
+  lightHelperTouched.sun = false
+  lightHelperVisible.sun = false
   sunBody.push(createColorInput('\u5149\u6e90\u989c\u8272', sunLight.diffuse, (c) => { sunLight.diffuse = c }))
+  sunBody.push(createColorInput('Specular', sunLight.specular, (c) => { sunLight.specular = c }))
   sunBody.push(createSlider('\u5149\u6e90\u5f3a\u5ea6', sunLight.intensity, 0, 3, 0.01, (v) => { sunLight.intensity = v }))
+  sunBody.push(createCheckbox('\u65b9\u5411\u53ef\u89c6\u5316', lightHelperTouched.sun && lightHelperVisible.sun, (value) => {
+    lightHelperTouched.sun = true
+    lightHelperVisible.sun = value
+    updateLightDirectionHelpers()
+  }))
 
   const dirRow = document.createElement('div')
   dirRow.className = 'tech-row'
@@ -957,6 +1124,32 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   })
   dirRow.append(dirLabel, dirVals)
   sunBody.push(dirRow)
+
+  const positionRow = document.createElement('div')
+  positionRow.className = 'tech-row'
+  const positionLabel = document.createElement('span')
+  positionLabel.className = 'tech-label'
+  positionLabel.textContent = '\u4f4d\u7f6e'
+  const positionVals = document.createElement('div')
+  positionVals.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;flex:1'
+  ;(['x', 'y', 'z'] as const).forEach((axis) => {
+    const input = document.createElement('input')
+    input.type = 'number'
+    input.step = '0.01'
+    input.min = '-200'
+    input.max = '200'
+    input.value = String(sunLight.position[axis])
+    input.style.cssText = 'min-width:0;width:100%'
+    input.addEventListener('input', () => {
+      const value = Number.parseFloat(input.value)
+      if (!Number.isNaN(value)) {
+        sunLight.position[axis] = value
+      }
+    })
+    positionVals.append(input)
+  })
+  positionRow.append(positionLabel, positionVals)
+  sunBody.push(positionRow)
   panel.append(createModule('\u592a\u9633\u5149', sunBody))
 
   // --- Real-time Shadow ---
@@ -1406,6 +1599,11 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
     return
   }
 
+  if (activeTab.id === 'camera') {
+    renderCameraPanel()
+    return
+  }
+
   activeTab.nodes.forEach((node) => sceneOutline.append(makeOutlineBranch(node)))
 }
 
@@ -1446,7 +1644,7 @@ const renderDetail = (descriptor: DetailDescriptor) => {
   name.textContent = descriptor.title
   closeButton.className = 'detail-close'
   closeButton.type = 'button'
-  closeButton.textContent = 'X'
+  closeButton.textContent = '×'
   closeButton.ariaLabel = 'Close detail panel'
   closeButton.addEventListener('click', () => {
     selectedDetailId = null
@@ -1968,9 +2166,16 @@ const setSceneEnvironmentTexture = async (
   }
 }
 
-let importedMeshes: AbstractMesh[] = []
 initShadowGenerator()
 setOutline()
+window.setTimeout(() => {
+  lightHelperVisible.hemi = false
+  lightHelperVisible.sun = false
+  lightHelperTouched.hemi = false
+  lightHelperTouched.sun = false
+  updateLightDirectionHelpers()
+  setOutline(currentMeshNodes)
+}, 0)
 if (hdrEnvironmentOptions.length > 0 && selectedEnvironmentKey) {
   await setSceneEnvironmentTexture(selectedEnvironmentKey, {
     force: true,
@@ -1978,18 +2183,6 @@ if (hdrEnvironmentOptions.length > 0 && selectedEnvironmentKey) {
     refreshOutline: false,
   })
 }
-let importedMaterialTotal = 0
-let currentModelRoots: TransformNode[] = []
-let importedFileNames: string[] = []
-let sceneCenter = Vector3.Zero()
-let sceneRadius = 8
-let defaultConfig: ViewerConfig | null = null
-const dynamicDetailIds = new Set<string>()
-const lightHelperVisible = {
-  hemi: false,
-  sun: false,
-}
-const lightHelperMeshes = new Map<keyof typeof lightHelperVisible, LinesMesh>()
 
 const collectPbrMaterialsFromMaterial = (material: unknown, target: Set<PBRMaterial>) => {
   if (material instanceof PBRMaterial) {
@@ -2165,53 +2358,85 @@ type ApplyViewerConfigOptions = {
   includeMeshes?: boolean
 }
 
-const getArrowLines = (direction: Vector3) => {
+const getArrowGeometry = (direction: Vector3) => {
   const normalized = direction.lengthSquared() > 0.0001 ? direction.normalizeToNew() : new Vector3(0, -1, 0)
-  const length = Math.max(sceneRadius * 0.95, 6)
+  const length = Math.max(sceneRadius * 1.15, 7)
   const start = sceneCenter.subtract(normalized.scale(length * 0.5))
   const end = sceneCenter.add(normalized.scale(length * 0.5))
-  const side = Math.abs(Vector3.Dot(normalized, Vector3.Up())) > 0.92 ? Vector3.Right() : Vector3.Up()
-  const right = Vector3.Cross(normalized, side).normalize()
-  const up = Vector3.Cross(right, normalized).normalize()
-  const headLength = length * 0.16
-  const headWidth = headLength * 0.48
+  const headLength = length * 0.18
+  const shaftLength = length - headLength
+  const shaftDiameter = Math.max(sceneRadius * 0.018, 0.08)
+  const headDiameter = Math.max(sceneRadius * 0.085, 0.36)
   const headBase = end.subtract(normalized.scale(headLength))
 
-  return [
-    [start, end],
-    [end, headBase.add(right.scale(headWidth))],
-    [end, headBase.subtract(right.scale(headWidth))],
-    [end, headBase.add(up.scale(headWidth))],
-    [end, headBase.subtract(up.scale(headWidth))],
-  ]
+  return {
+    normalized,
+    shaftCenter: start.add(headBase).scale(0.5),
+    shaftDiameter,
+    shaftLength,
+    headCenter: headBase.add(normalized.scale(headLength * 0.5)),
+    headDiameter,
+    headLength,
+  }
 }
 
 const setLightDirectionHelper = (id: keyof typeof lightHelperVisible, direction: Vector3, color: Color3) => {
-  const currentMesh = lightHelperMeshes.get(id)
+  const currentHelper = lightHelperMeshes.get(id)
 
   if (!lightHelperVisible[id]) {
-    currentMesh?.dispose()
+    currentHelper?.dispose(false, true)
     lightHelperMeshes.delete(id)
     return
   }
 
-  const lines = getArrowLines(direction)
-  const helper =
-    currentMesh ??
-    MeshBuilder.CreateLineSystem(
-      `${id}LightDirectionHelper`,
-      {
-        lines,
-        updatable: true,
-      },
-      scene,
-    )
+  currentHelper?.dispose(false, true)
 
-  helper.color = color
-  helper.isPickable = false
-  helper.renderingGroupId = 2
-  MeshBuilder.CreateLineSystem(`${id}LightDirectionHelper`, { lines, instance: helper })
-  lightHelperMeshes.set(id, helper)
+  const geometry = getArrowGeometry(direction)
+  const rotation = Quaternion.FromUnitVectorsToRef(Vector3.Up(), geometry.normalized, new Quaternion())
+  const root = new TransformNode(`${id}LightDirectionHelper`, scene)
+  const material = new StandardMaterial(`${id}LightDirectionHelperMaterial`, scene)
+
+  material.diffuseColor = color
+  material.emissiveColor = color
+  material.disableLighting = true
+  material.disableDepthWrite = true
+
+  const shaft = MeshBuilder.CreateCylinder(
+    `${id}LightDirectionHelperShaft`,
+    {
+      height: geometry.shaftLength,
+      diameter: geometry.shaftDiameter,
+      tessellation: 18,
+    },
+    scene,
+  )
+  shaft.position.copyFrom(geometry.shaftCenter)
+  shaft.rotationQuaternion = rotation.clone()
+  shaft.material = material
+  shaft.parent = root
+
+  const head = MeshBuilder.CreateCylinder(
+    `${id}LightDirectionHelperHead`,
+    {
+      height: geometry.headLength,
+      diameterTop: 0,
+      diameterBottom: geometry.headDiameter,
+      tessellation: 24,
+    },
+    scene,
+  )
+  head.position.copyFrom(geometry.headCenter)
+  head.rotationQuaternion = rotation.clone()
+  head.material = material
+  head.parent = root
+
+  ;[shaft, head].forEach((mesh) => {
+    mesh.isPickable = false
+    mesh.alwaysSelectAsActiveMesh = true
+    mesh.renderingGroupId = 3
+  })
+
+  lightHelperMeshes.set(id, root)
 }
 
 const updateLightDirectionHelpers = () => {
@@ -2235,6 +2460,12 @@ const createViewerConfig = (): ViewerConfig => {
         environmentIntensity: material.environmentIntensity,
         specularIntensity: material.specularIntensity,
         maxSimultaneousLights: material.maxSimultaneousLights,
+        refractionEnabled: material.subSurface.isRefractionEnabled,
+        refractionIntensity: material.subSurface.refractionIntensity,
+        translucencyEnabled: material.subSurface.isTranslucencyEnabled,
+        translucencyIntensity: material.subSurface.translucencyIntensity,
+        scatteringEnabled: material.subSurface.isScatteringEnabled,
+        indexOfRefraction: material.subSurface.indexOfRefraction,
       }
     }
   })
@@ -2268,7 +2499,7 @@ const createViewerConfig = (): ViewerConfig => {
         diffuse: colorToConfig(hemiLight.diffuse),
         groundColor: colorToConfig(hemiLight.groundColor),
         direction: vectorToConfig(hemiLight.direction),
-        helperVisible: lightHelperVisible.hemi,
+        helperVisible: false,
       },
       sun: {
         intensity: sunLight.intensity,
@@ -2276,7 +2507,7 @@ const createViewerConfig = (): ViewerConfig => {
         specular: colorToConfig(sunLight.specular),
         direction: vectorToConfig(sunLight.direction),
         position: vectorToConfig(sunLight.position),
-        helperVisible: lightHelperVisible.sun,
+        helperVisible: false,
         shadowMapSize,
         shadowBias,
       },
@@ -2327,14 +2558,16 @@ const applyViewerConfig = (
   assignColor3(hemiLight.diffuse, config.lights.hemi.diffuse)
   assignColor3(hemiLight.groundColor, config.lights.hemi.groundColor)
   assignVector(hemiLight.direction, config.lights.hemi.direction)
-  lightHelperVisible.hemi = config.lights.hemi.helperVisible
+  lightHelperVisible.hemi = false
+  lightHelperTouched.hemi = false
 
   sunLight.intensity = config.lights.sun.intensity
   assignColor3(sunLight.diffuse, config.lights.sun.diffuse)
   assignColor3(sunLight.specular, config.lights.sun.specular)
   assignVector(sunLight.direction, config.lights.sun.direction)
   assignVector(sunLight.position, config.lights.sun.position)
-  lightHelperVisible.sun = config.lights.sun.helperVisible
+  lightHelperVisible.sun = false
+  lightHelperTouched.sun = false
 
   if ('shadowMapSize' in config.lights.sun) {
     shadowMapSize = config.lights.sun.shadowMapSize
@@ -2389,6 +2622,12 @@ const applyViewerConfig = (
       material.environmentIntensity = materialConfig.environmentIntensity
       material.specularIntensity = materialConfig.specularIntensity
       material.maxSimultaneousLights = materialConfig.maxSimultaneousLights
+      material.subSurface.isRefractionEnabled = materialConfig.refractionEnabled ?? material.subSurface.isRefractionEnabled
+      material.subSurface.refractionIntensity = materialConfig.refractionIntensity ?? material.subSurface.refractionIntensity
+      material.subSurface.isTranslucencyEnabled = materialConfig.translucencyEnabled ?? material.subSurface.isTranslucencyEnabled
+      material.subSurface.translucencyIntensity = materialConfig.translucencyIntensity ?? material.subSurface.translucencyIntensity
+      material.subSurface.isScatteringEnabled = materialConfig.scatteringEnabled ?? material.subSurface.isScatteringEnabled
+      material.subSurface.indexOfRefraction = materialConfig.indexOfRefraction ?? material.subSurface.indexOfRefraction
     })
   }
 
@@ -2449,6 +2688,8 @@ const applyPendingStoredConfig = () => {
     includeMaterials: canApplyModelScopedSettings,
     includeMeshes: canApplyModelScopedSettings,
   })
+  updateLightDirectionHelpers()
+  setOutline(currentMeshNodes)
 
   pendingStoredConfig = null
 }
@@ -2711,9 +2952,6 @@ const createMeshDetail = (mesh: AbstractMesh): DetailDescriptor => ({
     {
       title: '\u663e\u793a',
       items: [
-        checkboxItem('\u53ef\u89c1', mesh.isVisible, (value) => {
-          mesh.isVisible = value
-        }),
         numberItem('\u900f\u660e\u5ea6', mesh.visibility, 0, 1, 0.01, (value) => {
           mesh.visibility = value
         }),
@@ -2784,6 +3022,31 @@ const createMaterialDetail = (material: PBRMaterial): DetailDescriptor => ({
         }),
         numberItem('Max Lights', material.maxSimultaneousLights, 0, 8, 1, (value) => {
           material.maxSimultaneousLights = Math.round(value)
+        }),
+      ],
+    },
+    {
+      title: '\u900f\u5c04 / \u6b21\u8868\u9762',
+      items: [
+        checkboxItem('\u900f\u5c04', material.subSurface.isRefractionEnabled, (value) => {
+          material.subSurface.isRefractionEnabled = value
+          refreshImportedRenderingState()
+        }),
+        numberItem('\u900f\u5c04\u5f3a\u5ea6', material.subSurface.refractionIntensity, 0, 1, 0.01, (value) => {
+          material.subSurface.refractionIntensity = value
+        }),
+        checkboxItem('\u6b21\u8868\u9762\u534a\u900f\u660e', material.subSurface.isTranslucencyEnabled, (value) => {
+          material.subSurface.isTranslucencyEnabled = value
+          refreshImportedRenderingState()
+        }),
+        numberItem('\u6b21\u8868\u9762\u5f3a\u5ea6', material.subSurface.translucencyIntensity, 0, 1, 0.01, (value) => {
+          material.subSurface.translucencyIntensity = value
+        }),
+        checkboxItem('\u6b21\u8868\u9762\u6563\u5c04', material.subSurface.isScatteringEnabled, (value) => {
+          material.subSurface.isScatteringEnabled = value
+        }),
+        numberItem('IOR', material.subSurface.indexOfRefraction, 1, 2.5, 0.01, (value) => {
+          material.subSurface.indexOfRefraction = value
         }),
       ],
     },
@@ -2871,7 +3134,8 @@ detailRegistry.set('light:hemi', () => ({
     {
       title: '\u65b9\u5411',
       items: [
-        checkboxItem('\u65b9\u5411\u53ef\u89c6\u5316', lightHelperVisible.hemi, (value) => {
+        checkboxItem('\u65b9\u5411\u53ef\u89c6\u5316', lightHelperTouched.hemi && lightHelperVisible.hemi, (value) => {
+          lightHelperTouched.hemi = true
           lightHelperVisible.hemi = value
           updateLightDirectionHelpers()
         }),
@@ -2902,7 +3166,8 @@ detailRegistry.set('light:sun', () => ({
     {
       title: '\u65b9\u5411',
       items: [
-        checkboxItem('\u65b9\u5411\u53ef\u89c6\u5316', lightHelperVisible.sun, (value) => {
+        checkboxItem('\u65b9\u5411\u53ef\u89c6\u5316', lightHelperTouched.sun && lightHelperVisible.sun, (value) => {
+          lightHelperTouched.sun = true
           lightHelperVisible.sun = value
           updateLightDirectionHelpers()
         }),
@@ -3141,6 +3406,7 @@ const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
     name: mesh.name || `Mesh ${mesh.uniqueId}`,
     kind: 'mesh',
     detailId: `mesh:${mesh.uniqueId}`,
+    visibilityTarget: mesh,
     open: true,
     children:
       mesh.material instanceof PBRMaterial

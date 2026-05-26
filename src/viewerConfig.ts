@@ -62,6 +62,12 @@ export type ViewerConfig = {
       environmentIntensity: number
       specularIntensity: number
       maxSimultaneousLights: number
+      refractionEnabled?: boolean
+      refractionIntensity?: number
+      translucencyEnabled?: boolean
+      translucencyIntensity?: number
+      scatteringEnabled?: boolean
+      indexOfRefraction?: number
     }
   >
   meshes: Record<
