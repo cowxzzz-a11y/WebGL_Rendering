@@ -348,6 +348,28 @@ def _on_depsgraph_update(scene):
         _last_active_obj = obj
 
 
+class COWX_OT_SmartIsolate(bpy.types.Operator):
+    bl_idname = "cowx.smart_isolate"
+    bl_label = "隔离选中"
+    bl_description = "隔离选中物体 / 退出隔离"
+    bl_options = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.area and context.area.type == "VIEW_3D"
+
+    def execute(self, context):
+        space_data = context.space_data
+        if space_data and space_data.local_view:
+            bpy.ops.view3d.localview()
+            return {"FINISHED"}
+        if context.selected_objects:
+            bpy.ops.view3d.localview()
+            return {"FINISHED"}
+        self.report({"INFO"}, "没有选中物体用于隔离")
+        return {"CANCELLED"}
+
+
 class COWX_OT_Bake(bpy.types.Operator):
     bl_idname = "cowx.bake"
     bl_label = "开始烘焙"
@@ -514,9 +536,12 @@ class COWX_PT_BakePanel(bpy.types.Panel):
 
 
 classes = (
+    COWX_OT_SmartIsolate,
     COWX_OT_Bake,
     COWX_PT_BakePanel,
 )
+
+_addon_keymaps = []
 
 
 def register():
@@ -556,8 +581,21 @@ def register():
 
     bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update)
 
+    try:
+        kc = bpy.context.window_manager.keyconfigs.addon
+        if kc:
+            km = kc.keymaps.new(name="3D View", space_type="VIEW_3D")
+            kmi = km.keymap_items.new("cowx.smart_isolate", type="Q", value="PRESS", alt=True)
+            _addon_keymaps.append((km, kmi))
+    except:
+        pass
+
 
 def unregister():
+    for km, kmi in _addon_keymaps:
+        km.keymap_items.remove(kmi)
+    _addon_keymaps.clear()
+
     if _on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update)
 

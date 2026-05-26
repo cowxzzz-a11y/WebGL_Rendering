@@ -322,7 +322,7 @@ let currentMeshNodes: OutlineNode[] = []
 let importedFileName = '\u672a\u5bfc\u5165'
 let importShouldReplace = false
 let selectedEnvironmentKey = defaultEnvironmentKey
-let generalActiveSubTab = '\u540e\u671f'
+let generalActiveSubTab = '\u73af\u5883'
 let environmentBackgroundEnabled = false
 let environmentRotationY = 0
 const detailRegistry = new Map<string, () => DetailDescriptor>()
@@ -370,6 +370,8 @@ panelCollapseToggle.addEventListener('click', () => {
   panelCollapsed = !panelCollapsed
   outlinerPanel.classList.toggle('outliner-panel-collapsed', panelCollapsed)
   panelCollapseToggle.classList.toggle('panel-collapse-toggle-collapsed', panelCollapsed)
+  outlinerPanel.style.transform = panelCollapsed ? `translateX(${outlinerPanel.offsetWidth + 12}px)` : 'translateX(0)'
+  panelCollapseToggle.style.right = panelCollapsed ? '12px' : 'calc(12px + var(--panel-width))'
   panelCollapseToggle.textContent = panelCollapsed ? '<' : '>'
   panelCollapseToggle.ariaLabel = panelCollapsed ? '展开参数面板' : '收起参数面板'
   panelCollapseToggle.title = panelCollapsed ? '展开参数面板' : '收起参数面板'
@@ -686,12 +688,6 @@ const enableRealtimeEffects = () => {
   } else if (ssrPipeline) {
     ssrPipeline.isEnabled = false
   }
-
-  scene.materials.forEach((mat) => {
-    if (mat instanceof PBRMaterial && savedLightmaps.has(mat)) {
-      mat.lightmapTexture = null
-    }
-  })
 }
 
 const meshFXFlags = new WeakMap<AbstractMesh, { receiveSSAO: boolean }>()
@@ -1001,7 +997,7 @@ const renderGeneralPanel = () => {
   const postPanel = document.createElement('div')
   const environmentPanel = document.createElement('div')
 
-  const tabs = ['\u540e\u671f', '\u73af\u5883']
+  const tabs = ['\u73af\u5883', '\u540e\u671f']
   tabs.forEach((label) => {
     const button = document.createElement('button')
 
@@ -1025,7 +1021,7 @@ const renderGeneralPanel = () => {
   postPanel.hidden = generalActiveSubTab !== '\u540e\u671f'
   environmentPanel.hidden = generalActiveSubTab !== '\u73af\u5883'
 
-  panel.append(subTabs, postPanel, environmentPanel)
+  panel.append(subTabs, environmentPanel, postPanel)
   sceneOutline.append(panel)
 }
 
@@ -1155,7 +1151,10 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   // --- Real-time Shadow ---
   const shadowBody: HTMLElement[] = []
   const shadowMap = shadowGenerator.getShadowMap()
-  let shadowEnabled = shadowMap ? (shadowMap.renderList?.length ?? 0) > 0 : false
+  let shadowEnabled = true
+  if (shadowMap && (shadowMap.renderList?.length ?? 0) === 0) {
+    shadowMap.renderList = [...importedMeshes.filter((mesh) => !isTransparentMesh(mesh))]
+  }
   const shadowToggle = createCheckbox('\u9634\u5f71\u5f00\u5173', shadowEnabled, (v) => {
     const map = shadowGenerator.getShadowMap()
     if (map) {
@@ -1328,44 +1327,120 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   panel.append(createModule('SSR', ssrBody))
 }
 
-let selectedBakeMeshName = ''
+let selectedBakeMeshIds = new Set<string>()
 let selectedUVChannel = 1
 let lightmapInvertY = false
 let lastLightmapUrl = ''
-let lastLightmapTexture: Texture | null = null
+let lastLightmapFileName = ''
+let lastLightmapFileSize = 0
+const lightmapTextureMeta = new WeakMap<Texture, { url: string; fileName: string; fileSize: number; uvChannel: number }>()
 
 const getBakeTargetMeshes = () => {
-  if (selectedBakeMeshName) {
-    const mesh = scene.getMeshByName(selectedBakeMeshName)
-    return mesh ? [mesh] : []
-  }
-  return []
+  return importedMeshes.filter((mesh) => selectedBakeMeshIds.has(String(mesh.uniqueId)))
 }
 
-const applyLightmapToTarget = (texture: Texture) => {
-  const targets = getBakeTargetMeshes()
-  if (targets.length > 0) {
-    targets.forEach((mesh) => {
-      if (mesh.material instanceof MultiMaterial) {
-        mesh.material.subMaterials.forEach((sm) => {
-          if (sm instanceof PBRMaterial) {
-            sm.lightmapTexture = texture
-            sm.useLightmapAsShadowmap = true
-          }
-        })
-      } else if (mesh.material instanceof PBRMaterial) {
-        mesh.material.lightmapTexture = texture
-        mesh.material.useLightmapAsShadowmap = true
+const getMeshLightmapTexture = (mesh: AbstractMesh) => {
+  if (mesh.material instanceof MultiMaterial) {
+    for (const sm of mesh.material.subMaterials) {
+      if (sm instanceof PBRMaterial && sm.lightmapTexture) {
+        return sm.lightmapTexture
       }
-    })
-  } else {
-    scene.materials.forEach((mat) => {
-      if (mat instanceof PBRMaterial) {
-        mat.lightmapTexture = texture
-        mat.useLightmapAsShadowmap = true
-      }
-    })
+    }
+
+    return null
   }
+
+  if (mesh.material instanceof PBRMaterial) {
+    return mesh.material.lightmapTexture
+  }
+
+  return null
+}
+
+const getMaterialUsageCount = (material: Material) =>
+  importedMeshes.reduce((count, mesh) => {
+    if (mesh.material === material) return count + 1
+
+    if (mesh.material instanceof MultiMaterial && mesh.material.subMaterials.includes(material)) {
+      return count + 1
+    }
+
+    return count
+  }, 0)
+
+const ensureUniqueBakeMaterial = (mesh: AbstractMesh) => {
+  if (mesh.material instanceof PBRMaterial) {
+    if (getMaterialUsageCount(mesh.material) > 1) {
+      mesh.material = mesh.material.clone(`${mesh.material.name}_bake_${mesh.uniqueId}`)
+    }
+
+    return
+  }
+
+  if (mesh.material instanceof MultiMaterial) {
+    const source = mesh.material
+    const cloned = new MultiMaterial(`${source.name}_bake_${mesh.uniqueId}`, scene)
+    cloned.subMaterials = source.subMaterials.map((sm) => {
+      if (sm instanceof PBRMaterial) {
+        return sm.clone(`${sm.name}_bake_${mesh.uniqueId}`)
+      }
+
+      return sm
+    })
+    mesh.material = cloned
+  }
+}
+
+const createLightmapTextureFromCurrent = () => {
+  if (!lastLightmapUrl) return null
+
+  const texture = new Texture(lastLightmapUrl, scene, undefined, lightmapInvertY)
+  texture.coordinatesIndex = selectedUVChannel
+  lightmapTextureMeta.set(texture, {
+    url: lastLightmapUrl,
+    fileName: lastLightmapFileName,
+    fileSize: lastLightmapFileSize,
+    uvChannel: selectedUVChannel,
+  })
+
+  return texture
+}
+
+const applyLightmapToMesh = (mesh: AbstractMesh, texture: Texture) => {
+  ensureUniqueBakeMaterial(mesh)
+
+  if (mesh.material instanceof MultiMaterial) {
+    mesh.material.subMaterials.forEach((sm) => {
+      if (sm instanceof PBRMaterial) {
+        sm.lightmapTexture = texture
+        sm.useLightmapAsShadowmap = true
+      }
+    })
+  } else if (mesh.material instanceof PBRMaterial) {
+    mesh.material.lightmapTexture = texture
+    mesh.material.useLightmapAsShadowmap = true
+  }
+}
+
+const clearLightmapFromMesh = (mesh: AbstractMesh) => {
+  if (mesh.material instanceof MultiMaterial) {
+    mesh.material.subMaterials.forEach((sm) => {
+      if (sm instanceof PBRMaterial) {
+        sm.lightmapTexture = null
+        sm.useLightmapAsShadowmap = false
+      }
+    })
+  } else if (mesh.material instanceof PBRMaterial) {
+    mesh.material.lightmapTexture = null
+    mesh.material.useLightmapAsShadowmap = false
+  }
+}
+
+const applyLightmapToTarget = () => {
+  getBakeTargetMeshes().forEach((mesh) => {
+    const texture = createLightmapTextureFromCurrent()
+    if (texture) applyLightmapToMesh(mesh, texture)
+  })
 }
 
 const setLightmapLevelForTarget = (level: number) => {
@@ -1391,36 +1466,114 @@ const setLightmapLevelForTarget = (level: number) => {
   }
 }
 
-const updateBakeMeshSelect = (sel: HTMLSelectElement) => {
-  const prev = sel.value
-  sel.textContent = ''
-  const names = importedMeshes.filter((m) => m.name !== '_root' && m.name !== '__root__').map((m) => m.name)
-  if (names.length === 0) {
-    const el = document.createElement('option')
-    el.value = ''
-    el.textContent = '\u8bf7\u5148\u52a0\u8f7d\u6a21\u578b'
-    el.disabled = true
-    sel.append(el)
-    return
+const getBakeSelectableMeshes = () =>
+  importedMeshes.filter((mesh) => mesh.name !== '_root' && mesh.name !== '__root__')
+
+const updateBakeSelectionCount = (root: HTMLElement) => {
+  const count = root.querySelector<HTMLElement>('.bake-selection-count')
+  if (count) {
+    count.textContent = `已选 ${selectedBakeMeshIds.size} / ${getBakeSelectableMeshes().length}`
   }
-  names.forEach((name) => {
-    const el = document.createElement('option')
-    el.value = name
-    el.textContent = name
-    if (name === (prev || selectedBakeMeshName || names[0])) el.selected = true
-    sel.append(el)
-  })
 }
 
 const renderBakePanel = (panel: HTMLElement) => {
-  const body: HTMLElement[] = []
+  panel.textContent = ''
 
-  const meshSelect = createSelect('\u9009\u62e9\u76ee\u6807\u7f51\u683c', [], '', (v) => {
-    selectedBakeMeshName = v
+  const root = document.createElement('div')
+  root.className = 'bake-panel'
+
+  const meshCard = document.createElement('section')
+  meshCard.className = 'bake-card'
+  const meshTitle = document.createElement('div')
+  meshTitle.className = 'bake-card-title'
+  meshTitle.innerHTML = '<strong>选择目标对象</strong><span>支持多选</span>'
+
+  const toolbar = document.createElement('div')
+  toolbar.className = 'bake-toolbar'
+  const selectAllBtn = document.createElement('button')
+  selectAllBtn.type = 'button'
+  selectAllBtn.textContent = '全选'
+  const clearBtn = document.createElement('button')
+  clearBtn.type = 'button'
+  clearBtn.textContent = '清空'
+  const searchWrap = document.createElement('label')
+  searchWrap.className = 'bake-search'
+  const searchInput = document.createElement('input')
+  searchInput.type = 'search'
+  searchInput.placeholder = '搜索对象名称...'
+  searchWrap.append(searchInput)
+  const selectionCount = document.createElement('span')
+  selectionCount.className = 'bake-selection-count'
+  toolbar.append(selectAllBtn, clearBtn, searchWrap, selectionCount)
+
+  const list = document.createElement('div')
+  list.className = 'bake-mesh-list'
+
+  const syncRows = () => {
+    const query = searchInput.value.trim().toLowerCase()
+    const meshes = getBakeSelectableMeshes()
+    selectedBakeMeshIds = new Set([...selectedBakeMeshIds].filter((id) => meshes.some((mesh) => String(mesh.uniqueId) === id)))
+    list.textContent = ''
+
+    const filteredMeshes = meshes.filter((mesh) => mesh.name.toLowerCase().includes(query))
+    if (filteredMeshes.length === 0) {
+      const empty = document.createElement('div')
+      empty.className = 'bake-empty'
+      empty.textContent = meshes.length === 0 ? '请先加载模型' : '没有匹配的对象'
+      list.append(empty)
+    }
+
+    filteredMeshes.forEach((mesh) => {
+      const id = String(mesh.uniqueId)
+      const row = document.createElement('div')
+      row.className = 'bake-mesh-row'
+      row.classList.toggle('selected', selectedBakeMeshIds.has(id))
+      const cb = document.createElement('input')
+      cb.type = 'checkbox'
+      cb.checked = selectedBakeMeshIds.has(id)
+      cb.addEventListener('click', (event) => {
+        event.stopPropagation()
+      })
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          selectedBakeMeshIds.add(id)
+        } else {
+          selectedBakeMeshIds.delete(id)
+        }
+        row.classList.toggle('selected', cb.checked)
+        updateBakeSelectionCount(root)
+        renderLightmapSummary()
+      })
+      row.addEventListener('click', () => {
+        selectedBakeMeshIds = new Set([id])
+        syncRows()
+        renderLightmapSummary()
+      })
+      const icon = document.createElement('span')
+      icon.className = 'bake-mesh-icon'
+      icon.textContent = '□'
+      const name = document.createElement('span')
+      name.className = 'bake-mesh-name'
+      name.textContent = mesh.name || `Mesh ${mesh.uniqueId}`
+      row.append(cb, icon, name)
+      list.append(row)
+    })
+
+    updateBakeSelectionCount(root)
+  }
+
+  selectAllBtn.addEventListener('click', () => {
+    getBakeSelectableMeshes().forEach((mesh) => selectedBakeMeshIds.add(String(mesh.uniqueId)))
+    syncRows()
+    renderLightmapSummary()
   })
-  const sel = meshSelect.querySelector('select')!
-  updateBakeMeshSelect(sel)
-  body.push(meshSelect)
+  clearBtn.addEventListener('click', () => {
+    selectedBakeMeshIds.clear()
+    syncRows()
+    renderLightmapSummary()
+  })
+  searchInput.addEventListener('input', syncRows)
+  meshCard.append(meshTitle, toolbar, list)
 
   const uvRow = document.createElement('div')
   uvRow.className = 'tech-row'
@@ -1443,7 +1596,6 @@ const renderBakePanel = (panel: HTMLElement) => {
     uvToggle.append(btn)
   })
   uvRow.append(uvLabel, uvToggle)
-  body.push(uvRow)
 
   const invYRow = document.createElement('label')
   invYRow.className = 'tech-row tech-row-checkbox'
@@ -1452,55 +1604,126 @@ const renderBakePanel = (panel: HTMLElement) => {
   invYCb.checked = lightmapInvertY
   invYCb.addEventListener('change', () => {
     lightmapInvertY = invYCb.checked
-    if (lastLightmapUrl && lastLightmapTexture) {
-      lastLightmapTexture.dispose()
-      const texture = new Texture(lastLightmapUrl, scene, undefined, lightmapInvertY)
-      texture.coordinatesIndex = selectedUVChannel
-      applyLightmapToTarget(texture)
-      lastLightmapTexture = texture
-    }
   })
   const invYSpan = document.createElement('span')
   invYSpan.textContent = '\u53cd\u8f6c Y \u8f74 (Invert Y)'
   invYRow.append(invYCb, invYSpan)
-  body.push(invYRow)
 
-  const uploadRow = document.createElement('div')
-  uploadRow.className = 'tech-row'
-  const uploadLabel = document.createElement('span')
-  uploadLabel.className = 'tech-label'
-  uploadLabel.textContent = '\u5149\u7167\u8d34\u56fe'
+  const lightmapCard = document.createElement('section')
+  lightmapCard.className = 'bake-card'
+  const lightmapTitle = document.createElement('div')
+  lightmapTitle.className = 'bake-card-title'
+  lightmapTitle.innerHTML = '<strong>光照贴图</strong><span>单张贴图将应用到所有已选对象</span>'
+  const lightmapGrid = document.createElement('div')
+  lightmapGrid.className = 'bake-lightmap-grid'
+  const lightmapInfo = document.createElement('div')
+  lightmapInfo.className = 'bake-lightmap-info'
+  const uploadDrop = document.createElement('button')
+  uploadDrop.type = 'button'
+  uploadDrop.className = 'bake-upload-drop'
+  uploadDrop.innerHTML = '<strong>上传光照贴图</strong><span>支持 PNG / JPG / TGA / EXR</span>'
   const uploadBtn = document.createElement('button')
-  uploadBtn.className = 'tech-upload-btn'
-  uploadBtn.textContent = 'Lightmap Upload'
+  uploadBtn.type = 'button'
+  uploadBtn.className = 'bake-action-primary'
+  uploadBtn.textContent = '应用到已选对象'
+  const deleteBtn = document.createElement('button')
+  deleteBtn.type = 'button'
+  deleteBtn.className = 'bake-action-danger'
+  deleteBtn.textContent = '删除光照纹理'
   const fileInput = document.createElement('input')
   fileInput.type = 'file'
-  fileInput.accept = '.png,.jpg,.exr,.hdr'
+  fileInput.accept = '.png,.jpg,.jpeg,.tga,.exr,.hdr'
   fileInput.hidden = true
-  uploadBtn.addEventListener('click', () => fileInput.click())
+  uploadDrop.addEventListener('click', () => fileInput.click())
+  uploadBtn.addEventListener('click', () => {
+    if (lastLightmapUrl) {
+      applyLightmapToTarget()
+      renderLightmapSummary()
+    } else {
+      fileInput.click()
+    }
+  })
+  deleteBtn.addEventListener('click', () => {
+    getBakeTargetMeshes().forEach(clearLightmapFromMesh)
+    renderLightmapSummary()
+  })
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0]
     if (!file) return
     const url = URL.createObjectURL(file)
-    if (lastLightmapUrl) URL.revokeObjectURL(lastLightmapUrl)
     lastLightmapUrl = url
-    if (lastLightmapTexture) lastLightmapTexture.dispose()
-    const texture = new Texture(url, scene, undefined, lightmapInvertY)
-    texture.coordinatesIndex = selectedUVChannel
-    applyLightmapToTarget(texture)
-    lastLightmapTexture = texture
+    lastLightmapFileName = file.name
+    lastLightmapFileSize = file.size
+    applyLightmapToTarget()
+    renderLightmapSummary()
     fileInput.value = ''
   })
-  uploadRow.append(uploadLabel, uploadBtn, fileInput)
-  body.push(uploadRow)
 
-  panel.append(createModule('\u5149\u7167\u8d34\u56fe\u69fd\u4f4d', body))
+  const formatFileSize = (size: number) => {
+    if (size <= 0) return '未知大小'
+    if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
+    return `${Math.max(1, Math.round(size / 1024))} KB`
+  }
 
-  const bakeBody: HTMLElement[] = []
-  bakeBody.push(createSlider('\u5149\u7167\u8d34\u56fe\u5f3a\u5ea6', 1, 0, 2, 0.01, (v) => {
+  function renderLightmapSummary() {
+    const targets = getBakeTargetMeshes()
+    const textures = targets.map(getMeshLightmapTexture).filter((texture): texture is Texture => Boolean(texture))
+    const textureSet = new Set(textures)
+    const firstTexture = textures[0] ?? null
+    const firstMeta = firstTexture ? lightmapTextureMeta.get(firstTexture) : null
+    lightmapInfo.textContent = ''
+
+    const preview = document.createElement('div')
+    preview.className = 'bake-lightmap-preview'
+    const meta = document.createElement('div')
+    meta.className = 'bake-lightmap-meta'
+    const title = document.createElement('strong')
+    const detail = document.createElement('span')
+    const status = document.createElement('em')
+
+    if (firstTexture) {
+      if (firstMeta?.url) {
+        preview.style.backgroundImage = `url("${firstMeta.url}")`
+      }
+      title.textContent = textureSet.size > 1 ? '多个光照贴图' : firstMeta?.fileName || firstTexture.name || '已加载光照贴图'
+      detail.textContent = [
+        firstMeta ? formatFileSize(firstMeta.fileSize) : '已应用',
+        (firstMeta?.uvChannel ?? firstTexture.coordinatesIndex) === 1 ? 'UV2' : 'UV1',
+      ].join('  |  ')
+      status.textContent = targets.length > 0 ? '可用' : '未选择对象'
+    } else {
+      title.textContent = targets.length > 0 ? '未应用光照贴图' : '请选择目标对象'
+      detail.textContent = '上传或选择贴图后，可统一应用到已选对象'
+      status.textContent = targets.length > 0 ? '等待贴图' : '无目标'
+    }
+
+    meta.append(title, detail, status)
+    lightmapInfo.append(preview, meta)
+    uploadBtn.disabled = selectedBakeMeshIds.size === 0
+    deleteBtn.disabled = selectedBakeMeshIds.size === 0 || textureSet.size === 0
+    updateBakeSelectionCount(root)
+  }
+
+  const actionRow = document.createElement('div')
+  actionRow.className = 'bake-action-row'
+  actionRow.append(uploadBtn, deleteBtn)
+  lightmapGrid.append(lightmapInfo, uploadDrop)
+  lightmapCard.append(lightmapTitle, lightmapGrid, actionRow, fileInput)
+
+  const optionsCard = document.createElement('section')
+  optionsCard.className = 'bake-card bake-options-card'
+  const optionsTitle = document.createElement('div')
+  optionsTitle.className = 'bake-card-title'
+  optionsTitle.innerHTML = '<strong>UV 通道</strong>'
+  const strength = createSlider('\u5149\u7167\u8d34\u56fe\u5f3a\u5ea6', 1, 0, 2, 0.01, (v) => {
     setLightmapLevelForTarget(v)
-  }))
-  panel.append(createModule('\u70d8\u70e4\u5149\u5f71\u5fae\u8c03', bakeBody, false))
+  })
+  optionsCard.append(optionsTitle, uvRow, invYRow, strength)
+
+  root.append(meshCard, lightmapCard, optionsCard)
+  panel.append(root)
+  syncRows()
+  renderLightmapSummary()
 }
 
 let techPanelCache: {
@@ -1531,13 +1754,15 @@ const renderTechPanel = () => {
       btn.textContent = label
       btn.ariaSelected = String(label === techActiveSubTab)
       btn.addEventListener('click', () => {
+        if (label === techActiveSubTab) return
+
         try {
           if (label === '\u6a21\u578b\u70d8\u70e4') {
             disableRealtimeEffects()
-            disableLightmaps()
-          } else {
-            enableRealtimeEffects()
             enableLightmaps()
+          } else {
+            disableLightmaps()
+            enableRealtimeEffects()
           }
         } catch (e) {
           console.error('Tech mode switch error', e)
@@ -1573,10 +1798,9 @@ const renderTechPanel = () => {
     techPanelCache.bakePanel.hidden = techActiveSubTab !== '\u6a21\u578b\u70d8\u70e4'
     if (techPanelCache.shadowToggle) {
       const sm = shadowGenerator.getShadowMap()
-      techPanelCache.shadowToggle.checked = sm ? (sm.renderList?.length ?? 0) > 0 : false
+      techPanelCache.shadowToggle.checked = sm ? (sm.renderList?.length ?? 0) > 0 : true
     }
-    const sel = techPanelCache.bakePanel.querySelector('select')
-    if (sel) updateBakeMeshSelect(sel)
+    renderBakePanel(techPanelCache.bakePanel)
     sceneOutline.append(techPanelCache.panel)
   }
 }
