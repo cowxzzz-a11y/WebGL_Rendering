@@ -569,6 +569,7 @@ const renderPanelTabs = (tabs: PanelTab[]) => {
 let techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
 let ssao2Pipeline: SSAO2RenderingPipeline | null = null
 let ssrPipeline: SSRRenderingPipeline | null = null
+let shadowEnabledPreference = true
 let ssaoEnabledPreference = false
 let ssaoStrength = 0.55
 let ssaoRadius = 0.75
@@ -660,21 +661,35 @@ const resetRealtimePipelines = () => {
   geometryBufferRenderer = null
 }
 
+const getRealtimeShadowMeshes = () => importedMeshes.filter((mesh) => !isTransparentMesh(mesh))
+
+const applyRealtimeShadowState = () => {
+  const realtimeEnabled = techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3'
+  const shadowEnabled = realtimeEnabled && shadowEnabledPreference
+  const shadowMap = shadowGenerator?.getShadowMap()
+
+  sunLight.shadowEnabled = shadowEnabled
+  if (shadowMap) {
+    shadowMap.renderList = shadowEnabled ? getRealtimeShadowMeshes() : []
+  }
+
+  importedMeshes.forEach((mesh) => {
+    mesh.receiveShadows = shadowEnabled && !isTransparentMesh(mesh)
+  })
+}
+
 const disableRealtimeEffects = () => {
   savedSunIntensity = sunLight.intensity
   sunLight.intensity = 0
-  sunLight.shadowEnabled = false
-  const map = shadowGenerator.getShadowMap()
-  if (map) map.renderList = []
-  if (ssao2Pipeline) ssao2Pipeline.totalStrength = 0
-  if (ssrPipeline) ssrPipeline.isEnabled = false
-  importedMeshes.forEach((m) => { m.receiveShadows = false })
+  applyRealtimeShadowState()
+  resetRealtimePipelines()
+  flushSceneRenderCaches()
 }
 
 const enableRealtimeEffects = () => {
   sunLight.intensity = savedSunIntensity
-  sunLight.shadowEnabled = true
   refreshImportedRenderingState()
+  applyRealtimeShadowState()
 
   if (ssaoEnabledPreference) {
     ensureSsaoPipeline()
@@ -716,7 +731,7 @@ const syncImportedMeshRenderingState = (mesh: AbstractMesh) => {
   })
 
   mesh.renderingGroupId = transparent ? 1 : 0
-  mesh.receiveShadows = !transparent && techActiveSubTab === '实时渲染'
+  mesh.receiveShadows = !transparent && techActiveSubTab === '实时渲染' && shadowEnabledPreference
 }
 
 const refreshImportedRenderingState = () => {
@@ -1150,16 +1165,11 @@ const renderRealtimePanel = (panel: HTMLElement) => {
 
   // --- Real-time Shadow ---
   const shadowBody: HTMLElement[] = []
-  const shadowMap = shadowGenerator.getShadowMap()
-  let shadowEnabled = true
-  if (shadowMap && (shadowMap.renderList?.length ?? 0) === 0) {
-    shadowMap.renderList = [...importedMeshes.filter((mesh) => !isTransparentMesh(mesh))]
-  }
-  const shadowToggle = createCheckbox('\u9634\u5f71\u5f00\u5173', shadowEnabled, (v) => {
-    const map = shadowGenerator.getShadowMap()
-    if (map) {
-      map.renderList = v ? [...importedMeshes.filter((mesh) => !isTransparentMesh(mesh))] : []
-    }
+  applyRealtimeShadowState()
+  const shadowToggle = createCheckbox('\u9634\u5f71\u5f00\u5173', shadowEnabledPreference, (v) => {
+    shadowEnabledPreference = v
+    applyRealtimeShadowState()
+    flushSceneRenderCaches()
   })
   shadowBody.push(shadowToggle)
 
@@ -1756,6 +1766,7 @@ const renderTechPanel = () => {
       btn.addEventListener('click', () => {
         if (label === techActiveSubTab) return
 
+        techActiveSubTab = label
         try {
           if (label === '\u6a21\u578b\u70d8\u70e4') {
             disableRealtimeEffects()
@@ -1767,7 +1778,6 @@ const renderTechPanel = () => {
         } catch (e) {
           console.error('Tech mode switch error', e)
         }
-        techActiveSubTab = label
         subTabs.querySelectorAll('.tech-sub-tab').forEach((b) => {
           ;(b as HTMLElement).ariaSelected = String((b as HTMLElement).textContent === label)
         })
@@ -1797,8 +1807,7 @@ const renderTechPanel = () => {
     techPanelCache.realtimePanel.hidden = techActiveSubTab !== '\u5b9e\u65f6\u6e32\u67d3'
     techPanelCache.bakePanel.hidden = techActiveSubTab !== '\u6a21\u578b\u70d8\u70e4'
     if (techPanelCache.shadowToggle) {
-      const sm = shadowGenerator.getShadowMap()
-      techPanelCache.shadowToggle.checked = sm ? (sm.renderList?.length ?? 0) > 0 : true
+      techPanelCache.shadowToggle.checked = shadowEnabledPreference
     }
     renderBakePanel(techPanelCache.bakePanel)
     sceneOutline.append(techPanelCache.panel)
@@ -2286,6 +2295,7 @@ const initShadowGenerator = () => {
   shadowGenerator.bias = shadowBias
   shadowGenerator.normalBias = shadowNormalBias
   importedMeshes.filter((mesh) => !isTransparentMesh(mesh)).forEach((mesh) => shadowGenerator.addShadowCaster(mesh))
+  applyRealtimeShadowState()
 }
 
 const pipeline = new DefaultRenderingPipeline('ClassicPipeline', true, scene, [camera])
