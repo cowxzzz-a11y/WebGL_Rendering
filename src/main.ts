@@ -207,30 +207,30 @@ if (!app) {
 app.innerHTML = `
   <canvas id="renderCanvas" aria-label="Babylon building render"></canvas>
   <div class="share-actions" data-url="${shareUrl}" data-title="${shareTitle}" data-desc="${shareDescription}">
-    <button id="frameToggle" class="frame-toggle-button share-button" type="button" aria-label="性能指标" title="性能指标">
+    <button id="frameToggle" class="frame-toggle-button share-button" type="button" aria-label="Frame stats" title="Frame stats">
       <svg viewBox="0 0 100 80" aria-hidden="true" width="24" height="20">
         <rect x="25" y="45" width="10" height="20" rx="4" fill="currentColor" />
         <rect x="42" y="20" width="10" height="45" rx="4" fill="currentColor" />
         <rect x="59" y="34" width="10" height="31" rx="4" fill="currentColor" />
       </svg>
     </button>
-    <button id="importButton" class="import-button-icon share-button" type="button" aria-label="导入 GLB" title="导入 GLB">
+    <button id="importButton" class="import-button-icon share-button" type="button" aria-label="Import GLB" title="Import GLB">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" />
       </svg>
     </button>
     <div id="importModePopup" class="import-mode-popup" hidden>
-      <button type="button" data-mode="replace">替换</button>
-      <button type="button" data-mode="insert">置入</button>
+      <button type="button" data-mode="replace">\u66ff\u6362</button>
+      <button type="button" data-mode="insert">\u8ffd\u52a0</button>
     </div>
-    <button id="shareWechat" class="share-button" type="button" aria-label="微信分享" title="微信分享">
+    <button id="shareWechat" class="share-button" type="button" aria-label="Share" title="Share">
       <svg viewBox="0 0 1024 1024" aria-hidden="true">
         <path d="M690.1 377.4c5.9 0 11.8.2 17.6.5-24.4-128.7-158.3-227.1-319.9-227.1C209 150.8 64 270.8 64 420.2c0 81.1 43.6 154.2 111.9 203.6l-29.5 88.3 99.4-49.7c37.4 9.8 75.2 14.8 105 14.8 11.1 0 21.9-1 32.5-2.4C377 637.9 369.6 598.9 369.6 558.2c0-99.8 88-180.8 320.5-180.8zM445.8 276c21.2 0 36.8 15.6 36.8 36.8s-15.6 36.8-36.8 36.8-36.8-15.6-36.8-36.8 15.7-36.8 36.8-36.8zm-159.2 73.6c-21.2 0-36.8-15.6-36.8-36.8s15.6-36.8 36.8-36.8 36.8 15.6 36.8 36.8-15.6 36.8-36.8 36.8z" />
         <path d="M912 558.2c0-122.7-122.5-222.5-273.2-222.5-160.1 0-273.2 99.8-273.2 222.5s113.1 222.5 273.2 222.5c31.4 0 62.8-9.8 94.2-19.6l80.6 49.7-19.6-78.5C862 693.4 912 631.7 912 558.2zM554 534.4c-15.6 0-29.5-13.9-29.5-29.5s13.9-29.5 29.5-29.5 29.5 13.9 29.5 29.5-13.9 29.5-29.5 29.5zm185.8 0c-15.6 0-29.5-13.9-29.5-29.5s13.9-29.5 29.5-29.5 29.5 13.9 29.5 29.5-13.9 29.5-29.5 29.5z" />
       </svg>
     </button>
   </div>
-  <button id="panelCollapseToggle" class="panel-collapse-toggle" type="button" aria-label="收起参数面板" title="收起参数面板">&gt;</button>
+  <button id="panelCollapseToggle" class="panel-collapse-toggle" type="button" aria-label="Toggle panel" title="Toggle panel">&gt;</button>
   <aside id="outlinerPanel" class="outliner-panel" aria-label="Scene panel">
     <header id="sceneTabs" class="outliner-tabs" aria-label="Scene panel tabs"></header>
     <div class="config-actions" aria-label="Config actions">
@@ -248,15 +248,15 @@ app.innerHTML = `
       <div class="guide-text">\u70b9\u51fb\u53f3\u4e0a\u89d2\u300c\u00b7\u00b7\u00b7\u300d<br />\u9009\u62e9\u300c\u8f6c\u53d1\u7ed9\u670b\u53cb\u300d<br />\u5373\u53ef\u751f\u6210\u5fae\u4fe1\u5361\u7247</div>
     </div>
     <div id="shareQrPopup" class="share-qr-popup" hidden>
-      <canvas id="shareQrCanvas" aria-label="\u5fae\u4fe1\u5206\u4eab\u4e8c\u7ef4\u7801"></canvas>
-      <p>\u6253\u5f00\u5fae\u4fe1\u626b\u4e00\u626b\u5206\u4eab</p>
-      <button id="shareQrClose" class="share-qr-close" type="button">关闭</button>
+      <canvas id="shareQrCanvas" aria-label="QR code"></canvas>
+      <p>\u626b\u7801\u5206\u4eab</p>
+      <button id="shareQrClose" class="share-qr-close" type="button">\u5173\u95ed</button>
     </div>
   </div>
   <div id="frameOverlay" class="frame-overlay">
     <div class="frame-overlay-content">
       <header class="frame-overlay-header">
-        <h2>性能指标</h2>
+        <h2>\u6027\u80fd\u7edf\u8ba1</h2>
         <button id="frameOverlayClose" class="frame-overlay-close" type="button">&times;</button>
       </header>
       <div id="frameGrid" class="frame-grid"></div>
@@ -325,6 +325,7 @@ let selectedEnvironmentKey = defaultEnvironmentKey
 let generalActiveSubTab = '\u73af\u5883'
 let environmentBackgroundEnabled = false
 let environmentRotationY = 0
+let globalEnvironmentIntensity = 0.55
 const detailRegistry = new Map<string, () => DetailDescriptor>()
 let importedMeshes: AbstractMesh[] = []
 let importedMaterialTotal = 0
@@ -362,7 +363,7 @@ const getSelectedEnvironmentOption = () =>
 
 const getCurrentEnvironmentLabel = () => getSelectedEnvironmentOption()?.label ?? 'environment.env'
 
-const getCurrentEnvironmentUrl = () => getSelectedEnvironmentOption()?.resolvedUrl ?? '按需加载'
+const getCurrentEnvironmentUrl = () => getSelectedEnvironmentOption()?.resolvedUrl ?? 'Lazy loaded'
 
 const degreesToRadians = (value: number) => (value * Math.PI) / 180
 
@@ -373,8 +374,8 @@ panelCollapseToggle.addEventListener('click', () => {
   outlinerPanel.style.transform = panelCollapsed ? `translateX(${outlinerPanel.offsetWidth + 12}px)` : 'translateX(0)'
   panelCollapseToggle.style.right = panelCollapsed ? '12px' : 'calc(12px + var(--panel-width))'
   panelCollapseToggle.textContent = panelCollapsed ? '<' : '>'
-  panelCollapseToggle.ariaLabel = panelCollapsed ? '展开参数面板' : '收起参数面板'
-  panelCollapseToggle.title = panelCollapsed ? '展开参数面板' : '收起参数面板'
+  panelCollapseToggle.ariaLabel = panelCollapsed ? '\u5c55\u5f00\u53c2\u6570\u9762\u677f' : '\u6536\u8d77\u53c2\u6570\u9762\u677f'
+  panelCollapseToggle.title = panelCollapsed ? '\u5c55\u5f00\u53c2\u6570\u9762\u677f' : '\u6536\u8d77\u53c2\u6570\u9762\u677f'
 })
 
 const applyEnvironmentRotation = () => {
@@ -384,6 +385,7 @@ const applyEnvironmentRotation = () => {
   if (environmentTexture && typeof environmentTexture.rotationY === 'number') {
     environmentTexture.rotationY = rotation
   }
+
 
   const skyboxTexture = (environmentSkybox?.material as { reflectionTexture?: BaseTexture } | null | undefined)
     ?.reflectionTexture as (BaseTexture & { rotationY?: number }) | null | undefined
@@ -424,7 +426,7 @@ const makeOutlineRow = (node: OutlineNode) => {
     button.type = 'button'
     icon.classList.add('outliner-visibility')
     icon.dataset.visible = String(node.visibilityTarget.isVisible)
-    icon.ariaLabel = node.visibilityTarget.isVisible ? '隐藏网格' : '显示网格'
+    icon.ariaLabel = node.visibilityTarget.isVisible ? 'Hide object' : 'Show object'
     icon.addEventListener('click', (event) => {
       event.stopPropagation()
       node.visibilityTarget!.isVisible = !node.visibilityTarget!.isVisible
@@ -611,9 +613,7 @@ const configureSsrPipelineDefaults = (pipeline: SSRRenderingPipeline) => {
   pipeline.backfaceForceDepthWriteTransparentMeshes = false
   pipeline.attenuateBackfaceReflection = true
 
-  if (scene.environmentTexture instanceof CubeTexture) {
-    pipeline.environmentTexture = scene.environmentTexture
-  }
+  pipeline.environmentTexture = scene.environmentTexture instanceof CubeTexture ? scene.environmentTexture : null
 }
 
 const ensureSsaoPipeline = () => {
@@ -715,11 +715,63 @@ const updateGBufferRenderList = () => {
 
 const syncImportedMaterialRenderingState = (material: PBRMaterial) => {
   const transparent = isTransparentPbrMaterial(material)
+  const depthWritingGlass = isArchitecturalGlassMaterial(material) && transparent
 
   material.needDepthPrePass = transparent
-  material.separateCullingPass = transparent
-  material.forceDepthWrite = false
+  material.separateCullingPass = transparent && !depthWritingGlass
+  material.forceDepthWrite = depthWritingGlass
   material.twoSidedLighting = !material.backFaceCulling
+}
+
+const isArchitecturalGlassMaterial = (material: PBRMaterial) => {
+  const name = material.name.toLowerCase()
+
+  return name.includes('glass') || name.includes('window') || name.includes('\u73bb\u7483')
+}
+
+const normalizeImportedMaterialTransparency = (material: PBRMaterial) => {
+  const hasAlphaTexture = Boolean(material.opacityTexture || (material.albedoTexture && material.albedoTexture.hasAlpha))
+  const looksOpaque =
+    material.alpha >= 0.999 &&
+    !hasAlphaTexture &&
+    !material.subSurface.isRefractionEnabled &&
+    material.transparencyMode === Material.MATERIAL_ALPHABLEND
+
+  if (!looksOpaque) {
+    return
+  }
+
+  material.transparencyMode = Material.MATERIAL_OPAQUE
+  material.needDepthPrePass = false
+  material.separateCullingPass = false
+  material.forceDepthWrite = true
+  material.markAsDirty(Material.MiscDirtyFlag | Material.TextureDirtyFlag)
+}
+
+const normalizeImportedGlassMaterial = (material: PBRMaterial) => {
+  const looksLikeGlass = isArchitecturalGlassMaterial(material) || material.subSurface.isRefractionEnabled
+
+  if (!looksLikeGlass) {
+    return
+  }
+
+  material.subSurface.isRefractionEnabled = true
+  material.subSurface.refractionIntensity = Math.max(material.subSurface.refractionIntensity, 0.35)
+  material.subSurface.isTranslucencyEnabled = false
+  material.subSurface.isScatteringEnabled = false
+  material.alpha = Math.min(material.alpha, 0.88)
+  material.transparencyMode = Material.MATERIAL_ALPHABLEND
+  material.alphaMode = Engine.ALPHA_COMBINE
+  material.albedoColor = new Color3(0.08, 0.12, 0.16)
+  material.roughness = Math.min(material.roughness ?? 0.18, 0.18)
+  material.metallic = 0
+  material.environmentIntensity = Math.max(material.environmentIntensity, 1.8)
+  material.specularIntensity = Math.max(material.specularIntensity, 1)
+  material.backFaceCulling = true
+  material.needDepthPrePass = true
+  material.separateCullingPass = false
+  material.forceDepthWrite = true
+  material.markAsDirty(Material.MiscDirtyFlag | Material.TextureDirtyFlag)
 }
 
 const syncImportedMeshRenderingState = (mesh: AbstractMesh) => {
@@ -730,8 +782,8 @@ const syncImportedMeshRenderingState = (mesh: AbstractMesh) => {
     receiveSSAO: transparent ? false : (currentFlags?.receiveSSAO ?? true),
   })
 
-  mesh.renderingGroupId = transparent ? 1 : 0
-  mesh.receiveShadows = !transparent && techActiveSubTab === '实时渲染' && shadowEnabledPreference
+  mesh.renderingGroupId = 0
+  mesh.receiveShadows = !transparent && techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3' && shadowEnabledPreference
 }
 
 const refreshImportedRenderingState = () => {
@@ -753,6 +805,7 @@ const disableLightmaps = () => {
     if (mat instanceof PBRMaterial && mat.lightmapTexture) {
       savedLightmaps.set(mat, mat.lightmapTexture)
       mat.lightmapTexture = null
+      mat.markAsDirty(Material.TextureDirtyFlag)
     }
   })
 }
@@ -761,7 +814,11 @@ const enableLightmaps = () => {
   scene.materials.forEach((mat) => {
     if (mat instanceof PBRMaterial && savedLightmaps.has(mat)) {
       const tex = savedLightmaps.get(mat)
-      if (tex) mat.lightmapTexture = tex
+      if (tex) {
+        mat.lightmapTexture = tex
+        mat.useLightmapAsShadowmap = true
+        mat.markAsDirty(Material.TextureDirtyFlag)
+      }
     }
   })
 }
@@ -929,15 +986,16 @@ const renderGeneralEnvironmentPanel = (panel: HTMLElement) => {
     )
   }
 
-  environmentBody.push(createCheckbox('显示环境背景', environmentBackgroundEnabled, (value) => {
+  environmentBody.push(createCheckbox('\u663e\u793a\u73af\u5883\u80cc\u666f', environmentBackgroundEnabled, (value) => {
     environmentBackgroundEnabled = value
     updateEnvironmentBackground()
   }))
-  environmentBody.push(createSlider('HDR 旋转', environmentRotationY, -180, 180, 1, (value) => {
+  environmentBody.push(createSlider('HDR \u65cb\u8f6c', environmentRotationY, -180, 180, 1, (value) => {
     environmentRotationY = value
     applyEnvironmentRotation()
   }))
-  environmentBody.push(createSlider('\u73af\u5883\u5f3a\u5ea6', scene.environmentIntensity, 0, 2, 0.01, (value) => {
+  environmentBody.push(createSlider('\u73af\u5883\u5f3a\u5ea6', globalEnvironmentIntensity, 0, 2, 0.01, (value) => {
+    globalEnvironmentIntensity = value
     scene.environmentIntensity = value
   }))
 
@@ -1424,11 +1482,13 @@ const applyLightmapToMesh = (mesh: AbstractMesh, texture: Texture) => {
       if (sm instanceof PBRMaterial) {
         sm.lightmapTexture = texture
         sm.useLightmapAsShadowmap = true
+        sm.markAsDirty(Material.TextureDirtyFlag)
       }
     })
   } else if (mesh.material instanceof PBRMaterial) {
     mesh.material.lightmapTexture = texture
     mesh.material.useLightmapAsShadowmap = true
+    mesh.material.markAsDirty(Material.TextureDirtyFlag)
   }
 }
 
@@ -1438,11 +1498,13 @@ const clearLightmapFromMesh = (mesh: AbstractMesh) => {
       if (sm instanceof PBRMaterial) {
         sm.lightmapTexture = null
         sm.useLightmapAsShadowmap = false
+        sm.markAsDirty(Material.TextureDirtyFlag)
       }
     })
   } else if (mesh.material instanceof PBRMaterial) {
     mesh.material.lightmapTexture = null
     mesh.material.useLightmapAsShadowmap = false
+    mesh.material.markAsDirty(Material.TextureDirtyFlag)
   }
 }
 
@@ -1496,21 +1558,21 @@ const renderBakePanel = (panel: HTMLElement) => {
   meshCard.className = 'bake-card'
   const meshTitle = document.createElement('div')
   meshTitle.className = 'bake-card-title'
-  meshTitle.innerHTML = '<strong>选择目标对象</strong><span>支持多选</span>'
+  meshTitle.innerHTML = '<strong>\u9009\u62e9\u76ee\u6807\u5bf9\u8c61</strong><span>\u652f\u6301\u591a\u9009</span>'
 
   const toolbar = document.createElement('div')
   toolbar.className = 'bake-toolbar'
   const selectAllBtn = document.createElement('button')
   selectAllBtn.type = 'button'
-  selectAllBtn.textContent = '全选'
+  selectAllBtn.textContent = '\u5168\u9009'
   const clearBtn = document.createElement('button')
   clearBtn.type = 'button'
-  clearBtn.textContent = '清空'
+  clearBtn.textContent = '\u6e05\u7a7a'
   const searchWrap = document.createElement('label')
   searchWrap.className = 'bake-search'
   const searchInput = document.createElement('input')
   searchInput.type = 'search'
-  searchInput.placeholder = '搜索对象名称...'
+  searchInput.placeholder = '\u641c\u7d22\u5bf9\u8c61\u540d\u79f0...'
   searchWrap.append(searchInput)
   const selectionCount = document.createElement('span')
   selectionCount.className = 'bake-selection-count'
@@ -1529,7 +1591,7 @@ const renderBakePanel = (panel: HTMLElement) => {
     if (filteredMeshes.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'bake-empty'
-      empty.textContent = meshes.length === 0 ? '请先加载模型' : '没有匹配的对象'
+      empty.textContent = meshes.length === 0 ? '\u8bf7\u5148\u52a0\u8f7d\u6a21\u578b' : '\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8c61'
       list.append(empty)
     }
 
@@ -1561,7 +1623,7 @@ const renderBakePanel = (panel: HTMLElement) => {
       })
       const icon = document.createElement('span')
       icon.className = 'bake-mesh-icon'
-      icon.textContent = '□'
+      icon.textContent = '\u25a1'
       const name = document.createElement('span')
       name.className = 'bake-mesh-name'
       name.textContent = mesh.name || `Mesh ${mesh.uniqueId}`
@@ -1623,7 +1685,7 @@ const renderBakePanel = (panel: HTMLElement) => {
   lightmapCard.className = 'bake-card'
   const lightmapTitle = document.createElement('div')
   lightmapTitle.className = 'bake-card-title'
-  lightmapTitle.innerHTML = '<strong>光照贴图</strong><span>单张贴图将应用到所有已选对象</span>'
+  lightmapTitle.innerHTML = '<strong>\u5149\u7167\u8d34\u56fe</strong><span>\u5355\u5f20\u8d34\u56fe\u5c06\u5e94\u7528\u5230\u6240\u6709\u5df2\u9009\u5bf9\u8c61</span>'
   const lightmapGrid = document.createElement('div')
   lightmapGrid.className = 'bake-lightmap-grid'
   const lightmapInfo = document.createElement('div')
@@ -1631,15 +1693,15 @@ const renderBakePanel = (panel: HTMLElement) => {
   const uploadDrop = document.createElement('button')
   uploadDrop.type = 'button'
   uploadDrop.className = 'bake-upload-drop'
-  uploadDrop.innerHTML = '<strong>上传光照贴图</strong><span>支持 PNG / JPG / TGA / EXR</span>'
+  uploadDrop.innerHTML = '<strong>\u4e0a\u4f20\u5149\u7167\u8d34\u56fe</strong><span>\u652f\u6301 PNG / JPG / TGA / EXR</span>'
   const uploadBtn = document.createElement('button')
   uploadBtn.type = 'button'
   uploadBtn.className = 'bake-action-primary'
-  uploadBtn.textContent = '应用到已选对象'
+  uploadBtn.textContent = '\u5e94\u7528\u5230\u5df2\u9009\u5bf9\u8c61'
   const deleteBtn = document.createElement('button')
   deleteBtn.type = 'button'
   deleteBtn.className = 'bake-action-danger'
-  deleteBtn.textContent = '删除光照纹理'
+  deleteBtn.textContent = '\u5220\u9664\u5149\u7167\u7eb9\u7406'
   const fileInput = document.createElement('input')
   fileInput.type = 'file'
   fileInput.accept = '.png,.jpg,.jpeg,.tga,.exr,.hdr'
@@ -1670,7 +1732,7 @@ const renderBakePanel = (panel: HTMLElement) => {
   })
 
   const formatFileSize = (size: number) => {
-    if (size <= 0) return '未知大小'
+    if (size <= 0) return '\u672a\u77e5\u5927\u5c0f'
     if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
     return `${Math.max(1, Math.round(size / 1024))} KB`
   }
@@ -1695,16 +1757,16 @@ const renderBakePanel = (panel: HTMLElement) => {
       if (firstMeta?.url) {
         preview.style.backgroundImage = `url("${firstMeta.url}")`
       }
-      title.textContent = textureSet.size > 1 ? '多个光照贴图' : firstMeta?.fileName || firstTexture.name || '已加载光照贴图'
+      title.textContent = textureSet.size > 1 ? '\u591a\u4e2a\u5149\u7167\u8d34\u56fe' : firstMeta?.fileName || firstTexture.name || '\u5df2\u52a0\u8f7d\u5149\u7167\u8d34\u56fe'
       detail.textContent = [
-        firstMeta ? formatFileSize(firstMeta.fileSize) : '已应用',
+        firstMeta ? formatFileSize(firstMeta.fileSize) : '\u5df2\u5e94\u7528',
         (firstMeta?.uvChannel ?? firstTexture.coordinatesIndex) === 1 ? 'UV2' : 'UV1',
       ].join('  |  ')
-      status.textContent = targets.length > 0 ? '可用' : '未选择对象'
+      status.textContent = targets.length > 0 ? '\u53ef\u7528' : '\u672a\u9009\u62e9\u5bf9\u8c61'
     } else {
-      title.textContent = targets.length > 0 ? '未应用光照贴图' : '请选择目标对象'
-      detail.textContent = '上传或选择贴图后，可统一应用到已选对象'
-      status.textContent = targets.length > 0 ? '等待贴图' : '无目标'
+      title.textContent = targets.length > 0 ? '\u672a\u5e94\u7528\u5149\u7167\u8d34\u56fe' : '\u8bf7\u9009\u62e9\u76ee\u6807\u5bf9\u8c61'
+      detail.textContent = '\u4e0a\u4f20\u6216\u9009\u62e9\u8d34\u56fe\u540e\uff0c\u53ef\u7edf\u4e00\u5e94\u7528\u5230\u5df2\u9009\u5bf9\u8c61'
+      status.textContent = targets.length > 0 ? '\u7b49\u5f85\u8d34\u56fe' : '\u65e0\u76ee\u6807'
     }
 
     meta.append(title, detail, status)
@@ -1724,7 +1786,7 @@ const renderBakePanel = (panel: HTMLElement) => {
   optionsCard.className = 'bake-card bake-options-card'
   const optionsTitle = document.createElement('div')
   optionsTitle.className = 'bake-card-title'
-  optionsTitle.innerHTML = '<strong>UV 通道</strong>'
+  optionsTitle.innerHTML = '<strong>UV \u901a\u9053</strong>'
   const strength = createSlider('\u5149\u7167\u8d34\u56fe\u5f3a\u5ea6', 1, 0, 2, 0.01, (v) => {
     setLightmapLevelForTarget(v)
   })
@@ -1877,7 +1939,7 @@ const renderDetail = (descriptor: DetailDescriptor) => {
   name.textContent = descriptor.title
   closeButton.className = 'detail-close'
   closeButton.type = 'button'
-  closeButton.textContent = '×'
+  closeButton.textContent = 'x'
   closeButton.ariaLabel = 'Close detail panel'
   closeButton.addEventListener('click', () => {
     selectedDetailId = null
@@ -2145,6 +2207,7 @@ const scene = new Scene(engine)
 scene.clearColor = new Color4(0.79, 0.82, 0.84, 1)
 scene.environmentTexture = hdrEnvironmentOptions.length > 0 ? null : CubeTexture.CreateFromPrefilteredData(legacyEnvironmentUrl, scene)
 scene.environmentIntensity = 0.55
+globalEnvironmentIntensity = scene.environmentIntensity
 
 const imageProcessing = scene.imageProcessingConfiguration
 imageProcessing.isEnabled = true
@@ -2331,6 +2394,7 @@ const setSceneEnvironmentTexture = async (
     refreshOutline?: boolean
   } = {},
 ) => {
+
   if (!force && selectedEnvironmentKey === environmentKey) {
     return
   }
@@ -2345,7 +2409,7 @@ const setSceneEnvironmentTexture = async (
   const loadToken = ++environmentLoadToken
 
   if (showLoadingStatus) {
-    setStatus(`加载环境贴图: ${option.label}`)
+    setStatus(`Loading environment: ${option.label}`)
   }
 
   try {
@@ -2375,13 +2439,14 @@ const setSceneEnvironmentTexture = async (
       (message, exception) => {
         if (loadToken === environmentLoadToken) {
           console.error('Environment texture load failed', message, exception)
-          setStatus(`环境贴图加载失败: ${option.label}`)
+          setStatus(`Environment load failed: ${option.label}`)
         }
       },
     )
 
     nextTexture.rotationY = degreesToRadians(environmentRotationY)
     scene.environmentTexture = nextTexture
+    scene.environmentIntensity = globalEnvironmentIntensity
     updateEnvironmentBackground()
 
     if (previousTexture && previousTexture !== nextTexture) {
@@ -2390,7 +2455,7 @@ const setSceneEnvironmentTexture = async (
   } catch (error) {
     if (loadToken === environmentLoadToken) {
       console.error('Environment texture resolve failed', error)
-      setStatus(`环境贴图加载失败: ${option.label}`)
+      setStatus(`Environment load failed: ${option.label}`)
     }
     return
   }
@@ -2434,11 +2499,12 @@ const collectPbrMaterialsFromMaterial = (material: unknown, target: Set<PBRMater
 }
 
 const isTransparentPbrMaterial = (material: PBRMaterial) => {
+  const mode = material.transparencyMode
+
   return (
     material.alpha < 0.999 ||
-    material.needAlphaBlending() ||
-    material.transparencyMode === Material.MATERIAL_ALPHABLEND ||
-    material.transparencyMode === Material.MATERIAL_ALPHATESTANDBLEND ||
+    mode === Material.MATERIAL_ALPHABLEND ||
+    mode === Material.MATERIAL_ALPHATESTANDBLEND ||
     material.subSurface.isRefractionEnabled
   )
 }
@@ -2750,7 +2816,7 @@ const createViewerConfig = (): ViewerConfig => {
       environmentTexture: selectedEnvironmentKey ?? undefined,
       environmentBackgroundEnabled,
       environmentRotationY,
-      environmentIntensity: scene.environmentIntensity,
+      environmentIntensity: globalEnvironmentIntensity,
       clearColor: colorToConfig(scene.clearColor),
       exposure: imageProcessing.exposure,
       contrast: imageProcessing.contrast,
@@ -2818,7 +2884,8 @@ const applyViewerConfig = (
   updateEnvironmentBackground()
   applyEnvironmentRotation()
 
-  scene.environmentIntensity = config.world.environmentIntensity
+  globalEnvironmentIntensity = config.world.environmentIntensity
+  scene.environmentIntensity = globalEnvironmentIntensity
   scene.clearColor = new Color4(config.world.clearColor[0], config.world.clearColor[1], config.world.clearColor[2], 1)
   imageProcessing.exposure = config.world.exposure
   imageProcessing.contrast = config.world.contrast
@@ -3248,7 +3315,7 @@ const createMaterialDetail = (material: PBRMaterial): DetailDescriptor => ({
         numberItem('Direct', material.directIntensity, 0, 2, 0.01, (value) => {
           material.directIntensity = value
         }),
-        numberItem('Environment', material.environmentIntensity, 0, 2, 0.01, (value) => {
+        numberItem('Environment', material.environmentIntensity, 0, 5, 0.01, (value) => {
           material.environmentIntensity = value
         }),
         numberItem('Specular', material.specularIntensity, 0, 2, 0.01, (value) => {
@@ -3450,7 +3517,8 @@ detailRegistry.set('world:main', () => ({
               ),
             ]
           : []),
-        numberItem('\u73af\u5883\u5f3a\u5ea6', scene.environmentIntensity, 0, 2, 0.01, (value) => {
+        numberItem('\u73af\u5883\u5f3a\u5ea6', globalEnvironmentIntensity, 0, 2, 0.01, (value) => {
+          globalEnvironmentIntensity = value
           scene.environmentIntensity = value
         }),
         colorItem('\u80cc\u666f\u8272', scene.clearColor, (value) => {
@@ -3584,13 +3652,18 @@ const frameHierarchy = (root: TransformNode, meshes: AbstractMesh[]) => {
 }
 
 const tuneImportedMaterial = (material: PBRMaterial) => {
+  normalizeImportedGlassMaterial(material)
+  normalizeImportedMaterialTransparency(material)
+
+  const transparent = isTransparentPbrMaterial(material)
+
   material.forceIrradianceInFragment = true
   material.maxSimultaneousLights = 4
-  material.directIntensity = 0.48
-  material.environmentIntensity = 0.42
-  material.specularIntensity = 0.45
+  material.directIntensity = transparent ? Math.max(material.directIntensity, 0.48) : 0.48
+  material.environmentIntensity = Math.max(material.environmentIntensity, 1.5)
+  material.specularIntensity = transparent ? Math.max(material.specularIntensity, 0.75) : 0.45
 
-  if (material.roughness === null || material.roughness === undefined) {
+  if (!transparent && (material.roughness === null || material.roughness === undefined)) {
     material.roughness = 0.78
   }
   syncImportedMaterialRenderingState(material)
@@ -3915,19 +3988,11 @@ let frameUpdateTimer = 0
 const frameUpdateInterval = 0.8
 
 const frameMetrics: { label: string; get: () => string }[] = [
-  { label: '帧率 (FPS)', get: () => String(Math.round(engine.getFps())) },
-  { label: '渲染调用 (Draw Calls)', get: () => String(sceneInstrumentation?.drawCallsCounter.current ?? 0) },
-  { label: '逻辑耗时 (CPU Time)', get: () => {
-    const v = sceneInstrumentation?.frameTimeCounter.current
-    return v != null ? String(Math.round(v * 10) / 10) + ' ms' : '0 ms'
-  }},
-  { label: '场景面数 (Triangles)', get: () => {
-    const v = scene.totalVerticesPerfCounter.current
-    return String(v ?? 0)
-  }},
-  { label: '活动网格 (Meshes)', get: () => String(scene.getActiveMeshes().length) + ' / ' + String(scene.meshes.length) },
+  { label: 'FPS', get: () => String(Math.round(engine.getFps())) },
+  { label: 'Draw Calls', get: () => String(sceneInstrumentation?.drawCallsCounter.current ?? 0) },
+  { label: 'Triangles', get: () => String(scene.getActiveIndices() ?? 0) },
+  { label: 'Meshes', get: () => String(scene.getActiveMeshes().length) + ' / ' + String(scene.meshes.length) },
 ]
-
 let frameOverlayVisible = false
 
 const updateFrameGrid = () => {
