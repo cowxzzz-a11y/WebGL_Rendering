@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sheet Packer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          "Microsoft YaHei UI",
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+        background: #171b1e;
+        color: #e6edf1;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          linear-gradient(180deg, rgba(64, 82, 92, 0.18), transparent 220px),
+          #171b1e;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(30, 36, 39, 0.94);
+        padding: 18px;
+        overflow: auto;
+      }
+
+      h1 {
+        margin: 0 0 16px;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .section {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.035);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+
+      .section-title {
+        margin: 0 0 10px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #cfd9df;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+
+      .field:last-child {
+        margin-bottom: 0;
+      }
+
+      .field label,
+      .check label {
+        font-size: 12px;
+        color: #aebbc2;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      input[type="number"],
+      input[type="text"],
+      input[type="color"],
+      select {
+        width: 100%;
+        height: 32px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 5px;
+        background: #111619;
+        color: #e6edf1;
+        padding: 0 9px;
+      }
+
+      input[type="file"] {
+        width: 100%;
+        color: #cbd5da;
+      }
+
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0;
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      button {
+        height: 34px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 6px;
+        background: #26323a;
+        color: #e6edf1;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: rgba(83, 159, 255, 0.65);
+        background: #28568d;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .slots {
+        display: grid;
+        gap: 6px;
+        max-height: 230px;
+        overflow: auto;
+        padding-right: 4px;
+      }
+
+      .slot {
+        display: grid;
+        grid-template-columns: 42px 1fr;
+        gap: 8px;
+        align-items: center;
+        min-height: 30px;
+        padding: 6px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.045);
+        font-size: 12px;
+      }
+
+      .slot-index {
+        color: #7fb7ff;
+        font-weight: 700;
+      }
+
+      .slot-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #c9d3d8;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-width: 0;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .status {
+        font-size: 13px;
+        color: #aebbc2;
+      }
+
+      .canvas-wrap {
+        overflow: auto;
+        padding: 18px;
+      }
+
+      canvas {
+        display: block;
+        max-width: 100%;
+        background-image:
+          linear-gradient(45deg, #2b3033 25%, transparent 25%),
+          linear-gradient(-45deg, #2b3033 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #2b3033 75%),
+          linear-gradient(-45deg, transparent 75%, #2b3033 75%);
+        background-size: 20px 20px;
+        background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+        box-shadow: 0 12px 38px rgba(0, 0, 0, 0.35);
+      }
+
+      .hint {
+        margin: 8px 0 0;
+        color: #8d9aa1;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 900px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar">
+        <h1>Sheet Packer</h1>
+
+        <section class="section">
+          <p class="section-title">图片</p>
+          <div class="field">
+            <label for="fileInput">选择图片，可直接框选 0001-0008</label>
+            <input id="fileInput" type="file" accept="image/*" multiple />
+          </div>
+          <div class="field">
+            <label for="folderInput">或选择文件夹</label>
+            <input id="folderInput" type="file" accept="image/*" multiple webkitdirectory />
+          </div>
+          <p class="hint">会按文件名自然排序。办公室广告板默认顺序：0001 正前、0002 斜前、0003 正侧、0004 斜后、0005 正后、0006 斜后、0007 正侧、0008 斜前。</p>
+        </section>
+
+        <section class="section">
+          <p class="section-title">布局</p>
+          <div class="row">
+            <div class="field">
+              <label for="columns">列</label>
+              <input id="columns" type="number" min="1" max="32" value="4" />
+            </div>
+            <div class="field">
+              <label for="rows">行</label>
+              <input id="rows" type="number" min="1" max="32" value="2" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="cellWidth">单格宽，0 为自动</label>
+              <input id="cellWidth" type="number" min="0" value="0" />
+            </div>
+            <div class="field">
+              <label for="cellHeight">单格高，0 为自动</label>
+              <input id="cellHeight" type="number" min="0" value="0" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="gap">间距</label>
+              <input id="gap" type="number" min="0" value="0" />
+            </div>
+            <div class="field">
+              <label for="padding">外边距</label>
+              <input id="padding" type="number" min="0" value="0" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fitMode">填充方式</label>
+            <select id="fitMode">
+              <option value="contain">等比完整显示</option>
+              <option value="cover">等比铺满裁切</option>
+              <option value="stretch">拉伸到单格</option>
+              <option value="original">原尺寸居中</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="section">
+          <p class="section-title">输出</p>
+          <div class="check">
+            <input id="transparent" type="checkbox" checked />
+            <label for="transparent">透明背景</label>
+          </div>
+          <div class="field">
+            <label for="bgColor">背景色</label>
+            <input id="bgColor" type="color" value="#000000" />
+          </div>
+          <div class="check">
+            <input id="drawLabels" type="checkbox" />
+            <label for="drawLabels">导出时写入角度标签</label>
+          </div>
+          <div class="field">
+            <label for="outputName">文件名</label>
+            <input id="outputName" type="text" value="office_billboard_sheet.png" />
+          </div>
+          <div class="actions">
+            <button id="clearButton" type="button">清空</button>
+            <button id="downloadButton" class="primary" type="button" disabled>导出 PNG</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <p class="section-title">当前顺序</p>
+          <div id="slots" class="slots"></div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div class="toolbar">
+          <div id="status" class="status">请选择图片或文件夹</div>
+          <button id="renderButton" type="button">重新生成</button>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="sheetCanvas" width="1" height="1"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const directionLabels = ["正前", "斜前", "正侧", "斜后", "正后", "斜后", "正侧", "斜前"];
+      const imageExtPattern = /\.(png|jpe?g|webp|bmp|gif)$/i;
+      const state = {
+        images: [],
+      };
+
+      const $ = (id) => document.getElementById(id);
+      const canvas = $("sheetCanvas");
+      const ctx = canvas.getContext("2d");
+      const controls = {
+        fileInput: $("fileInput"),
+        folderInput: $("folderInput"),
+        columns: $("columns"),
+        rows: $("rows"),
+        cellWidth: $("cellWidth"),
+        cellHeight: $("cellHeight"),
+        gap: $("gap"),
+        padding: $("padding"),
+        fitMode: $("fitMode"),
+        transparent: $("transparent"),
+        bgColor: $("bgColor"),
+        drawLabels: $("drawLabels"),
+        outputName: $("outputName"),
+        status: $("status"),
+        slots: $("slots"),
+        renderButton: $("renderButton"),
+        clearButton: $("clearButton"),
+        downloadButton: $("downloadButton"),
+      };
+
+      const naturalCompare = (a, b) =>
+        a.localeCompare(b, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+
+      const getNumber = (input, fallback) => {
+        const value = Number.parseInt(input.value, 10);
+        return Number.isFinite(value) ? value : fallback;
+      };
+
+      const loadImage = (file) =>
+        new Promise((resolve, reject) => {
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+          img.onload = () => resolve({ file, img, url });
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error(`无法读取图片：${file.name}`));
+          };
+          img.src = url;
+        });
+
+      async function handleFiles(fileList) {
+        state.images.forEach((item) => URL.revokeObjectURL(item.url));
+        const files = Array.from(fileList)
+          .filter((file) => imageExtPattern.test(file.name))
+          .sort((a, b) => naturalCompare(a.name, b.name));
+
+        if (files.length === 0) {
+          state.images = [];
+          renderSlots();
+          renderSheet();
+          return;
+        }
+
+        controls.status.textContent = `正在读取 ${files.length} 张图片...`;
+        state.images = await Promise.all(files.map(loadImage));
+        renderSlots();
+        renderSheet();
+      }
+
+      function getSlotLabel(index, name) {
+        const prefix = String(index + 1).padStart(4, "0");
+        const direction = directionLabels[index] || "";
+        return direction ? `${prefix} ${direction}` : name;
+      }
+
+      function renderSlots() {
+        const cols = Math.max(1, getNumber(controls.columns, 4));
+        const rows = Math.max(1, getNumber(controls.rows, 2));
+        const total = cols * rows;
+        controls.slots.innerHTML = "";
+
+        for (let i = 0; i < total; i += 1) {
+          const item = state.images[i];
+          const slot = document.createElement("div");
+          const indexLabel = document.createElement("span");
+          const nameLabel = document.createElement("span");
+
+          slot.className = "slot";
+          indexLabel.className = "slot-index";
+          indexLabel.textContent = String(i + 1).padStart(2, "0");
+          nameLabel.className = "slot-name";
+          nameLabel.textContent = item ? item.file.name : getSlotLabel(i, "");
+          slot.append(indexLabel, nameLabel);
+          controls.slots.append(slot);
+        }
+      }
+
+      function getDrawRect(img, x, y, w, h, mode) {
+        if (mode === "stretch") {
+          return { sx: 0, sy: 0, sw: img.width, sh: img.height, dx: x, dy: y, dw: w, dh: h };
+        }
+
+        if (mode === "original") {
+          return {
+            sx: 0,
+            sy: 0,
+            sw: img.width,
+            sh: img.height,
+            dx: Math.round(x + (w - img.width) / 2),
+            dy: Math.round(y + (h - img.height) / 2),
+            dw: img.width,
+            dh: img.height,
+          };
+        }
+
+        const scale = mode === "cover" ? Math.max(w / img.width, h / img.height) : Math.min(w / img.width, h / img.height);
+        const dw = Math.round(img.width * scale);
+        const dh = Math.round(img.height * scale);
+        return {
+          sx: 0,
+          sy: 0,
+          sw: img.width,
+          sh: img.height,
+          dx: Math.round(x + (w - dw) / 2),
+          dy: Math.round(y + (h - dh) / 2),
+          dw,
+          dh,
+        };
+      }
+
+      function renderSheet() {
+        const cols = Math.max(1, getNumber(controls.columns, 4));
+        const rows = Math.max(1, getNumber(controls.rows, 2));
+        const total = cols * rows;
+        const images = state.images.slice(0, total);
+        const gap = Math.max(0, getNumber(controls.gap, 0));
+        const padding = Math.max(0, getNumber(controls.padding, 0));
+        const autoW = images.reduce((max, item) => Math.max(max, item.img.width), 0) || 256;
+        const autoH = images.reduce((max, item) => Math.max(max, item.img.height), 0) || 256;
+        const cellW = Math.max(1, getNumber(controls.cellWidth, 0) || autoW);
+        const cellH = Math.max(1, getNumber(controls.cellHeight, 0) || autoH);
+        const width = padding * 2 + cols * cellW + (cols - 1) * gap;
+        const height = padding * 2 + rows * cellH + (rows - 1) * gap;
+
+        canvas.width = width;
+        canvas.height = height;
+        ctx.clearRect(0, 0, width, height);
+
+        if (!controls.transparent.checked) {
+          ctx.fillStyle = controls.bgColor.value;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        images.forEach((item, index) => {
+          const col = index % cols;
+          const row = Math.floor(index / cols);
+          const x = padding + col * (cellW + gap);
+          const y = padding + row * (cellH + gap);
+          const rect = getDrawRect(item.img, x, y, cellW, cellH, controls.fitMode.value);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(x, y, cellW, cellH);
+          ctx.clip();
+          ctx.drawImage(item.img, rect.sx, rect.sy, rect.sw, rect.sh, rect.dx, rect.dy, rect.dw, rect.dh);
+
+          if (controls.drawLabels.checked) {
+            const text = getSlotLabel(index, item.file.name);
+            ctx.fillStyle = "rgba(0, 0, 0, 0.62)";
+            ctx.fillRect(x, y + cellH - 26, cellW, 26);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "14px Microsoft YaHei UI, sans-serif";
+            ctx.fillText(text, x + 8, y + cellH - 8);
+          }
+          ctx.restore();
+        });
+
+        controls.downloadButton.disabled = images.length === 0;
+        controls.status.textContent =
+          images.length > 0
+            ? `已生成 ${cols} x ${rows}，尺寸 ${width} x ${height}，使用 ${images.length}/${total} 张`
+            : "请选择图片或文件夹";
+      }
+
+      function downloadPng() {
+        const link = document.createElement("a");
+        const name = controls.outputName.value.trim() || "sheet.png";
+        link.download = name.toLowerCase().endsWith(".png") ? name : `${name}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      }
+
+      function clearAll() {
+        state.images.forEach((item) => URL.revokeObjectURL(item.url));
+        state.images = [];
+        controls.fileInput.value = "";
+        controls.folderInput.value = "";
+        renderSlots();
+        renderSheet();
+      }
+
+      controls.fileInput.addEventListener("change", (event) => handleFiles(event.target.files));
+      controls.folderInput.addEventListener("change", (event) => handleFiles(event.target.files));
+      controls.renderButton.addEventListener("click", () => {
+        renderSlots();
+        renderSheet();
+      });
+      controls.clearButton.addEventListener("click", clearAll);
+      controls.downloadButton.addEventListener("click", downloadPng);
+
+      [
+        controls.columns,
+        controls.rows,
+        controls.cellWidth,
+        controls.cellHeight,
+        controls.gap,
+        controls.padding,
+        controls.fitMode,
+        controls.transparent,
+        controls.bgColor,
+        controls.drawLabels,
+      ].forEach((control) => {
+        control.addEventListener("input", () => {
+          renderSlots();
+          renderSheet();
+        });
+      });
+
+      renderSlots();
+      renderSheet();
+    </script>
+  </body>
+</html>

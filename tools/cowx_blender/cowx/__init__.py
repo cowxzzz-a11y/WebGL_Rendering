@@ -488,6 +488,85 @@ class COWX_OT_Bake(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class COWX_OT_PickReplaceSource(bpy.types.Operator):
+    bl_idname = "cowx.pick_replace_source"
+    bl_label = "拾取替换源"
+    bl_description = "把当前活动物体保存为批量替换源"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object is not None
+
+    def execute(self, context):
+        context.scene.cowx_replace_source = context.active_object
+        self.report({"INFO"}, f"已拾取替换源: {context.active_object.name}")
+        return {"FINISHED"}
+
+
+class COWX_OT_ReplaceSelectedWithSource(bpy.types.Operator):
+    bl_idname = "cowx.replace_selected_with_source"
+    bl_label = "替换选中物体"
+    bl_description = "用拾取的源物体替换当前选中物体，并完全继承每个目标的世界坐标、旋转和缩放"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        scene = context.scene
+        return bool(getattr(scene, "cowx_replace_source", None)) and bool(context.selected_objects)
+
+    def execute(self, context):
+        scene = context.scene
+        source = scene.cowx_replace_source
+        if source is None:
+            self.report({"WARNING"}, "请先拾取一个有效的替换源物体")
+            return {"CANCELLED"}
+
+        targets = [obj for obj in context.selected_objects if obj != source]
+        if not targets:
+            self.report({"WARNING"}, "请框选需要被替换的目标物体，替换源本身会被自动排除")
+            return {"CANCELLED"}
+
+        new_objects = []
+        for target in targets:
+            matrix = target.matrix_world.copy()
+            parent = target.parent
+            collections = list(target.users_collection) or [context.collection]
+
+            new_obj = source.copy()
+            if not scene.cowx_replace_use_instance_data and source.data:
+                new_obj.data = source.data.copy()
+            new_obj.name = f"{source.name}_to_{target.name}"
+            new_obj.animation_data_clear()
+
+            for collection in collections:
+                try:
+                    collection.objects.link(new_obj)
+                except RuntimeError:
+                    pass
+
+            new_obj.parent = parent
+            new_obj.matrix_world = matrix
+            new_objects.append(new_obj)
+
+        if scene.cowx_replace_delete_targets:
+            for target in targets:
+                bpy.data.objects.remove(target, do_unlink=True)
+        else:
+            for target in targets:
+                target.hide_set(True)
+                target.hide_render = True
+
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in new_objects:
+            obj.select_set(True)
+        if new_objects:
+            context.view_layer.objects.active = new_objects[-1]
+
+        self.report({"INFO"}, f"已替换 {len(new_objects)} 个物体")
+        return {"FINISHED"}
+
+
 class COWX_PT_BakePanel(bpy.types.Panel):
     bl_label = "Cowx 烘焙工具"
     bl_idname = "COWX_PT_BakePanel"
@@ -535,10 +614,45 @@ class COWX_PT_BakePanel(bpy.types.Panel):
         layout.operator("cowx.bake", icon="RENDER_STILL", text="开始烘焙")
 
 
+class COWX_PT_ReplacePanel(bpy.types.Panel):
+    bl_label = "Cowx 批量替换"
+    bl_idname = "COWX_PT_ReplacePanel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Cowx"
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        source = scene.cowx_replace_source
+
+        box = layout.box()
+        box.label(text="源物体", icon="EYEDROPPER")
+        box.prop(scene, "cowx_replace_source", text="")
+        box.operator("cowx.pick_replace_source", icon="EYEDROPPER", text="拾取当前活动物体")
+
+        layout.separator()
+        layout.prop(scene, "cowx_replace_use_instance_data", text="实例化源数据")
+        layout.prop(scene, "cowx_replace_delete_targets", text="删除被替换物体")
+
+        selected_count = len([obj for obj in context.selected_objects if obj != source])
+        row = layout.row()
+        row.enabled = source is not None and selected_count > 0
+        row.operator("cowx.replace_selected_with_source", icon="DUPLICATE", text=f"替换选中物体 ({selected_count})")
+
+        if source is None:
+            layout.label(text="先选择源物体并点击拾取", icon="INFO")
+        elif selected_count == 0:
+            layout.label(text="再框选需要替换的目标物体", icon="INFO")
+
+
 classes = (
     COWX_OT_SmartIsolate,
     COWX_OT_Bake,
+    COWX_OT_PickReplaceSource,
+    COWX_OT_ReplaceSelectedWithSource,
     COWX_PT_BakePanel,
+    COWX_PT_ReplacePanel,
 )
 
 _addon_keymaps = []
@@ -575,6 +689,17 @@ def register():
     bpy.types.Scene.cowx_bake_pass_light = bpy.props.BoolProperty(
         name="Light", default=False,
     )
+    bpy.types.Scene.cowx_replace_source = bpy.props.PointerProperty(
+        name="替换源物体", type=bpy.types.Object,
+    )
+    bpy.types.Scene.cowx_replace_use_instance_data = bpy.props.BoolProperty(
+        name="实例化源数据", default=True,
+        description="开启后复制出的物体共享同一份 Mesh/Light 数据，适合批量灯具替换并更省资源",
+    )
+    bpy.types.Scene.cowx_replace_delete_targets = bpy.props.BoolProperty(
+        name="删除被替换物体", default=True,
+        description="关闭后仅隐藏原目标物体，便于回退检查",
+    )
 
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -608,6 +733,8 @@ def unregister():
         "cowx_bake_pass_color", "cowx_bake_pass_normal",
         "cowx_bake_pass_roughness", "cowx_bake_pass_ao",
         "cowx_bake_pass_light",
+        "cowx_replace_source", "cowx_replace_use_instance_data",
+        "cowx_replace_delete_targets",
     ]
     for prop in props:
         if hasattr(bpy.types.Scene, prop):

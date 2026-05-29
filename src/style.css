@@ -978,7 +978,32 @@ button.outliner-icon.outliner-visibility {
   margin-bottom: 8px;
 }
 
+.billboard-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.billboard-toolbar .bake-search,
+.billboard-toolbar .bake-selection-count {
+  grid-column: 1 / -1;
+}
+
 .bake-toolbar button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #c8d0ce;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.billboard-toolbar button {
   height: 28px;
   padding: 0 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1075,6 +1100,61 @@ button.outliner-icon.outliner-visibility {
   white-space: nowrap;
   font-size: 13px;
   font-weight: 650;
+}
+
+.billboard-mesh-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.billboard-mesh-name strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font-size: 12px;
+}
+
+.billboard-mesh-name small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #87928f;
+  font-size: 10px;
+}
+
+.billboard-mesh-row.applied .bake-mesh-icon {
+  color: #8fc7ff;
+}
+
+.billboard-sheet-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 48px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(12, 14, 14, 0.28);
+}
+
+.billboard-sheet-info strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eef2f1;
+  font-size: 12px;
+}
+
+.billboard-sheet-info span {
+  color: #93a09c;
+  font-size: 11px;
 }
 
 .bake-empty {

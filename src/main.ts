@@ -18,7 +18,7 @@ import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture'
 import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
-import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { LinesMesh } from '@babylonjs/core/Meshes/linesMesh'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
@@ -52,7 +52,10 @@ type OutlineNode = {
   name: string
   kind: string
   detailId?: string
-  visibilityTarget?: AbstractMesh
+  visibilityTarget?: {
+    getVisible: () => boolean
+    setVisible: (visible: boolean) => void
+  }
   open?: boolean
   children?: OutlineNode[]
 }
@@ -110,6 +113,17 @@ type DetailDescriptor = {
   title: string
   kind: string
   sections: DetailSection[]
+}
+
+type BillboardBinding = {
+  mesh: AbstractMesh
+  material: StandardMaterial
+  texture: Texture
+  originalMaterial: AbstractMesh['material']
+  originalBillboardMode: number
+  originalRotation: Vector3
+  originalRotationQuaternion: Quaternion | null
+  originalHorizontalNormal: Vector3
 }
 
 type DefaultModel = {
@@ -425,11 +439,11 @@ const makeOutlineRow = (node: OutlineNode) => {
     const button = icon as HTMLButtonElement
     button.type = 'button'
     icon.classList.add('outliner-visibility')
-    icon.dataset.visible = String(node.visibilityTarget.isVisible)
-    icon.ariaLabel = node.visibilityTarget.isVisible ? 'Hide object' : 'Show object'
+    icon.dataset.visible = String(node.visibilityTarget.getVisible())
+    icon.ariaLabel = node.visibilityTarget.getVisible() ? 'Hide object' : 'Show object'
     icon.addEventListener('click', (event) => {
       event.stopPropagation()
-      node.visibilityTarget!.isVisible = !node.visibilityTarget!.isVisible
+      node.visibilityTarget!.setVisible(!node.visibilityTarget!.getVisible())
       setOutline(currentMeshNodes)
       if (node.detailId === selectedDetailId) {
         selectDetail(node.detailId)
@@ -500,8 +514,8 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
     nodes: [],
   },
   {
-    id: 'camera',
-    label: '\u6444\u50cf\u673a',
+    id: 'viewport',
+    label: '\u89c6\u53e3\u63a7\u5236',
     nodes: [],
   },
   {
@@ -569,6 +583,7 @@ const renderPanelTabs = (tabs: PanelTab[]) => {
 }
 
 let techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
+let viewportActiveSubTab = '\u6444\u50cf\u673a'
 let ssao2Pipeline: SSAO2RenderingPipeline | null = null
 let ssrPipeline: SSRRenderingPipeline | null = null
 let shadowEnabledPreference = true
@@ -581,6 +596,22 @@ let shadowFilterMode = 6
 let savedSunIntensity = 0.62
 let savedLightmaps = new WeakMap<PBRMaterial, BaseTexture>()
 let geometryBufferRenderer: GeometryBufferRenderer | null = null
+let selectedBillboardMeshIds = new Set<string>()
+let billboardSheetUrl = ''
+let billboardSheetFileName = ''
+let billboardSheetWidth = 0
+let billboardSheetHeight = 0
+let billboardColumns = 4
+let billboardRows = 2
+let billboardDirections = 8
+let billboardStartFrame = 1
+let billboardAngleOffset = 0
+let billboardLockY = true
+let billboardAutoFrame = true
+let billboardRotateMesh = true
+let billboardDoubleSided = true
+let billboardModelFilter = '__all__'
+const billboardBindings = new Map<number, BillboardBinding>()
 
 const ensureGeometryBufferRenderer = (enableReflectivity = false) => {
   geometryBufferRenderer ??= scene.enableGeometryBufferRenderer()
@@ -767,7 +798,6 @@ const normalizeImportedGlassMaterial = (material: PBRMaterial) => {
   material.metallic = 0
   material.environmentIntensity = Math.max(material.environmentIntensity, 1.8)
   material.specularIntensity = Math.max(material.specularIntensity, 1)
-  material.backFaceCulling = true
   material.needDepthPrePass = true
   material.separateCullingPass = false
   material.forceDepthWrite = true
@@ -944,6 +974,234 @@ const createModule = (title: string, bodyContent: HTMLElement[], open = true) =>
   return mod
 }
 
+const getSelectableMeshes = () =>
+  importedMeshes.filter((mesh) => mesh.name !== '_root' && mesh.name !== '__root__')
+
+const getModelRootForMesh = (mesh: AbstractMesh) => {
+  let parent = mesh.parent
+
+  while (parent) {
+    if (parent instanceof TransformNode && currentModelRoots.includes(parent)) {
+      return parent
+    }
+    parent = parent.parent
+  }
+
+  return null
+}
+
+const getModelNameForMesh = (mesh: AbstractMesh) => {
+  const root = getModelRootForMesh(mesh)
+  const index = root ? currentModelRoots.indexOf(root) : -1
+
+  return index >= 0 ? importedFileNames[index] ?? root!.name : '\u672a\u5206\u7ec4'
+}
+
+const getBillboardTargetMeshes = () =>
+  getSelectableMeshes().filter((mesh) => selectedBillboardMeshIds.has(String(mesh.uniqueId)))
+
+const getOriginalRotationQuaternion = (mesh: AbstractMesh) =>
+  mesh.rotationQuaternion?.clone() ?? Quaternion.FromEulerAngles(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z)
+
+const getBillboardLocalNormal = (mesh: AbstractMesh) => {
+  const positions = mesh.getVerticesData('position')
+
+  if (!positions || positions.length < 3) {
+    return Vector3.Forward()
+  }
+
+  const min = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]
+  const max = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]
+
+  for (let i = 0; i < positions.length; i += 3) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      const value = positions[i + axis]
+      min[axis] = Math.min(min[axis], value)
+      max[axis] = Math.max(max[axis], value)
+    }
+  }
+
+  const extents = max.map((value, index) => value - min[index])
+  const normalAxis = extents.indexOf(Math.min(...extents))
+
+  if (normalAxis === 0) return Vector3.Right()
+  if (normalAxis === 1) return Vector3.Up()
+  return Vector3.Forward()
+}
+
+const getHorizontalNormal = (normal: Vector3, rotation: Quaternion) => {
+  const matrix = new Matrix()
+  rotation.toRotationMatrix(matrix)
+  const horizontal = Vector3.TransformNormal(normal, matrix)
+  horizontal.y = 0
+
+  if (horizontal.lengthSquared() < 0.000001) {
+    return Vector3.Forward()
+  }
+
+  return horizontal.normalize()
+}
+
+const normalizeFrameIndex = (index: number) => {
+  const totalFrames = Math.max(1, billboardColumns * billboardRows)
+  return ((index % totalFrames) + totalFrames) % totalFrames
+}
+
+const applyBillboardFrame = (binding: BillboardBinding, frameIndex: number) => {
+  const col = frameIndex % billboardColumns
+  const row = Math.floor(frameIndex / billboardColumns)
+
+  binding.texture.uScale = 1 / Math.max(1, billboardColumns)
+  binding.texture.vScale = 1 / Math.max(1, billboardRows)
+  binding.texture.uOffset = col / Math.max(1, billboardColumns)
+  binding.texture.vOffset = (Math.max(1, billboardRows) - 1 - row) / Math.max(1, billboardRows)
+}
+
+const getBillboardFrameForMesh = (mesh: AbstractMesh) => {
+  if (!billboardAutoFrame) {
+    return normalizeFrameIndex(billboardStartFrame - 1)
+  }
+
+  const meshPosition = mesh.getAbsolutePosition()
+  const cameraPosition = camera.position
+  const dx = cameraPosition.x - meshPosition.x
+  const dz = cameraPosition.z - meshPosition.z
+  const angle = Math.atan2(dx, dz)
+  const step = (Math.PI * 2) / Math.max(1, billboardDirections)
+  const offset = degreesToRadians(billboardAngleOffset)
+  const directionIndex = Math.round((angle + offset) / step)
+
+  return normalizeFrameIndex(directionIndex + billboardStartFrame - 1)
+}
+
+const updateBillboards = () => {
+  billboardBindings.forEach((binding) => {
+    binding.mesh.billboardMode = AbstractMesh.BILLBOARDMODE_NONE
+    binding.material.backFaceCulling = !billboardDoubleSided
+
+    if (billboardLockY && billboardRotateMesh) {
+      const toCamera = camera.position.subtract(binding.mesh.getAbsolutePosition())
+      toCamera.y = 0
+
+      if (toCamera.lengthSquared() > 0.000001) {
+        toCamera.normalize()
+        const cross = Vector3.Cross(binding.originalHorizontalNormal, toCamera)
+        const dot = Vector3.Dot(binding.originalHorizontalNormal, toCamera)
+        const yaw = Math.atan2(cross.y, dot)
+        const yawRotation = Quaternion.RotationAxis(Vector3.Up(), yaw)
+        const originalRotation = binding.originalRotationQuaternion ?? Quaternion.FromEulerAngles(
+          binding.originalRotation.x,
+          binding.originalRotation.y,
+          binding.originalRotation.z,
+        )
+        binding.mesh.rotationQuaternion = yawRotation.multiply(originalRotation)
+      }
+    } else {
+      if (binding.originalRotationQuaternion) {
+        binding.mesh.rotationQuaternion = binding.originalRotationQuaternion.clone()
+      } else {
+        binding.mesh.rotationQuaternion = null
+        binding.mesh.rotation.copyFrom(binding.originalRotation)
+      }
+    }
+
+    applyBillboardFrame(binding, getBillboardFrameForMesh(binding.mesh))
+  })
+}
+
+const removeBillboardFromMesh = (mesh: AbstractMesh) => {
+  const binding = billboardBindings.get(mesh.uniqueId)
+
+  if (!binding) return
+
+  mesh.material = binding.originalMaterial
+  mesh.billboardMode = binding.originalBillboardMode
+  if (binding.originalRotationQuaternion) {
+    mesh.rotationQuaternion = binding.originalRotationQuaternion.clone()
+  } else {
+    mesh.rotationQuaternion = null
+    mesh.rotation.copyFrom(binding.originalRotation)
+  }
+  binding.texture.dispose()
+  binding.material.dispose()
+  billboardBindings.delete(mesh.uniqueId)
+}
+
+const clearAllBillboards = () => {
+  Array.from(billboardBindings.values()).forEach((binding) => removeBillboardFromMesh(binding.mesh))
+}
+
+const applyBillboardToMesh = (mesh: AbstractMesh) => {
+  if (!billboardSheetUrl) return
+
+  removeBillboardFromMesh(mesh)
+
+  const texture = new Texture(billboardSheetUrl, scene, false, false)
+  texture.name = billboardSheetFileName || '\u5e7f\u544a\u724c\u96ea\u78a7\u56fe'
+  texture.hasAlpha = true
+  texture.wrapU = Texture.CLAMP_ADDRESSMODE
+  texture.wrapV = Texture.CLAMP_ADDRESSMODE
+
+  const material = new StandardMaterial(`Billboard_${mesh.name || mesh.uniqueId}`, scene)
+  material.diffuseTexture = texture
+  material.diffuseColor = Color3.White()
+  material.specularColor = Color3.Black()
+  material.emissiveColor = Color3.White()
+  material.disableLighting = true
+  material.useAlphaFromDiffuseTexture = true
+  material.backFaceCulling = !billboardDoubleSided
+  material.transparencyMode = Material.MATERIAL_ALPHABLEND
+  material.needDepthPrePass = true
+  const originalRotation = mesh.rotation.clone()
+  const originalRotationQuaternion = mesh.rotationQuaternion?.clone() ?? null
+  const originalRotationForNormal = getOriginalRotationQuaternion(mesh)
+
+  const binding: BillboardBinding = {
+    mesh,
+    material,
+    texture,
+    originalMaterial: mesh.material,
+    originalBillboardMode: mesh.billboardMode,
+    originalRotation,
+    originalRotationQuaternion,
+    originalHorizontalNormal: getHorizontalNormal(getBillboardLocalNormal(mesh), originalRotationForNormal),
+  }
+
+  mesh.material = material
+  mesh.billboardMode = AbstractMesh.BILLBOARDMODE_NONE
+  billboardBindings.set(mesh.uniqueId, binding)
+  updateBillboards()
+  applyBillboardFrame(binding, getBillboardFrameForMesh(mesh))
+}
+
+const applyBillboardToTargets = () => {
+  getBillboardTargetMeshes().forEach(applyBillboardToMesh)
+  flushSceneRenderCaches()
+}
+
+const loadBillboardSheetFile = (file: File, onReady?: () => void) => {
+  if (billboardSheetUrl) {
+    URL.revokeObjectURL(billboardSheetUrl)
+  }
+
+  const url = URL.createObjectURL(file)
+  billboardSheetUrl = url
+  billboardSheetFileName = file.name
+  billboardSheetWidth = 0
+  billboardSheetHeight = 0
+
+  const image = new Image()
+  image.onload = () => {
+    billboardSheetWidth = image.naturalWidth
+    billboardSheetHeight = image.naturalHeight
+    onReady?.()
+  }
+  image.onerror = () => {
+    onReady?.()
+  }
+  image.src = url
+}
+
 const renderGeneralPostPanel = (panel: HTMLElement) => {
   const postBody: HTMLElement[] = []
 
@@ -1098,12 +1356,7 @@ const renderGeneralPanel = () => {
   sceneOutline.append(panel)
 }
 
-const renderCameraPanel = () => {
-  selectedDetailId = null
-  detailPanel.hidden = true
-  detailPanel.textContent = ''
-  sceneOutline.textContent = ''
-
+const buildCameraPanelContent = () => {
   const panel = document.createElement('div')
   panel.className = 'tech-panel'
 
@@ -1145,6 +1398,286 @@ const renderCameraPanel = () => {
   panel.append(createModule('\u955c\u5934', lensBody))
   panel.append(createModule('\u76ee\u6807', targetBody))
   panel.append(createModule('\u63a7\u5236', controlsBody))
+  return panel
+}
+
+const renderBillboardPanel = (panel: HTMLElement) => {
+  panel.textContent = ''
+
+  const root = document.createElement('div')
+  root.className = 'bake-panel'
+
+  const meshCard = document.createElement('section')
+  meshCard.className = 'bake-card'
+  const meshTitle = document.createElement('div')
+  meshTitle.className = 'bake-card-title'
+  meshTitle.innerHTML = '<strong>\u5e7f\u544a\u724c\u5bf9\u8c61</strong><span>\u9009\u62e9 GLB \u5185\u7684\u9762\u7247\u7f51\u683c</span>'
+
+  const toolbar = document.createElement('div')
+  toolbar.className = 'billboard-toolbar'
+
+  const modelSelect = document.createElement('select')
+  modelSelect.className = 'tech-select'
+  const allOption = document.createElement('option')
+  allOption.value = '__all__'
+  allOption.textContent = '\u5168\u90e8 GLB'
+  modelSelect.append(allOption)
+  importedFileNames.forEach((name, index) => {
+    const option = document.createElement('option')
+    option.value = String(index)
+    option.textContent = name
+    modelSelect.append(option)
+  })
+  modelSelect.value = billboardModelFilter
+
+  const selectVisibleBtn = document.createElement('button')
+  selectVisibleBtn.type = 'button'
+  selectVisibleBtn.textContent = '\u5168\u9009'
+  const clearBtn = document.createElement('button')
+  clearBtn.type = 'button'
+  clearBtn.textContent = '\u53d6\u6d88\u5168\u9009'
+  const searchWrap = document.createElement('label')
+  searchWrap.className = 'bake-search'
+  const searchInput = document.createElement('input')
+  searchInput.type = 'search'
+  searchInput.placeholder = '\u641c\u7d22\u5bf9\u8c61\u540d\u79f0...'
+  searchWrap.append(searchInput)
+  const selectionCount = document.createElement('span')
+  selectionCount.className = 'bake-selection-count'
+  toolbar.append(modelSelect, selectVisibleBtn, clearBtn, searchWrap, selectionCount)
+
+  const list = document.createElement('div')
+  list.className = 'bake-mesh-list'
+
+  const getFilteredMeshes = () => {
+    const query = searchInput.value.trim().toLowerCase()
+    return getSelectableMeshes().filter((mesh) => {
+      const modelIndex = currentModelRoots.indexOf(getModelRootForMesh(mesh) as TransformNode)
+      const modelMatches = billboardModelFilter === '__all__' || String(modelIndex) === billboardModelFilter
+      const nameMatches = mesh.name.toLowerCase().includes(query)
+      return modelMatches && nameMatches
+    })
+  }
+
+  const syncRows = () => {
+    const meshes = getSelectableMeshes()
+    selectedBillboardMeshIds = new Set([...selectedBillboardMeshIds].filter((id) => meshes.some((mesh) => String(mesh.uniqueId) === id)))
+    list.textContent = ''
+
+    const filteredMeshes = getFilteredMeshes()
+    if (filteredMeshes.length === 0) {
+      const empty = document.createElement('div')
+      empty.className = 'bake-empty'
+      empty.textContent = meshes.length === 0 ? '\u8bf7\u5148\u52a0\u8f7d\u6a21\u578b' : '\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8c61'
+      list.append(empty)
+    }
+
+    filteredMeshes.forEach((mesh) => {
+      const id = String(mesh.uniqueId)
+      const row = document.createElement('div')
+      row.className = 'billboard-mesh-row bake-mesh-row'
+      row.classList.toggle('selected', selectedBillboardMeshIds.has(id))
+      row.classList.toggle('applied', billboardBindings.has(mesh.uniqueId))
+      const cb = document.createElement('input')
+      cb.type = 'checkbox'
+      cb.checked = selectedBillboardMeshIds.has(id)
+      cb.addEventListener('click', (event) => event.stopPropagation())
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          selectedBillboardMeshIds.add(id)
+        } else {
+          selectedBillboardMeshIds.delete(id)
+        }
+        row.classList.toggle('selected', cb.checked)
+        updateBillboardSelectionCount(root)
+      })
+
+      row.addEventListener('click', () => {
+        selectedBillboardMeshIds = new Set([id])
+        syncRows()
+      })
+
+      const icon = document.createElement('span')
+      icon.className = 'bake-mesh-icon'
+      icon.textContent = billboardBindings.has(mesh.uniqueId) ? '\u25c8' : '\u25a1'
+      const nameWrap = document.createElement('span')
+      nameWrap.className = 'billboard-mesh-name'
+      const name = document.createElement('strong')
+      name.textContent = mesh.name || `Mesh ${mesh.uniqueId}`
+      const model = document.createElement('small')
+      model.textContent = getModelNameForMesh(mesh)
+      nameWrap.append(name, model)
+      row.append(cb, icon, nameWrap)
+      list.append(row)
+    })
+
+    updateBillboardSelectionCount(root)
+  }
+
+  modelSelect.addEventListener('change', () => {
+    billboardModelFilter = modelSelect.value
+    syncRows()
+  })
+  searchInput.addEventListener('input', syncRows)
+  selectVisibleBtn.addEventListener('click', () => {
+    getFilteredMeshes().forEach((mesh) => selectedBillboardMeshIds.add(String(mesh.uniqueId)))
+    syncRows()
+  })
+  clearBtn.addEventListener('click', () => {
+    getFilteredMeshes().forEach((mesh) => selectedBillboardMeshIds.delete(String(mesh.uniqueId)))
+    syncRows()
+  })
+  meshCard.append(meshTitle, toolbar, list)
+
+  const sheetCard = document.createElement('section')
+  sheetCard.className = 'bake-card'
+  const sheetTitle = document.createElement('div')
+  sheetTitle.className = 'bake-card-title'
+  sheetTitle.innerHTML = '<strong>\u96ea\u78a7\u56fe</strong><span>\u4e00\u5f20\u56fe\u5305\u542b\u6240\u6709\u89d2\u5ea6</span>'
+  const sheetInfo = document.createElement('div')
+  sheetInfo.className = 'billboard-sheet-info'
+  const sheetName = document.createElement('strong')
+  sheetName.textContent = billboardSheetFileName || '\u672a\u4e0a\u4f20'
+  const sheetMeta = document.createElement('span')
+  sheetMeta.textContent =
+    billboardSheetWidth > 0 && billboardSheetHeight > 0
+      ? `${billboardSheetWidth} \u00d7 ${billboardSheetHeight}`
+      : '\u652f\u6301 PNG / JPG / WEBP'
+  sheetInfo.append(sheetName, sheetMeta)
+
+  const fileInput = document.createElement('input')
+  fileInput.type = 'file'
+  fileInput.accept = '.png,.jpg,.jpeg,.webp,.bmp'
+  fileInput.hidden = true
+  const uploadBtn = document.createElement('button')
+  uploadBtn.type = 'button'
+  uploadBtn.className = 'tech-upload-btn'
+  uploadBtn.textContent = '\u4e0a\u4f20\u96ea\u78a7\u56fe'
+  uploadBtn.addEventListener('click', () => fileInput.click())
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0]
+    if (!file) return
+    loadBillboardSheetFile(file, () => {
+      applyBillboardToTargets()
+      renderBillboardPanel(panel)
+    })
+  })
+  sheetCard.append(sheetTitle, sheetInfo, uploadBtn, fileInput)
+
+  const layoutBody: HTMLElement[] = []
+  layoutBody.push(createNumberInput('\u5217\u6570', billboardColumns, 1, 16, 1, (value) => {
+    billboardColumns = Math.max(1, Math.round(value))
+    updateBillboards()
+  }))
+  layoutBody.push(createNumberInput('\u884c\u6570', billboardRows, 1, 16, 1, (value) => {
+    billboardRows = Math.max(1, Math.round(value))
+    updateBillboards()
+  }))
+  layoutBody.push(createNumberInput('\u65b9\u5411\u6570', billboardDirections, 1, 32, 1, (value) => {
+    billboardDirections = Math.max(1, Math.round(value))
+    updateBillboards()
+  }))
+  layoutBody.push(createNumberInput('\u8d77\u59cb\u683c', billboardStartFrame, 1, 64, 1, (value) => {
+    billboardStartFrame = Math.max(1, Math.round(value))
+    updateBillboards()
+  }))
+  layoutBody.push(createSlider('\u89d2\u5ea6\u504f\u79fb', billboardAngleOffset, -180, 180, 1, (value) => {
+    billboardAngleOffset = value
+    updateBillboards()
+  }))
+
+  const orientBody: HTMLElement[] = []
+  orientBody.push(createCheckbox('\u9501\u5b9a Y \u8f74\u9762\u5411\u76f8\u673a', billboardLockY, (value) => {
+    billboardLockY = value
+    updateBillboards()
+  }))
+  orientBody.push(createCheckbox('\u81ea\u52a8\u6309\u76f8\u673a\u89d2\u5ea6\u5207\u683c', billboardAutoFrame, (value) => {
+    billboardAutoFrame = value
+    updateBillboards()
+  }))
+  orientBody.push(createCheckbox('\u65cb\u8f6c\u9762\u7247', billboardRotateMesh, (value) => {
+    billboardRotateMesh = value
+    updateBillboards()
+  }))
+  orientBody.push(createCheckbox('\u6750\u8d28\u53cc\u9762\u663e\u793a', billboardDoubleSided, (value) => {
+    billboardDoubleSided = value
+    updateBillboards()
+  }))
+
+  const actionsCard = document.createElement('section')
+  actionsCard.className = 'bake-card'
+  const actions = document.createElement('div')
+  actions.className = 'bake-lightmap-grid'
+  const applyBtn = document.createElement('button')
+  applyBtn.type = 'button'
+  applyBtn.className = 'bake-action-primary'
+  applyBtn.textContent = '\u5e94\u7528\u5230\u5df2\u9009\u5bf9\u8c61'
+  applyBtn.disabled = !billboardSheetUrl || selectedBillboardMeshIds.size === 0
+  applyBtn.addEventListener('click', () => {
+    applyBillboardToTargets()
+    renderBillboardPanel(panel)
+  })
+  const removeBtn = document.createElement('button')
+  removeBtn.type = 'button'
+  removeBtn.className = 'bake-action-danger'
+  removeBtn.textContent = '\u79fb\u9664\u5df2\u9009\u5e7f\u544a\u724c'
+  removeBtn.disabled = selectedBillboardMeshIds.size === 0
+  removeBtn.addEventListener('click', () => {
+    getBillboardTargetMeshes().forEach(removeBillboardFromMesh)
+    renderBillboardPanel(panel)
+  })
+  actions.append(applyBtn, removeBtn)
+  actionsCard.append(actions)
+
+  root.append(meshCard, sheetCard, createModule('\u5e03\u5c40', layoutBody), createModule('\u671d\u5411', orientBody), actionsCard)
+  panel.append(root)
+  syncRows()
+}
+
+const updateBillboardSelectionCount = (root: HTMLElement) => {
+  const count = root.querySelector<HTMLElement>('.bake-selection-count')
+  if (count) {
+    count.textContent = `\u5df2\u9009 ${selectedBillboardMeshIds.size} / ${getSelectableMeshes().length}`
+  }
+}
+
+const renderViewportPanel = () => {
+  selectedDetailId = null
+  detailPanel.hidden = true
+  detailPanel.textContent = ''
+  sceneOutline.textContent = ''
+
+  const panel = document.createElement('div')
+  panel.className = 'tech-panel'
+  const subTabs = document.createElement('div')
+  subTabs.className = 'tech-sub-tabs'
+  const cameraPanel = document.createElement('div')
+  const billboardPanel = document.createElement('div')
+
+  ;['\u6444\u50cf\u673a', '\u5e7f\u544a\u724c'].forEach((label) => {
+    const btn = document.createElement('button')
+    btn.className = 'tech-sub-tab'
+    btn.textContent = label
+    btn.ariaSelected = String(label === viewportActiveSubTab)
+    btn.addEventListener('click', () => {
+      viewportActiveSubTab = label
+      subTabs.querySelectorAll('.tech-sub-tab').forEach((tab) => {
+        ;(tab as HTMLElement).ariaSelected = String((tab as HTMLElement).textContent === label)
+      })
+      cameraPanel.hidden = label !== '\u6444\u50cf\u673a'
+      billboardPanel.hidden = label !== '\u5e7f\u544a\u724c'
+      if (label === '\u5e7f\u544a\u724c') {
+        renderBillboardPanel(billboardPanel)
+      }
+    })
+    subTabs.append(btn)
+  })
+
+  cameraPanel.append(buildCameraPanelContent())
+  renderBillboardPanel(billboardPanel)
+  cameraPanel.hidden = viewportActiveSubTab !== '\u6444\u50cf\u673a'
+  billboardPanel.hidden = viewportActiveSubTab !== '\u5e7f\u544a\u724c'
+  panel.append(subTabs, cameraPanel, billboardPanel)
   sceneOutline.append(panel)
 }
 
@@ -1539,7 +2072,7 @@ const setLightmapLevelForTarget = (level: number) => {
 }
 
 const getBakeSelectableMeshes = () =>
-  importedMeshes.filter((mesh) => mesh.name !== '_root' && mesh.name !== '__root__')
+  getSelectableMeshes()
 
 const updateBakeSelectionCount = (root: HTMLElement) => {
   const count = root.querySelector<HTMLElement>('.bake-selection-count')
@@ -1880,6 +2413,7 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
   currentMeshNodes = meshNodes
   const tabs = getPanelTabs(meshNodes)
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]
+  activeTabId = activeTab.id
 
   renderPanelTabs(tabs)
   sceneOutline.textContent = ''
@@ -1894,8 +2428,8 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
     return
   }
 
-  if (activeTab.id === 'camera') {
-    renderCameraPanel()
+  if (activeTab.id === 'viewport') {
+    renderViewportPanel()
     return
   }
 
@@ -3662,6 +4196,7 @@ const tuneImportedMaterial = (material: PBRMaterial) => {
   material.directIntensity = transparent ? Math.max(material.directIntensity, 0.48) : 0.48
   material.environmentIntensity = Math.max(material.environmentIntensity, 1.5)
   material.specularIntensity = transparent ? Math.max(material.specularIntensity, 0.75) : 0.45
+  material.backFaceCulling = false
 
   if (!transparent && (material.roughness === null || material.roughness === undefined)) {
     material.roughness = 0.78
@@ -3688,6 +4223,7 @@ const getImportedDisplayName = () => {
 
 const disposeCurrentModels = () => {
   clearMeshSelection()
+  clearAllBillboards()
   unregisterImportedDetails()
   currentModelRoots.forEach((root) => root.dispose(false, true))
   currentModelRoots = []
@@ -3713,7 +4249,12 @@ const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
     name: mesh.name || `Mesh ${mesh.uniqueId}`,
     kind: 'mesh',
     detailId: `mesh:${mesh.uniqueId}`,
-    visibilityTarget: mesh,
+    visibilityTarget: {
+      getVisible: () => mesh.isVisible,
+      setVisible: (visible) => {
+        mesh.isVisible = visible
+      },
+    },
     open: true,
     children:
       mesh.material instanceof PBRMaterial
@@ -3721,9 +4262,15 @@ const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
         : undefined,
   }))
 
-const makeModelOutlineNode = (fileName: string, meshes: AbstractMesh[]): OutlineNode => ({
+const makeModelOutlineNode = (fileName: string, root: TransformNode, meshes: AbstractMesh[]): OutlineNode => ({
   name: fileName,
   kind: 'model',
+  visibilityTarget: {
+    getVisible: () => root.isEnabled(false),
+    setVisible: (visible) => {
+      root.setEnabled(visible)
+    },
+  },
   open: true,
   children: makeMeshOutlineNodes(meshes),
 })
@@ -3799,6 +4346,7 @@ const loadModel = async (source: string | File, fileName: string, shouldApplySto
     currentModelRoots.map((modelRoot, index) =>
       makeModelOutlineNode(
         importedFileNames[index] ?? modelRoot.name,
+        modelRoot,
         importedMeshes.filter((mesh) => {
           let parent = mesh.parent
 
@@ -4027,6 +4575,7 @@ frameOverlayClose.addEventListener('click', () => {
 engine.runRenderLoop(() => {
   try {
     updateKeyboardNavigation()
+    updateBillboards()
     updateFocusAnimation()
     updateSelectionBox()
     updateCameraDepthRange()
