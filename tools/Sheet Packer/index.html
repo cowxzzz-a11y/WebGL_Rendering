@@ -238,14 +238,29 @@
         <section class="section">
           <p class="section-title">图片</p>
           <div class="field">
-            <label for="fileInput">选择图片，可直接框选 0001-0008</label>
+            <label for="importTarget">导入到</label>
+            <select id="importTarget"></select>
+          </div>
+          <div class="field">
+            <label for="importMode">导入方式</label>
+            <select id="importMode">
+              <option value="append">追加到空槽</option>
+              <option value="replace">覆盖目标槽位</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fileInput">选择图片，可分批框选 0001-0016</label>
             <input id="fileInput" type="file" accept="image/*" multiple />
           </div>
           <div class="field">
             <label for="folderInput">或选择文件夹</label>
             <input id="folderInput" type="file" accept="image/*" multiple webkitdirectory />
           </div>
-          <p class="hint">会按文件名自然排序。办公室广告板默认顺序：0001 正前、0002 斜前、0003 正侧、0004 斜后、0005 正后、0006 斜后、0007 正侧、0008 斜前。</p>
+          <div class="actions">
+            <button id="clearTargetButton" type="button">清空当前行</button>
+            <button id="clearAllButton" type="button">清空全部</button>
+          </div>
+          <p class="hint">会按文件名自然排序。默认追加到空槽：可以先选俯视文件夹，再加选平视文件夹，同名 0001-0016 不会覆盖。</p>
         </section>
 
         <section class="section">
@@ -253,7 +268,7 @@
           <div class="row">
             <div class="field">
               <label for="columns">列</label>
-              <input id="columns" type="number" min="1" max="32" value="4" />
+              <input id="columns" type="number" min="1" max="64" value="16" />
             </div>
             <div class="field">
               <label for="rows">行</label>
@@ -289,6 +304,10 @@
               <option value="original">原尺寸居中</option>
             </select>
           </div>
+          <div class="field">
+            <label for="rowLabels">行标签，逗号分隔</label>
+            <input id="rowLabels" type="text" value="俯视,平视" />
+          </div>
         </section>
 
         <section class="section">
@@ -303,7 +322,7 @@
           </div>
           <div class="check">
             <input id="drawLabels" type="checkbox" />
-            <label for="drawLabels">导出时写入角度标签</label>
+            <label for="drawLabels">导出时写入行和序号标签</label>
           </div>
           <div class="field">
             <label for="outputName">文件名</label>
@@ -333,16 +352,17 @@
     </main>
 
     <script>
-      const directionLabels = ["正前", "斜前", "正侧", "斜后", "正后", "斜后", "正侧", "斜前"];
       const imageExtPattern = /\.(png|jpe?g|webp|bmp|gif)$/i;
       const state = {
-        images: [],
+        slots: [],
       };
 
       const $ = (id) => document.getElementById(id);
       const canvas = $("sheetCanvas");
       const ctx = canvas.getContext("2d");
       const controls = {
+        importTarget: $("importTarget"),
+        importMode: $("importMode"),
         fileInput: $("fileInput"),
         folderInput: $("folderInput"),
         columns: $("columns"),
@@ -352,6 +372,7 @@
         gap: $("gap"),
         padding: $("padding"),
         fitMode: $("fitMode"),
+        rowLabels: $("rowLabels"),
         transparent: $("transparent"),
         bgColor: $("bgColor"),
         drawLabels: $("drawLabels"),
@@ -359,6 +380,8 @@
         status: $("status"),
         slots: $("slots"),
         renderButton: $("renderButton"),
+        clearTargetButton: $("clearTargetButton"),
+        clearAllButton: $("clearAllButton"),
         clearButton: $("clearButton"),
         downloadButton: $("downloadButton"),
       };
@@ -374,6 +397,101 @@
         return Number.isFinite(value) ? value : fallback;
       };
 
+      function getLayout() {
+        return {
+          cols: Math.max(1, getNumber(controls.columns, 16)),
+          rows: Math.max(1, getNumber(controls.rows, 2)),
+        };
+      }
+
+      function getRowLabels() {
+        const { rows } = getLayout();
+        const defaults = ["俯视", "平视"];
+        const custom = controls.rowLabels.value
+          .split(/[,，\n]/)
+          .map((label) => label.trim())
+          .filter(Boolean);
+
+        return Array.from({ length: rows }, (_, index) => custom[index] || defaults[index] || `第${index + 1}行`);
+      }
+
+      function ensureSlotCount() {
+        const { cols, rows } = getLayout();
+        const total = cols * rows;
+
+        while (state.slots.length < total) {
+          state.slots.push(null);
+        }
+
+        while (state.slots.length > total) {
+          const item = state.slots.pop();
+          if (item) {
+            URL.revokeObjectURL(item.url);
+          }
+        }
+      }
+
+      function clearSlot(index) {
+        const item = state.slots[index];
+        if (item) {
+          URL.revokeObjectURL(item.url);
+        }
+        state.slots[index] = null;
+      }
+
+      function clearRange(start, count) {
+        ensureSlotCount();
+        for (let i = start; i < start + count && i < state.slots.length; i += 1) {
+          clearSlot(i);
+        }
+      }
+
+      function getTargetRange() {
+        const { cols, rows } = getLayout();
+        const target = controls.importTarget.value || "all";
+        if (target.startsWith("row:")) {
+          const row = Math.min(rows - 1, Math.max(0, Number.parseInt(target.slice(4), 10) || 0));
+          return { start: row * cols, count: cols, label: `第 ${row + 1} 行 ${getRowLabels()[row]}` };
+        }
+        return { start: 0, count: cols * rows, label: "全部槽位" };
+      }
+
+      function getDestinationIndexes(target) {
+        const indexes = [];
+        const append = controls.importMode.value === "append";
+
+        for (let i = target.start; i < target.start + target.count && i < state.slots.length; i += 1) {
+          if (!append || !state.slots[i]) {
+            indexes.push(i);
+          }
+        }
+
+        return indexes;
+      }
+
+      function renderImportTargets() {
+        const previous = controls.importTarget.value;
+        const { cols, rows } = getLayout();
+        const labels = getRowLabels();
+
+        controls.importTarget.innerHTML = "";
+
+        const allOption = document.createElement("option");
+        allOption.value = "all";
+        allOption.textContent = `全部槽位（${cols * rows} 张）`;
+        controls.importTarget.append(allOption);
+
+        for (let row = 0; row < rows; row += 1) {
+          const option = document.createElement("option");
+          option.value = `row:${row}`;
+          option.textContent = `第 ${row + 1} 行：${labels[row]}（${cols} 张）`;
+          controls.importTarget.append(option);
+        }
+
+        const hasPrevious = Array.from(controls.importTarget.options).some((option) => option.value === previous);
+        controls.importTarget.value = hasPrevious ? previous : "all";
+      }
+
       const loadImage = (file) =>
         new Promise((resolve, reject) => {
           const url = URL.createObjectURL(file);
@@ -387,38 +505,65 @@
         });
 
       async function handleFiles(fileList) {
-        state.images.forEach((item) => URL.revokeObjectURL(item.url));
+        ensureSlotCount();
         const files = Array.from(fileList)
           .filter((file) => imageExtPattern.test(file.name))
           .sort((a, b) => naturalCompare(a.name, b.name));
 
         if (files.length === 0) {
-          state.images = [];
-          renderSlots();
-          renderSheet();
+          controls.status.textContent = "没有找到可用图片";
           return;
         }
 
-        controls.status.textContent = `正在读取 ${files.length} 张图片...`;
-        state.images = await Promise.all(files.map(loadImage));
+        const target = getTargetRange();
+        const destinationIndexes = getDestinationIndexes(target);
+
+        if (destinationIndexes.length === 0) {
+          controls.status.textContent = `${target.label}没有空槽；如需替换，请把导入方式改成“覆盖目标槽位”`;
+          return;
+        }
+
+        const filesToLoad = files.slice(0, destinationIndexes.length);
+        const skipped = files.length - filesToLoad.length;
+        controls.status.textContent = `正在读取 ${filesToLoad.length} 张图片到${target.label}...`;
+        const loaded = await Promise.all(filesToLoad.map(loadImage));
+
+        if (controls.importMode.value === "replace") {
+          clearRange(target.start, target.count);
+        }
+
+        loaded.forEach((item, index) => {
+          state.slots[destinationIndexes[index]] = item;
+        });
+
+        controls.fileInput.value = "";
+        controls.folderInput.value = "";
         renderSlots();
         renderSheet();
+
+        if (skipped > 0) {
+          controls.status.textContent += `；${skipped} 张超出目标槽位，已跳过`;
+        }
       }
 
-      function getSlotLabel(index, name) {
-        const prefix = String(index + 1).padStart(4, "0");
-        const direction = directionLabels[index] || "";
-        return direction ? `${prefix} ${direction}` : name;
+      function getSlotLabel(index) {
+        const { cols } = getLayout();
+        const row = Math.floor(index / cols);
+        const col = index % cols;
+        const rowLabel = getRowLabels()[row];
+        const frame = String(col + 1).padStart(4, "0");
+        return `${rowLabel} ${frame}`;
       }
 
       function renderSlots() {
-        const cols = Math.max(1, getNumber(controls.columns, 4));
-        const rows = Math.max(1, getNumber(controls.rows, 2));
+        ensureSlotCount();
+        renderImportTargets();
+        const { cols, rows } = getLayout();
         const total = cols * rows;
         controls.slots.innerHTML = "";
 
         for (let i = 0; i < total; i += 1) {
-          const item = state.images[i];
+          const item = state.slots[i];
           const slot = document.createElement("div");
           const indexLabel = document.createElement("span");
           const nameLabel = document.createElement("span");
@@ -427,7 +572,7 @@
           indexLabel.className = "slot-index";
           indexLabel.textContent = String(i + 1).padStart(2, "0");
           nameLabel.className = "slot-name";
-          nameLabel.textContent = item ? item.file.name : getSlotLabel(i, "");
+          nameLabel.textContent = item ? `${getSlotLabel(i)} · ${item.file.name}` : `${getSlotLabel(i)} · 空`;
           slot.append(indexLabel, nameLabel);
           controls.slots.append(slot);
         }
@@ -467,10 +612,11 @@
       }
 
       function renderSheet() {
-        const cols = Math.max(1, getNumber(controls.columns, 4));
-        const rows = Math.max(1, getNumber(controls.rows, 2));
+        ensureSlotCount();
+        const { cols, rows } = getLayout();
         const total = cols * rows;
-        const images = state.images.slice(0, total);
+        const slots = state.slots.slice(0, total);
+        const images = slots.filter(Boolean);
         const gap = Math.max(0, getNumber(controls.gap, 0));
         const padding = Math.max(0, getNumber(controls.padding, 0));
         const autoW = images.reduce((max, item) => Math.max(max, item.img.width), 0) || 256;
@@ -489,7 +635,10 @@
           ctx.fillRect(0, 0, width, height);
         }
 
-        images.forEach((item, index) => {
+        slots.forEach((item, index) => {
+          if (!item) {
+            return;
+          }
           const col = index % cols;
           const row = Math.floor(index / cols);
           const x = padding + col * (cellW + gap);
@@ -503,7 +652,7 @@
           ctx.drawImage(item.img, rect.sx, rect.sy, rect.sw, rect.sh, rect.dx, rect.dy, rect.dw, rect.dh);
 
           if (controls.drawLabels.checked) {
-            const text = getSlotLabel(index, item.file.name);
+            const text = getSlotLabel(index);
             ctx.fillStyle = "rgba(0, 0, 0, 0.62)";
             ctx.fillRect(x, y + cellH - 26, cellW, 26);
             ctx.fillStyle = "#ffffff";
@@ -529,10 +678,21 @@
       }
 
       function clearAll() {
-        state.images.forEach((item) => URL.revokeObjectURL(item.url));
-        state.images = [];
+        state.slots.forEach((item) => {
+          if (item) {
+            URL.revokeObjectURL(item.url);
+          }
+        });
+        state.slots = [];
         controls.fileInput.value = "";
         controls.folderInput.value = "";
+        renderSlots();
+        renderSheet();
+      }
+
+      function clearTarget() {
+        const target = getTargetRange();
+        clearRange(target.start, target.count);
         renderSlots();
         renderSheet();
       }
@@ -543,6 +703,8 @@
         renderSlots();
         renderSheet();
       });
+      controls.clearTargetButton.addEventListener("click", clearTarget);
+      controls.clearAllButton.addEventListener("click", clearAll);
       controls.clearButton.addEventListener("click", clearAll);
       controls.downloadButton.addEventListener("click", downloadPng);
 
@@ -554,6 +716,7 @@
         controls.gap,
         controls.padding,
         controls.fitMode,
+        controls.rowLabels,
         controls.transparent,
         controls.bgColor,
         controls.drawLabels,

@@ -18,7 +18,7 @@ import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture'
 import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
-import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { LinesMesh } from '@babylonjs/core/Meshes/linesMesh'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
@@ -52,6 +52,7 @@ type OutlineNode = {
   name: string
   kind: string
   detailId?: string
+  focusTarget?: AbstractMesh | TransformNode
   visibilityTarget?: {
     getVisible: () => boolean
     setVisible: (visible: boolean) => void
@@ -120,6 +121,7 @@ type BillboardBinding = {
   material: StandardMaterial
   texture: Texture
   originalMaterial: AbstractMesh['material']
+  originalReceiveShadows: boolean
   originalBillboardMode: number
   originalRotation: Vector3
   originalRotationQuaternion: Quaternion | null
@@ -367,7 +369,9 @@ let focusAnimation:
       duration: number
       from: Vector3
       to: Vector3
-      mesh: AbstractMesh
+      fromRadius: number
+      toRadius: number
+      target: AbstractMesh | TransformNode
     }
   | null = null
 let environmentSkybox: AbstractMesh | null = null
@@ -380,6 +384,7 @@ const getCurrentEnvironmentLabel = () => getSelectedEnvironmentOption()?.label ?
 const getCurrentEnvironmentUrl = () => getSelectedEnvironmentOption()?.resolvedUrl ?? 'Lazy loaded'
 
 const degreesToRadians = (value: number) => (value * Math.PI) / 180
+const radiansToDegrees = (value: number) => (value * 180) / Math.PI
 
 panelCollapseToggle.addEventListener('click', () => {
   panelCollapsed = !panelCollapsed
@@ -459,13 +464,39 @@ const makeOutlineRow = (node: OutlineNode) => {
     row.role = 'button'
     row.addEventListener('click', (event) => {
       event.stopPropagation()
-      selectDetail(node.detailId)
+      const mesh = getMeshFromDetailId(node.detailId)
+      if (mesh) {
+        selectMesh(mesh)
+      } else {
+        selectDetail(node.detailId)
+      }
     })
     row.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
-        selectDetail(node.detailId)
+        const mesh = getMeshFromDetailId(node.detailId)
+        if (mesh) {
+          selectMesh(mesh)
+        } else {
+          selectDetail(node.detailId)
+        }
       }
+    })
+  }
+
+  if (node.focusTarget) {
+    row.tabIndex = 0
+    row.addEventListener('dblclick', (event) => {
+      const target = node.focusTarget
+      if (!target) {
+        return
+      }
+
+      event.stopPropagation()
+      if (target instanceof AbstractMesh) {
+        selectMesh(target)
+      }
+      startFocusAnimationForTarget(target)
     })
   }
 
@@ -601,16 +632,21 @@ let billboardSheetUrl = ''
 let billboardSheetFileName = ''
 let billboardSheetWidth = 0
 let billboardSheetHeight = 0
-let billboardColumns = 4
+let billboardColumns = 16
 let billboardRows = 2
-let billboardDirections = 8
+let billboardDirections = 16
 let billboardStartFrame = 1
 let billboardAngleOffset = 0
+let billboardPitchSplit = 25
+let billboardRemoveBlack = false
+let billboardAlphaThreshold = 8
+let billboardAlphaFeather = 12
 let billboardLockY = true
 let billboardAutoFrame = true
 let billboardRotateMesh = true
 let billboardDoubleSided = true
 let billboardModelFilter = '__all__'
+let billboardSheetSourceFile: File | null = null
 const billboardBindings = new Map<number, BillboardBinding>()
 
 const ensureGeometryBufferRenderer = (enableReflectivity = false) => {
@@ -692,7 +728,9 @@ const resetRealtimePipelines = () => {
   geometryBufferRenderer = null
 }
 
-const getRealtimeShadowMeshes = () => importedMeshes.filter((mesh) => !isTransparentMesh(mesh))
+const isBillboardMesh = (mesh: AbstractMesh) => billboardBindings.has(mesh.uniqueId)
+
+const getRealtimeShadowMeshes = () => importedMeshes.filter((mesh) => !isBillboardMesh(mesh) && !isTransparentMesh(mesh))
 
 const applyRealtimeShadowState = () => {
   const realtimeEnabled = techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3'
@@ -705,7 +743,7 @@ const applyRealtimeShadowState = () => {
   }
 
   importedMeshes.forEach((mesh) => {
-    mesh.receiveShadows = shadowEnabled && !isTransparentMesh(mesh)
+    mesh.receiveShadows = shadowEnabled && !isBillboardMesh(mesh) && !isTransparentMesh(mesh)
   })
 }
 
@@ -740,11 +778,19 @@ const meshFXFlags = new WeakMap<AbstractMesh, { receiveSSAO: boolean }>()
 
 const updateGBufferRenderList = () => {
   if (!geometryBufferRenderer) return
-  const list = importedMeshes.filter((m) => (meshFXFlags.get(m)?.receiveSSAO ?? true) && !isTransparentMesh(m))
+  const list = importedMeshes.filter((m) => !isBillboardMesh(m) && (meshFXFlags.get(m)?.receiveSSAO ?? true) && !isTransparentMesh(m))
   geometryBufferRenderer.renderList = list.length > 0 ? list : null
 }
 
 const syncImportedMaterialRenderingState = (material: PBRMaterial) => {
+  if (isAlphaCutoutPbrMaterial(material)) {
+    material.needDepthPrePass = false
+    material.separateCullingPass = false
+    material.forceDepthWrite = true
+    material.twoSidedLighting = !material.backFaceCulling
+    return
+  }
+
   const transparent = isTransparentPbrMaterial(material)
   const depthWritingGlass = isArchitecturalGlassMaterial(material) && transparent
 
@@ -760,8 +806,53 @@ const isArchitecturalGlassMaterial = (material: PBRMaterial) => {
   return name.includes('glass') || name.includes('window') || name.includes('\u73bb\u7483')
 }
 
+const hasPbrAlphaTexture = (material: PBRMaterial) =>
+  Boolean(material.opacityTexture || (material.albedoTexture && material.albedoTexture.hasAlpha))
+
+const isFoliageLikeMaterial = (material: PBRMaterial) => {
+  const name = material.name.toLowerCase()
+
+  return (
+    name.includes('leaf') ||
+    name.includes('leaves') ||
+    name.includes('foliage') ||
+    name.includes('tree') ||
+    name.includes('branch') ||
+    name.includes('\u53f6') ||
+    name.includes('\u6811')
+  )
+}
+
+const isAlphaCutoutPbrMaterial = (material: PBRMaterial) =>
+  !isArchitecturalGlassMaterial(material) &&
+  !material.subSurface.isRefractionEnabled &&
+  (
+    material.transparencyMode === Material.MATERIAL_ALPHATEST ||
+    (hasPbrAlphaTexture(material) && (material.alpha >= 0.999 || isFoliageLikeMaterial(material)))
+  )
+
+const normalizeImportedAlphaCutoutMaterial = (material: PBRMaterial) => {
+  if (!isAlphaCutoutPbrMaterial(material)) {
+    return
+  }
+
+  if (material.albedoTexture?.hasAlpha) {
+    material.useAlphaFromAlbedoTexture = true
+  }
+
+  material.alpha = 1
+  material.alphaCutOff = clamp(material.alphaCutOff || 0.4, 0.25, 0.55)
+  material.transparencyMode = Material.MATERIAL_ALPHATEST
+  material.backFaceCulling = false
+  material.twoSidedLighting = true
+  material.needDepthPrePass = false
+  material.separateCullingPass = false
+  material.forceDepthWrite = true
+  material.markAsDirty(Material.MiscDirtyFlag | Material.TextureDirtyFlag)
+}
+
 const normalizeImportedMaterialTransparency = (material: PBRMaterial) => {
-  const hasAlphaTexture = Boolean(material.opacityTexture || (material.albedoTexture && material.albedoTexture.hasAlpha))
+  const hasAlphaTexture = hasPbrAlphaTexture(material)
   const looksOpaque =
     material.alpha >= 0.999 &&
     !hasAlphaTexture &&
@@ -1000,9 +1091,6 @@ const getModelNameForMesh = (mesh: AbstractMesh) => {
 const getBillboardTargetMeshes = () =>
   getSelectableMeshes().filter((mesh) => selectedBillboardMeshIds.has(String(mesh.uniqueId)))
 
-const getOriginalRotationQuaternion = (mesh: AbstractMesh) =>
-  mesh.rotationQuaternion?.clone() ?? Quaternion.FromEulerAngles(mesh.rotation.x, mesh.rotation.y, mesh.rotation.z)
-
 const getBillboardLocalNormal = (mesh: AbstractMesh) => {
   const positions = mesh.getVerticesData('position')
 
@@ -1010,29 +1098,50 @@ const getBillboardLocalNormal = (mesh: AbstractMesh) => {
     return Vector3.Forward()
   }
 
-  const min = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]
-  const max = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]
+  const indices = mesh.getIndices()
+  const getPosition = (vertexIndex: number) =>
+    new Vector3(
+      positions[vertexIndex * 3] ?? 0,
+      positions[vertexIndex * 3 + 1] ?? 0,
+      positions[vertexIndex * 3 + 2] ?? 0,
+    )
+  const getTriangleNormal = (a: number, b: number, c: number) => {
+    const p0 = getPosition(a)
+    const p1 = getPosition(b)
+    const p2 = getPosition(c)
+    const normal = Vector3.Cross(p1.subtract(p0), p2.subtract(p0))
 
-  for (let i = 0; i < positions.length; i += 3) {
-    for (let axis = 0; axis < 3; axis += 1) {
-      const value = positions[i + axis]
-      min[axis] = Math.min(min[axis], value)
-      max[axis] = Math.max(max[axis], value)
+    if (normal.lengthSquared() < 0.000001) {
+      return null
+    }
+
+    return normal.normalize()
+  }
+
+  if (indices && indices.length >= 3) {
+    for (let i = 0; i < indices.length - 2; i += 3) {
+      const normal = getTriangleNormal(Number(indices[i]), Number(indices[i + 1]), Number(indices[i + 2]))
+
+      if (normal) {
+        return normal
+      }
     }
   }
 
-  const extents = max.map((value, index) => value - min[index])
-  const normalAxis = extents.indexOf(Math.min(...extents))
+  for (let i = 0; i < positions.length / 3 - 2; i += 3) {
+    const normal = getTriangleNormal(i, i + 1, i + 2)
 
-  if (normalAxis === 0) return Vector3.Right()
-  if (normalAxis === 1) return Vector3.Up()
+    if (normal) {
+      return normal
+    }
+  }
+
   return Vector3.Forward()
 }
 
-const getHorizontalNormal = (normal: Vector3, rotation: Quaternion) => {
-  const matrix = new Matrix()
-  rotation.toRotationMatrix(matrix)
-  const horizontal = Vector3.TransformNormal(normal, matrix)
+const getBillboardWorldHorizontalNormal = (mesh: AbstractMesh) => {
+  mesh.computeWorldMatrix(true)
+  const horizontal = Vector3.TransformNormal(getBillboardLocalNormal(mesh), mesh.getWorldMatrix())
   horizontal.y = 0
 
   if (horizontal.lengthSquared() < 0.000001) {
@@ -1054,7 +1163,7 @@ const applyBillboardFrame = (binding: BillboardBinding, frameIndex: number) => {
   binding.texture.uScale = 1 / Math.max(1, billboardColumns)
   binding.texture.vScale = 1 / Math.max(1, billboardRows)
   binding.texture.uOffset = col / Math.max(1, billboardColumns)
-  binding.texture.vOffset = (Math.max(1, billboardRows) - 1 - row) / Math.max(1, billboardRows)
+  binding.texture.vOffset = row / Math.max(1, billboardRows)
 }
 
 const getBillboardFrameForMesh = (mesh: AbstractMesh) => {
@@ -1066,12 +1175,16 @@ const getBillboardFrameForMesh = (mesh: AbstractMesh) => {
   const cameraPosition = camera.position
   const dx = cameraPosition.x - meshPosition.x
   const dz = cameraPosition.z - meshPosition.z
+  const horizontalDistance = Math.hypot(dx, dz)
+  const elevation = radiansToDegrees(Math.atan2(cameraPosition.y - meshPosition.y, horizontalDistance))
   const angle = Math.atan2(dx, dz)
   const step = (Math.PI * 2) / Math.max(1, billboardDirections)
   const offset = degreesToRadians(billboardAngleOffset)
-  const directionIndex = Math.round((angle + offset) / step)
+  const directionIndex = ((Math.round((angle + offset) / step) % billboardDirections) + billboardDirections) % billboardDirections
+  const columnIndex = directionIndex % Math.max(1, billboardColumns)
+  const rowIndex = Math.max(1, billboardRows) > 1 && elevation >= billboardPitchSplit ? 0 : Math.max(0, billboardRows - 1)
 
-  return normalizeFrameIndex(directionIndex + billboardStartFrame - 1)
+  return normalizeFrameIndex(rowIndex * Math.max(1, billboardColumns) + columnIndex + billboardStartFrame - 1)
 }
 
 const updateBillboards = () => {
@@ -1115,6 +1228,7 @@ const removeBillboardFromMesh = (mesh: AbstractMesh) => {
   if (!binding) return
 
   mesh.material = binding.originalMaterial
+  mesh.receiveShadows = binding.originalReceiveShadows
   mesh.billboardMode = binding.originalBillboardMode
   if (binding.originalRotationQuaternion) {
     mesh.rotationQuaternion = binding.originalRotationQuaternion.clone()
@@ -1125,6 +1239,8 @@ const removeBillboardFromMesh = (mesh: AbstractMesh) => {
   binding.texture.dispose()
   binding.material.dispose()
   billboardBindings.delete(mesh.uniqueId)
+  applyRealtimeShadowState()
+  updateGBufferRenderList()
 }
 
 const clearAllBillboards = () => {
@@ -1150,26 +1266,31 @@ const applyBillboardToMesh = (mesh: AbstractMesh) => {
   material.disableLighting = true
   material.useAlphaFromDiffuseTexture = true
   material.backFaceCulling = !billboardDoubleSided
-  material.transparencyMode = Material.MATERIAL_ALPHABLEND
-  material.needDepthPrePass = true
+  material.transparencyMode = Material.MATERIAL_ALPHATEST
+  material.alphaCutOff = 0.01
+  material.needDepthPrePass = false
+  material.forceDepthWrite = true
   const originalRotation = mesh.rotation.clone()
   const originalRotationQuaternion = mesh.rotationQuaternion?.clone() ?? null
-  const originalRotationForNormal = getOriginalRotationQuaternion(mesh)
 
   const binding: BillboardBinding = {
     mesh,
     material,
     texture,
     originalMaterial: mesh.material,
+    originalReceiveShadows: mesh.receiveShadows,
     originalBillboardMode: mesh.billboardMode,
     originalRotation,
     originalRotationQuaternion,
-    originalHorizontalNormal: getHorizontalNormal(getBillboardLocalNormal(mesh), originalRotationForNormal),
+    originalHorizontalNormal: getBillboardWorldHorizontalNormal(mesh),
   }
 
   mesh.material = material
+  mesh.receiveShadows = false
   mesh.billboardMode = AbstractMesh.BILLBOARDMODE_NONE
   billboardBindings.set(mesh.uniqueId, binding)
+  applyRealtimeShadowState()
+  updateGBufferRenderList()
   updateBillboards()
   applyBillboardFrame(binding, getBillboardFrameForMesh(mesh))
 }
@@ -1179,27 +1300,106 @@ const applyBillboardToTargets = () => {
   flushSceneRenderCaches()
 }
 
+const createBlackMaskedBillboardUrl = (image: HTMLImageElement) =>
+  new Promise<string>((resolve) => {
+    const maskCanvas = document.createElement('canvas')
+    const maskContext = maskCanvas.getContext('2d', { willReadFrequently: true })
+
+    if (!maskContext) {
+      resolve(image.src)
+      return
+    }
+
+    maskCanvas.width = image.naturalWidth
+    maskCanvas.height = image.naturalHeight
+    maskContext.drawImage(image, 0, 0)
+
+    const imageData = maskContext.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
+    const data = imageData.data
+    const threshold = Math.max(0, billboardAlphaThreshold)
+    const feather = Math.max(1, billboardAlphaFeather)
+    const cornerIndexes = [
+      0,
+      (maskCanvas.width - 1) * 4,
+      (maskCanvas.width * (maskCanvas.height - 1)) * 4,
+      (maskCanvas.width * maskCanvas.height - 1) * 4,
+    ]
+    const background = cornerIndexes.reduce(
+      (acc, index) => {
+        acc.r += data[index]
+        acc.g += data[index + 1]
+        acc.b += data[index + 2]
+        return acc
+      },
+      { r: 0, g: 0, b: 0 },
+    )
+    background.r /= cornerIndexes.length
+    background.g /= cornerIndexes.length
+    background.b /= cornerIndexes.length
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]
+      const g = data[i + 1]
+      const b = data[i + 2]
+      const originalAlpha = data[i + 3]
+      const distance = Math.hypot(r - background.r, g - background.g, b - background.b)
+      const alphaFactor = clamp((distance - threshold) / feather, 0, 1)
+
+      data[i + 3] = Math.round(originalAlpha * alphaFactor)
+    }
+
+    maskContext.putImageData(imageData, 0, 0)
+    maskCanvas.toBlob((blob) => {
+      resolve(blob ? URL.createObjectURL(blob) : image.src)
+    }, 'image/png')
+  })
+
 const loadBillboardSheetFile = (file: File, onReady?: () => void) => {
   if (billboardSheetUrl) {
     URL.revokeObjectURL(billboardSheetUrl)
   }
 
   const url = URL.createObjectURL(file)
-  billboardSheetUrl = url
+  billboardSheetSourceFile = file
+  billboardSheetUrl = ''
   billboardSheetFileName = file.name
   billboardSheetWidth = 0
   billboardSheetHeight = 0
 
   const image = new Image()
-  image.onload = () => {
+  image.onload = async () => {
     billboardSheetWidth = image.naturalWidth
     billboardSheetHeight = image.naturalHeight
+    billboardSheetUrl = billboardRemoveBlack ? await createBlackMaskedBillboardUrl(image) : url
+
+    if (billboardSheetUrl !== url) {
+      URL.revokeObjectURL(url)
+    }
+
     onReady?.()
   }
   image.onerror = () => {
+    billboardSheetUrl = url
     onReady?.()
   }
   image.src = url
+}
+
+const reloadBillboardSheetProcessing = (onReady?: () => void) => {
+  if (!billboardSheetSourceFile) {
+    onReady?.()
+    return
+  }
+
+  const appliedMeshes = Array.from(billboardBindings.values())
+    .map((binding) => binding.mesh)
+    .filter((mesh) => !mesh.isDisposed())
+
+  loadBillboardSheetFile(billboardSheetSourceFile, () => {
+    appliedMeshes.forEach(applyBillboardToMesh)
+    flushSceneRenderCaches()
+    onReady?.()
+  })
 }
 
 const renderGeneralPostPanel = (panel: HTMLElement) => {
@@ -1585,6 +1785,22 @@ const renderBillboardPanel = (panel: HTMLElement) => {
     billboardAngleOffset = value
     updateBillboards()
   }))
+  layoutBody.push(createSlider('\u4fef\u89c6\u884c\u9608\u503c', billboardPitchSplit, 0, 80, 1, (value) => {
+    billboardPitchSplit = value
+    updateBillboards()
+  }))
+  layoutBody.push(createCheckbox('\u6309\u80cc\u666f\u8272\u62a0\u900f\u660e', billboardRemoveBlack, (value) => {
+    billboardRemoveBlack = value
+    reloadBillboardSheetProcessing(() => renderBillboardPanel(panel))
+  }))
+  layoutBody.push(createSlider('\u9ed1\u5e95\u9608\u503c', billboardAlphaThreshold, 0, 80, 1, (value) => {
+    billboardAlphaThreshold = value
+    reloadBillboardSheetProcessing(() => renderBillboardPanel(panel))
+  }))
+  layoutBody.push(createSlider('\u906e\u7f69\u7fbd\u5316', billboardAlphaFeather, 1, 120, 1, (value) => {
+    billboardAlphaFeather = value
+    reloadBillboardSheetProcessing(() => renderBillboardPanel(panel))
+  }))
 
   const orientBody: HTMLElement[] = []
   orientBody.push(createCheckbox('\u9501\u5b9a Y \u8f74\u9762\u5411\u76f8\u673a', billboardLockY, (value) => {
@@ -1637,7 +1853,7 @@ const renderBillboardPanel = (panel: HTMLElement) => {
 const updateBillboardSelectionCount = (root: HTMLElement) => {
   const count = root.querySelector<HTMLElement>('.bake-selection-count')
   if (count) {
-    count.textContent = `\u5df2\u9009 ${selectedBillboardMeshIds.size} / ${getSelectableMeshes().length}`
+    count.textContent = `已选 ${selectedBillboardMeshIds.size} / ${getSelectableMeshes().length}`
   }
 }
 
@@ -1928,7 +2144,14 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   panel.append(createModule('SSR', ssrBody))
 }
 
-let selectedBakeMeshIds = new Set<string>()
+type BakeTargetGroup = {
+  id: string
+  name: string
+  modelName: string
+  meshes: AbstractMesh[]
+}
+
+let selectedBakeTargetIds = new Set<string>()
 let selectedUVChannel = 1
 let lightmapInvertY = false
 let lastLightmapUrl = ''
@@ -1936,8 +2159,67 @@ let lastLightmapFileName = ''
 let lastLightmapFileSize = 0
 const lightmapTextureMeta = new WeakMap<Texture, { url: string; fileName: string; fileSize: number; uvChannel: number }>()
 
+const getPrimitiveBaseName = (name: string) => {
+  const match = name.match(/^(.*?)(?:[_\-. ]?primitive\d+)$/i)
+  return match?.[1]?.trim() || ''
+}
+
+const getBakeTargetGroupInfo = (mesh: AbstractMesh) => {
+  const root = getModelRootForMesh(mesh)
+  const rootIndex = root ? currentModelRoots.indexOf(root) : -1
+  const modelKey = rootIndex >= 0 ? String(rootIndex) : 'ungrouped'
+  const modelName = getModelNameForMesh(mesh)
+  const baseName = getPrimitiveBaseName(mesh.name)
+
+  if (baseName) {
+    const parentKey = mesh.parent && mesh.parent !== root ? `node:${mesh.parent.uniqueId}` : `base:${baseName}`
+    return {
+      id: `model:${modelKey}:${parentKey}`,
+      name: baseName,
+      modelName,
+    }
+  }
+
+  return {
+    id: `mesh:${mesh.uniqueId}`,
+    name: mesh.name || `Mesh ${mesh.uniqueId}`,
+    modelName,
+  }
+}
+
+const getBakeSelectableTargets = () => {
+  const groups = new Map<string, BakeTargetGroup>()
+
+  getSelectableMeshes().forEach((mesh) => {
+    const info = getBakeTargetGroupInfo(mesh)
+    const existing = groups.get(info.id)
+
+    if (existing) {
+      existing.meshes.push(mesh)
+      return
+    }
+
+    groups.set(info.id, {
+      id: info.id,
+      name: info.name,
+      modelName: info.modelName,
+      meshes: [mesh],
+    })
+  })
+
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+}
+
 const getBakeTargetMeshes = () => {
-  return importedMeshes.filter((mesh) => selectedBakeMeshIds.has(String(mesh.uniqueId)))
+  const meshes = new Set<AbstractMesh>()
+
+  getBakeSelectableTargets().forEach((target) => {
+    if (selectedBakeTargetIds.has(target.id)) {
+      target.meshes.forEach((mesh) => meshes.add(mesh))
+    }
+  })
+
+  return [...meshes]
 }
 
 const getMeshLightmapTexture = (mesh: AbstractMesh) => {
@@ -2042,9 +2324,15 @@ const clearLightmapFromMesh = (mesh: AbstractMesh) => {
 }
 
 const applyLightmapToTarget = () => {
-  getBakeTargetMeshes().forEach((mesh) => {
+  getBakeSelectableTargets().forEach((target) => {
+    if (!selectedBakeTargetIds.has(target.id)) {
+      return
+    }
+
     const texture = createLightmapTextureFromCurrent()
-    if (texture) applyLightmapToMesh(mesh, texture)
+    if (texture) {
+      target.meshes.forEach((mesh) => applyLightmapToMesh(mesh, texture))
+    }
   })
 }
 
@@ -2071,13 +2359,10 @@ const setLightmapLevelForTarget = (level: number) => {
   }
 }
 
-const getBakeSelectableMeshes = () =>
-  getSelectableMeshes()
-
 const updateBakeSelectionCount = (root: HTMLElement) => {
   const count = root.querySelector<HTMLElement>('.bake-selection-count')
   if (count) {
-    count.textContent = `已选 ${selectedBakeMeshIds.size} / ${getBakeSelectableMeshes().length}`
+    count.textContent = `已选 ${selectedBakeTargetIds.size} / ${getBakeSelectableTargets().length}`
   }
 }
 
@@ -2116,41 +2401,44 @@ const renderBakePanel = (panel: HTMLElement) => {
 
   const syncRows = () => {
     const query = searchInput.value.trim().toLowerCase()
-    const meshes = getBakeSelectableMeshes()
-    selectedBakeMeshIds = new Set([...selectedBakeMeshIds].filter((id) => meshes.some((mesh) => String(mesh.uniqueId) === id)))
+    const targets = getBakeSelectableTargets()
+    selectedBakeTargetIds = new Set([...selectedBakeTargetIds].filter((id) => targets.some((target) => target.id === id)))
     list.textContent = ''
 
-    const filteredMeshes = meshes.filter((mesh) => mesh.name.toLowerCase().includes(query))
-    if (filteredMeshes.length === 0) {
+    const filteredTargets = targets.filter((target) => {
+      const haystack = `${target.name} ${target.modelName}`.toLowerCase()
+      return haystack.includes(query)
+    })
+    if (filteredTargets.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'bake-empty'
-      empty.textContent = meshes.length === 0 ? '\u8bf7\u5148\u52a0\u8f7d\u6a21\u578b' : '\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8c61'
+      empty.textContent = targets.length === 0 ? '\u8bf7\u5148\u52a0\u8f7d\u6a21\u578b' : '\u6ca1\u6709\u5339\u914d\u7684\u5bf9\u8c61'
       list.append(empty)
     }
 
-    filteredMeshes.forEach((mesh) => {
-      const id = String(mesh.uniqueId)
+    filteredTargets.forEach((target) => {
+      const id = target.id
       const row = document.createElement('div')
       row.className = 'bake-mesh-row'
-      row.classList.toggle('selected', selectedBakeMeshIds.has(id))
+      row.classList.toggle('selected', selectedBakeTargetIds.has(id))
       const cb = document.createElement('input')
       cb.type = 'checkbox'
-      cb.checked = selectedBakeMeshIds.has(id)
+      cb.checked = selectedBakeTargetIds.has(id)
       cb.addEventListener('click', (event) => {
         event.stopPropagation()
       })
       cb.addEventListener('change', () => {
         if (cb.checked) {
-          selectedBakeMeshIds.add(id)
+          selectedBakeTargetIds.add(id)
         } else {
-          selectedBakeMeshIds.delete(id)
+          selectedBakeTargetIds.delete(id)
         }
         row.classList.toggle('selected', cb.checked)
         updateBakeSelectionCount(root)
         renderLightmapSummary()
       })
       row.addEventListener('click', () => {
-        selectedBakeMeshIds = new Set([id])
+        selectedBakeTargetIds = new Set([id])
         syncRows()
         renderLightmapSummary()
       })
@@ -2159,7 +2447,7 @@ const renderBakePanel = (panel: HTMLElement) => {
       icon.textContent = '\u25a1'
       const name = document.createElement('span')
       name.className = 'bake-mesh-name'
-      name.textContent = mesh.name || `Mesh ${mesh.uniqueId}`
+      name.textContent = target.name
       row.append(cb, icon, name)
       list.append(row)
     })
@@ -2168,12 +2456,12 @@ const renderBakePanel = (panel: HTMLElement) => {
   }
 
   selectAllBtn.addEventListener('click', () => {
-    getBakeSelectableMeshes().forEach((mesh) => selectedBakeMeshIds.add(String(mesh.uniqueId)))
+    getBakeSelectableTargets().forEach((target) => selectedBakeTargetIds.add(target.id))
     syncRows()
     renderLightmapSummary()
   })
   clearBtn.addEventListener('click', () => {
-    selectedBakeMeshIds.clear()
+    selectedBakeTargetIds.clear()
     syncRows()
     renderLightmapSummary()
   })
@@ -2304,8 +2592,8 @@ const renderBakePanel = (panel: HTMLElement) => {
 
     meta.append(title, detail, status)
     lightmapInfo.append(preview, meta)
-    uploadBtn.disabled = selectedBakeMeshIds.size === 0
-    deleteBtn.disabled = selectedBakeMeshIds.size === 0 || textureSet.size === 0
+    uploadBtn.disabled = selectedBakeTargetIds.size === 0
+    deleteBtn.disabled = selectedBakeTargetIds.size === 0 || textureSet.size === 0
     updateBakeSelectionCount(root)
   }
 
@@ -2603,11 +2891,60 @@ const selectDetail = (detailId: string | undefined) => {
   setOutline(currentMeshNodes)
 }
 
-const getMeshFocusPoint = (mesh: AbstractMesh) => {
-  mesh.computeWorldMatrix(true)
-  mesh.refreshBoundingInfo(true, false)
+const getMeshFromDetailId = (detailId: string | undefined) => {
+  const match = detailId?.match(/^mesh:(\d+)$/)
+  if (!match) {
+    return null
+  }
 
-  return mesh.getBoundingInfo().boundingBox.centerWorld.clone()
+  const meshId = Number.parseInt(match[1], 10)
+  return importedMeshes.find((mesh) => mesh.uniqueId === meshId && !mesh.isDisposed()) ?? null
+}
+
+const getMeshesForRoot = (root: TransformNode) =>
+  importedMeshes.filter((mesh) => {
+    let parent = mesh.parent
+
+    while (parent) {
+      if (parent === root) {
+        return true
+      }
+
+      parent = parent.parent
+    }
+
+    return false
+  })
+
+const getFocusBoundsForMeshes = (meshes: AbstractMesh[]) => {
+  const validMeshes = meshes.filter((mesh) => !mesh.isDisposed())
+  if (validMeshes.length === 0) {
+    return null
+  }
+
+  const min = new Vector3(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY)
+  const max = new Vector3(Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY)
+
+  validMeshes.forEach((mesh) => {
+    mesh.computeWorldMatrix(true)
+    mesh.refreshBoundingInfo(true, false)
+    const bounds = mesh.getBoundingInfo().boundingBox
+    min.minimizeInPlace(bounds.minimumWorld)
+    max.maximizeInPlace(bounds.maximumWorld)
+  })
+
+  const center = min.add(max).scale(0.5)
+  const radius = Math.max(max.subtract(min).length() * 0.58, 0.5)
+
+  return { center, radius }
+}
+
+const getFocusBoundsForTarget = (target: AbstractMesh | TransformNode) => {
+  if (target instanceof AbstractMesh) {
+    return getFocusBoundsForMeshes([target])
+  }
+
+  return getFocusBoundsForMeshes(getMeshesForRoot(target))
 }
 
 const getSelectionBoxLines = (mesh: AbstractMesh) => {
@@ -2696,7 +3033,12 @@ const selectMesh = (mesh: AbstractMesh) => {
 }
 
 const startSelectedFocusAnimation = () => {
-  if (!selectedMesh || focusAnimation?.mesh === selectedMesh) {
+  if (!selectedMesh || focusAnimation?.target === selectedMesh) {
+    return
+  }
+
+  const bounds = getFocusBoundsForTarget(selectedMesh)
+  if (!bounds) {
     return
   }
 
@@ -2704,8 +3046,27 @@ const startSelectedFocusAnimation = () => {
     elapsed: 0,
     duration: 0.55,
     from: camera.target.clone(),
-    to: getMeshFocusPoint(selectedMesh),
-    mesh: selectedMesh,
+    to: bounds.center,
+    fromRadius: camera.radius,
+    toRadius: Math.max(bounds.radius * 2.8, 2),
+    target: selectedMesh,
+  }
+}
+
+const startFocusAnimationForTarget = (target: AbstractMesh | TransformNode) => {
+  const bounds = getFocusBoundsForTarget(target)
+  if (!bounds) {
+    return
+  }
+
+  focusAnimation = {
+    elapsed: 0,
+    duration: 0.55,
+    from: camera.target.clone(),
+    to: bounds.center,
+    fromRadius: camera.radius,
+    toRadius: Math.max(bounds.radius * 2.8, 2),
+    target,
   }
 }
 
@@ -2723,6 +3084,7 @@ const updateFocusAnimation = () => {
   const nextTarget = Vector3.Lerp(focusAnimation.from, focusAnimation.to, easedProgress)
 
   camera.setTarget(nextTarget, false, true, true)
+  camera.radius = focusAnimation.fromRadius + (focusAnimation.toRadius - focusAnimation.fromRadius) * easedProgress
 
   if (progress >= 1) {
     focusAnimation = null
@@ -2891,7 +3253,7 @@ const initShadowGenerator = () => {
   shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH
   shadowGenerator.bias = shadowBias
   shadowGenerator.normalBias = shadowNormalBias
-  importedMeshes.filter((mesh) => !isTransparentMesh(mesh)).forEach((mesh) => shadowGenerator.addShadowCaster(mesh))
+  getRealtimeShadowMeshes().forEach((mesh) => shadowGenerator.addShadowCaster(mesh))
   applyRealtimeShadowState()
 }
 
@@ -4187,6 +4549,7 @@ const frameHierarchy = (root: TransformNode, meshes: AbstractMesh[]) => {
 
 const tuneImportedMaterial = (material: PBRMaterial) => {
   normalizeImportedGlassMaterial(material)
+  normalizeImportedAlphaCutoutMaterial(material)
   normalizeImportedMaterialTransparency(material)
 
   const transparent = isTransparentPbrMaterial(material)
@@ -4249,6 +4612,7 @@ const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
     name: mesh.name || `Mesh ${mesh.uniqueId}`,
     kind: 'mesh',
     detailId: `mesh:${mesh.uniqueId}`,
+    focusTarget: mesh,
     visibilityTarget: {
       getVisible: () => mesh.isVisible,
       setVisible: (visible) => {
@@ -4265,6 +4629,7 @@ const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
 const makeModelOutlineNode = (fileName: string, root: TransformNode, meshes: AbstractMesh[]): OutlineNode => ({
   name: fileName,
   kind: 'model',
+  focusTarget: root,
   visibilityTarget: {
     getVisible: () => root.isEnabled(false),
     setVisible: (visible) => {
@@ -4274,6 +4639,15 @@ const makeModelOutlineNode = (fileName: string, root: TransformNode, meshes: Abs
   open: true,
   children: makeMeshOutlineNodes(meshes),
 })
+
+const rebuildImportedOutline = () => {
+  importedFileName = getImportedDisplayName()
+  setOutline(
+    currentModelRoots.map((modelRoot, index) =>
+      makeModelOutlineNode(importedFileNames[index] ?? modelRoot.name, modelRoot, getMeshesForRoot(modelRoot)),
+    ),
+  )
+}
 
 const registerImportedDetails = (meshes: AbstractMesh[], materials: Set<PBRMaterial>) => {
   meshes.forEach((mesh) => {
@@ -4288,6 +4662,70 @@ const registerImportedDetails = (meshes: AbstractMesh[], materials: Set<PBRMater
     dynamicDetailIds.add(detailId)
     detailRegistry.set(detailId, () => createMaterialDetail(material))
   })
+}
+
+const refreshImportedDetails = () => {
+  const materials = new Set<PBRMaterial>()
+
+  importedMeshes.forEach((mesh) => collectPbrMaterialsFromMaterial(mesh.material, materials))
+  unregisterImportedDetails()
+  registerImportedDetails(importedMeshes, materials)
+  importedMaterialTotal = materials.size
+}
+
+const pruneEmptyModelRoots = () => {
+  const nextRoots: TransformNode[] = []
+  const nextNames: string[] = []
+
+  currentModelRoots.forEach((root, index) => {
+    if (getMeshesForRoot(root).length > 0) {
+      nextRoots.push(root)
+      nextNames.push(importedFileNames[index] ?? root.name)
+      return
+    }
+
+    root.dispose(false, true)
+  })
+
+  currentModelRoots = nextRoots
+  importedFileNames = nextNames
+}
+
+const deleteSelectedMesh = () => {
+  if (!selectedMesh || selectedMesh.isDisposed()) {
+    return false
+  }
+
+  const mesh = selectedMesh
+  const meshId = String(mesh.uniqueId)
+  const bakeTargetId = getBakeTargetGroupInfo(mesh).id
+  const deletedName = mesh.name || `Mesh ${mesh.uniqueId}`
+  const shadowMap = shadowGenerator.getShadowMap()
+
+  removeBillboardFromMesh(mesh)
+  selectedBakeTargetIds.delete(bakeTargetId)
+  selectedBillboardMeshIds.delete(meshId)
+  if (shadowMap?.renderList) {
+    shadowMap.renderList = shadowMap.renderList.filter((item) => item !== mesh)
+  }
+
+  mesh.dispose(false, true)
+  importedMeshes = importedMeshes.filter((item) => item !== mesh && !item.isDisposed())
+  selectedMesh = null
+  selectionBox?.dispose()
+  selectionBox = null
+  selectedDetailId = null
+  detailPanel.hidden = true
+  focusAnimation = null
+
+  pruneEmptyModelRoots()
+  refreshImportedDetails()
+  rebuildImportedOutline()
+  defaultConfig = createViewerConfig()
+  flushSceneRenderCaches()
+  setStatus(`宸插垹闄?${deletedName}`)
+
+  return true
 }
 
 const getImportProgressMessage = (
@@ -4340,29 +4778,8 @@ const loadModel = async (source: string | File, fileName: string, shouldApplySto
   refreshImportedRenderingState()
   importedMaterialTotal += materials.size
   importedFileNames.push(fileName)
-  importedFileName = getImportedDisplayName()
   registerImportedDetails(result.meshes, materials)
-  setOutline(
-    currentModelRoots.map((modelRoot, index) =>
-      makeModelOutlineNode(
-        importedFileNames[index] ?? modelRoot.name,
-        modelRoot,
-        importedMeshes.filter((mesh) => {
-          let parent = mesh.parent
-
-          while (parent) {
-            if (parent === modelRoot) {
-              return true
-            }
-
-            parent = parent.parent
-          }
-
-          return false
-        }),
-      ),
-    ),
-  )
+  rebuildImportedOutline()
   frameHierarchy(root, result.meshes)
 
   if (replaceExisting && techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3') {
@@ -4413,6 +4830,13 @@ window.addEventListener(
 
   if (isEditingControl()) {
     return
+  }
+
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    if (deleteSelectedMesh()) {
+      event.preventDefault()
+      return
+    }
   }
 
   const navigationKey = getNavigationKey(event)
@@ -4535,10 +4959,26 @@ try {
 let frameUpdateTimer = 0
 const frameUpdateInterval = 0.8
 
+const getImportedTriangleCount = () =>
+  importedMeshes.reduce((total, mesh) => {
+    if (mesh.isDisposed()) {
+      return total
+    }
+
+    const indices = mesh.getTotalIndices()
+    if (indices > 0) {
+      return total + Math.floor(indices / 3)
+    }
+
+    const positions = mesh.getVerticesData('position')
+    return total + Math.floor((positions?.length ?? 0) / 9)
+  }, 0)
+
 const frameMetrics: { label: string; get: () => string }[] = [
   { label: 'FPS', get: () => String(Math.round(engine.getFps())) },
   { label: 'Draw Calls', get: () => String(sceneInstrumentation?.drawCallsCounter.current ?? 0) },
-  { label: 'Triangles', get: () => String(scene.getActiveIndices() ?? 0) },
+  { label: 'Model Triangles', get: () => String(getImportedTriangleCount()) },
+  { label: 'Rendered Indices', get: () => String(scene.getActiveIndices() ?? 0) },
   { label: 'Meshes', get: () => String(scene.getActiveMeshes().length) + ' / ' + String(scene.meshes.length) },
 ]
 let frameOverlayVisible = false
