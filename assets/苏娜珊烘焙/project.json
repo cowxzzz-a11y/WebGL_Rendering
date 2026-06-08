@@ -1,0 +1,17 @@
+{
+  "title": "苏娜珊烘焙",
+  "models": ["target.glb"],
+  "mode": "baked",
+  "lightmaps": [
+    {
+      "mesh": "苏珊娜",
+      "texture": "苏珊娜_ao_light_002.png",
+      "uv": 1
+    },
+    {
+      "mesh": "平面",
+      "texture": "平面_ao_light_002.png",
+      "uv": 1
+    }
+  ]
+}

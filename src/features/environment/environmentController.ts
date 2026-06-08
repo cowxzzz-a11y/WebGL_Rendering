@@ -25,6 +25,7 @@ type EnvironmentControllerOptions = {
   initialIntensity: number
   setStatus: (message: string | null) => void
   refreshOutline: () => void
+  onEnvironmentTextureChanged?: () => void
 }
 
 export type EnvironmentController = ReturnType<typeof createEnvironmentController>
@@ -36,6 +37,7 @@ export const createEnvironmentController = ({
   initialIntensity,
   setStatus,
   refreshOutline,
+  onEnvironmentTextureChanged,
 }: EnvironmentControllerOptions) => {
   let selectedEnvironmentKey = defaultEnvironmentKey
   let environmentBackgroundEnabled = false
@@ -164,6 +166,7 @@ export const createEnvironmentController = ({
       scene.environmentTexture = nextTexture
       scene.environmentIntensity = globalEnvironmentIntensity
       updateEnvironmentBackground()
+      onEnvironmentTextureChanged?.()
 
       if (previousTexture && previousTexture !== nextTexture) {
         previousTexture.dispose()

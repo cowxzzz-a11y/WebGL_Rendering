@@ -2,6 +2,8 @@ import { shareDescription, shareTitle, shareUrl } from '../shared/constants'
 
 export type AppDom = {
   canvas: HTMLCanvasElement
+  projectManager: HTMLDivElement
+  projectBackButton: HTMLButtonElement
   status: HTMLDivElement
   shareActions: HTMLElement
   shareWechatButton: HTMLButtonElement
@@ -29,6 +31,13 @@ export type AppDom = {
 export const renderAppShell = (app: HTMLDivElement) => {
   app.innerHTML = `
   <canvas id="renderCanvas" aria-label="Babylon building render"></canvas>
+  <div id="projectManager" class="project-manager" aria-label="Project manager"></div>
+  <button id="projectBackButton" class="project-back-button" type="button" aria-label="返回项目选择" title="返回项目选择" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M10.8 5.2 4 12l6.8 6.8 1.4-1.4L7.8 13H20v-2H7.8l4.4-4.4-1.4-1.4z" fill="currentColor" />
+    </svg>
+    <span>项目</span>
+  </button>
   <div class="share-actions" data-url="${shareUrl}" data-title="${shareTitle}" data-desc="${shareDescription}">
     <button id="frameToggle" class="frame-toggle-button share-button" type="button" aria-label="Frame stats" title="Frame stats">
       <svg viewBox="0 0 100 80" aria-hidden="true" width="24" height="20">
@@ -100,6 +109,8 @@ const requireElement = <T extends Element>(selector: string, type: string): T =>
 
 export const queryAppDom = (): AppDom => ({
   canvas: requireElement<HTMLCanvasElement>('#renderCanvas', 'Canvas'),
+  projectManager: requireElement<HTMLDivElement>('#projectManager', 'Project manager'),
+  projectBackButton: requireElement<HTMLButtonElement>('#projectBackButton', 'Project back button'),
   status: requireElement<HTMLDivElement>('#status', 'Status'),
   shareActions: requireElement<HTMLElement>('.share-actions', 'Share actions'),
   shareWechatButton: requireElement<HTMLButtonElement>('#shareWechat', 'Share button'),
@@ -123,4 +134,3 @@ export const queryAppDom = (): AppDom => ({
   frameOverlayClose: requireElement<HTMLButtonElement>('#frameOverlayClose', 'Frame overlay close'),
   frameGrid: requireElement<HTMLDivElement>('#frameGrid', 'Frame grid'),
 })
-

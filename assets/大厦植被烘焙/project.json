@@ -1,0 +1,32 @@
+{
+  "title": "大厦植被烘焙",
+  "models": ["target.glb"],
+  "mode": "baked",
+  "lightmaps": [
+    {
+      "mesh": "外墙",
+      "texture": "外墙_Light.png",
+      "uv": 1
+    },
+    {
+      "mesh": "大树1",
+      "texture": "大树1_Light_001.ktx2",
+      "uv": 1
+    },
+    {
+      "mesh": "松树1",
+      "texture": "松树1_Light_001.ktx2",
+      "uv": 1
+    },
+    {
+      "mesh": "松树2",
+      "texture": "松树2_Light_001.ktx2",
+      "uv": 1
+    },
+    {
+      "mesh": "圆树",
+      "texture": "圆树_Light.ktx2",
+      "uv": 1
+    }
+  ]
+}

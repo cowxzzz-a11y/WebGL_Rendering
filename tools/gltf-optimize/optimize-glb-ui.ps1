@@ -15,6 +15,7 @@ trap {
 
 $script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:NodeScriptPath = Join-Path $script:ScriptDir "smart-optimize.mjs"
+$script:LightmapConvertScriptPath = Join-Path $script:ScriptDir "lightmap-to-ktx2.mjs"
 $script:SettingsDir = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "GLBSmartOptimize"
 $script:SettingsPath = Join-Path $script:SettingsDir "ui-settings.json"
 $script:LastAutoOutputPath = ""
@@ -57,7 +58,7 @@ function Get-DefaultSettings {
         ktxPath               = ""
         ktx2Mode              = "uastc"
         enableKtx2Zstd        = $true
-        enableFixTextureSize  = $true
+        enableFixTextureSize  = $false
     }
 }
 
@@ -834,9 +835,9 @@ $ktx2TextureGroup.Controls.Add($ktx2ZstdCheckBox)
 $fixTextureSizeCheckBox = New-Object System.Windows.Forms.CheckBox
 $fixTextureSizeCheckBox.Location = New-Object System.Drawing.Point(20, 94)
 $fixTextureSizeCheckBox.Size = New-Object System.Drawing.Size(300, 24)
-$fixTextureSizeCheckBox.Text = "✓ 自动修正纹理为 4 的倍数宽高"
-$fixTextureSizeCheckBox.Checked = $true
-$fixTextureSizeCheckBox.Enabled = $false
+$fixTextureSizeCheckBox.Text = "修正纹理为 4 的倍数宽高"
+$fixTextureSizeCheckBox.Checked = $false
+$fixTextureSizeCheckBox.Enabled = $true
 $ktx2TextureGroup.Controls.Add($fixTextureSizeCheckBox)
 
 # KTX2 尺寸预设按钮
@@ -1152,9 +1153,15 @@ $closeButton.Size = New-Object System.Drawing.Size(100, 30)
 $closeButton.Text = "关闭"
 $buttonPanel.Controls.Add($closeButton)
 
+$convertLightmapButton = New-Object System.Windows.Forms.Button
+$convertLightmapButton.Location = New-Object System.Drawing.Point(534, 6)
+$convertLightmapButton.Size = New-Object System.Drawing.Size(150, 30)
+$convertLightmapButton.Text = "转换光照图 KTX2"
+$buttonPanel.Controls.Add($convertLightmapButton)
+
 $statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Location = New-Object System.Drawing.Point(540, 11)
-$statusLabel.Size = New-Object System.Drawing.Size(320, 24)
+$statusLabel.Location = New-Object System.Drawing.Point(696, 11)
+$statusLabel.Size = New-Object System.Drawing.Size(168, 24)
 $statusLabel.Text = "就绪。"
 $buttonPanel.Controls.Add($statusLabel)
 
@@ -1351,6 +1358,59 @@ $openOutputButton.Add_Click({
 
 $closeButton.Add_Click({
     $form.Close()
+})
+
+$convertLightmapButton.Add_Click({
+    try {
+        $nodePath = Resolve-NodePath
+        Assert-ToolRuntimeDependencies
+
+        if (-not (Test-Path -LiteralPath $script:LightmapConvertScriptPath)) {
+            throw "缺少光照图转换脚本：lightmap-to-ktx2.mjs"
+        }
+
+        $dialog = New-Object System.Windows.Forms.OpenFileDialog
+        $dialog.Filter = "图片文件 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|所有文件 (*.*)|*.*"
+        $dialog.Multiselect = $true
+        if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+            return
+        }
+
+        $folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
+        $folderDialog.Description = "选择 KTX2 输出文件夹"
+        $folderDialog.SelectedPath = [System.IO.Path]::GetDirectoryName($dialog.FileNames[0])
+        if ($folderDialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+            return
+        }
+
+        $args = @(
+            $script:LightmapConvertScriptPath,
+            "--out-dir=$($folderDialog.SelectedPath)",
+            "--mode=uastc"
+        )
+
+        if (-not [string]::IsNullOrWhiteSpace($ktxPathTextBox.Text.Trim())) {
+            $args += "--ktx-path=$($ktxPathTextBox.Text.Trim())"
+        }
+
+        foreach ($fileName in $dialog.FileNames) {
+            $args += $fileName
+        }
+
+        $logTextBox.Clear()
+        Append-Log -TextBox $logTextBox -Text "开始转换光照图 KTX2..."
+        $statusLabel.Text = "转换光照图..."
+        $process = Start-Process -FilePath $nodePath -ArgumentList $args -WorkingDirectory $script:ScriptDir -NoNewWindow -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "光照图 KTX2 转换失败。"
+        }
+
+        $statusLabel.Text = "转换完成。"
+        [System.Windows.Forms.MessageBox]::Show("光照图 KTX2 转换完成。", "完成", "OK", "Information") | Out-Null
+    } catch {
+        $statusLabel.Text = "转换失败。"
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "光照图转换失败", "OK", "Warning") | Out-Null
+    }
 })
 
 $runButton.Add_Click({

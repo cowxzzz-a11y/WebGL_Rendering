@@ -90,6 +90,7 @@ async function main() {
         "node smart-optimize.mjs <input.glb> <output.glb>",
         "node smart-optimize.mjs <input.glb> --analyze-json=<report.json>",
         "[--texture-format=ktx2|webp|none]",
+        "[--external-lightmaps|--no-external-lightmaps]",
         "[--geometry-mode=local|none]",
         "[--object-policy=<policy.json>]",
         "[--quality-profile=quality|balanced|compact]",
@@ -184,6 +185,11 @@ async function main() {
     textureStats = await compressTexturesToWebP(document, options);
   }
 
+  const externalLightmapStats =
+    options.externalLightmaps && options.textureFormat === "ktx2"
+      ? await compressExternalLightmapsToKTX2(inputPath, outputPath, options)
+      : { converted: 0, skipped: 0, files: [] };
+
   let geometryStats = {
     candidateGroupCount: 0,
     protectedGroupCount: 0,
@@ -250,6 +256,11 @@ async function main() {
     console.log(`KTX ETC1S textures: ${textureStats.etc1sCount}`);
     console.log(`KTX UASTC textures: ${textureStats.uastcCount}`);
     console.log(`KTX binary: ${textureStats.ktxBinary ?? "not used"}`);
+    console.log(`External lightmaps converted: ${externalLightmapStats.converted}`);
+    console.log(`External lightmaps skipped: ${externalLightmapStats.skipped}`);
+    if (externalLightmapStats.files.length > 0) {
+      console.log(`External lightmap files: ${formatSummaryList(externalLightmapStats.files)}`);
+    }
   }
   console.log(`Geometry mode: ${options.geometryMode}`);
   console.log(`Simplify scale: ${formatDecimal(options.simplifyScale)}`);
@@ -304,6 +315,7 @@ function parseArgs(args) {
     textureOverride: null,
     analyzeJson: null,
     objectPolicy: null,
+    externalLightmaps: false,
   };
 
   for (const arg of args) {
@@ -319,6 +331,16 @@ function parseArgs(args) {
 
     if (arg === "--no-geometry-opt") {
       options.geometryMode = "none";
+      continue;
+    }
+
+    if (arg === "--external-lightmaps") {
+      options.externalLightmaps = true;
+      continue;
+    }
+
+    if (arg === "--no-external-lightmaps") {
+      options.externalLightmaps = false;
       continue;
     }
 
@@ -654,6 +676,7 @@ function createGeometryObjectInfo(node, mesh, id, options) {
   let morphPrimitiveCount = 0;
   let riskyThinPrimitiveCount = 0;
   let nonTrianglePrimitiveCount = 0;
+  const lightmapUV = hasLightmapUV(mesh);
 
   for (const primitive of mesh.listPrimitives()) {
     const primitiveTriangles = getPrimitiveTriangleCount(primitive);
@@ -692,9 +715,12 @@ function createGeometryObjectInfo(node, mesh, id, options) {
     }
   }
 
-  const recommendedSimplify = simplifiableTriangles > 0;
-  const recommendedQuantize = triangleCount >= options.quantizeMinTriangles;
+  const recommendedSimplify = !lightmapUV && simplifiableTriangles > 0;
+  const recommendedQuantize = !lightmapUV && triangleCount >= options.quantizeMinTriangles;
   const reasons = [];
+  if (lightmapUV) {
+    reasons.push("包含光照贴图 UV2");
+  }
   if (!recommendedSimplify) {
     if (triangleCount < options.simplifyMinTriangles) reasons.push("三角面低于减面阈值");
     if (transparentPrimitiveCount > 0) reasons.push("包含透明材质");
@@ -782,6 +808,14 @@ async function optimizeGeometryTargets(document, geometryTargets, options) {
     }
 
     const beforeTriangles = getMeshTriangleCount(mesh);
+    if (hasLightmapUV(mesh)) {
+      stats.protectedGroupCount += 1;
+      stats.trianglesBefore += beforeTriangles;
+      stats.trianglesAfter += beforeTriangles;
+      stats.protectedCarriers.push(`${carrierNode.getName() || "unnamed"} (TEXCOORD_1)`);
+      continue;
+    }
+
     if (group.allowWeld !== false) {
       for (const primitive of mesh.listPrimitives()) {
         const beforeVertices = getPrimitiveVertexCountForUpload(primitive);
@@ -865,6 +899,10 @@ async function optimizeGeometryTargets(document, geometryTargets, options) {
   }
 
   return stats;
+}
+
+function hasLightmapUV(mesh) {
+  return mesh.listPrimitives().some((primitive) => Boolean(primitive.getAttribute("TEXCOORD_1")));
 }
 
 function ensureGeometryCarrierNode(document, group) {
@@ -1125,6 +1163,10 @@ function quantizePrimitiveAttributes(primitive, inverseMatrix) {
       continue;
     }
 
+    if (semantic === "TEXCOORD_1") {
+      continue;
+    }
+
     if (semantic.startsWith("TEXCOORD_")) {
       const range = getAccessorRange(accessor);
       if (range.min.some((value) => value < 0) || range.max.some((value) => value > 1)) {
@@ -1295,6 +1337,87 @@ async function compressTexturesToKTX2(document, options, textureOverrides = new 
   }
 
   return stats;
+}
+
+async function compressExternalLightmapsToKTX2(inputPath, outputPath, options) {
+  const inputDir = path.dirname(path.resolve(inputPath));
+  const outputDir = path.dirname(path.resolve(outputPath));
+  const ktxBinary = await resolveKtxBinary(options.ktxPath);
+  const ktxVersion = await readKtxVersion(ktxBinary);
+  const entries = await fs.readdir(inputDir, { withFileTypes: true });
+  const candidates = entries
+    .filter((entry) => entry.isFile() && isExternalLightmapFile(entry.name))
+    .map((entry) => entry.name);
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gltf-optimize-lightmap-"));
+  const stats = {
+    converted: 0,
+    skipped: 0,
+    files: [],
+  };
+
+  try {
+    for (const name of candidates) {
+      const sourcePath = path.join(inputDir, name);
+      const outputName = replaceExtension(name, ".ktx2");
+      const targetPath = path.join(outputDir, outputName);
+
+      if (path.resolve(sourcePath) === path.resolve(targetPath)) {
+        stats.skipped += 1;
+        continue;
+      }
+
+      const prepared = await prepareExternalLightmapForKTX(sourcePath, options);
+      const tempInputPath = path.join(tmpDir, `${stats.converted}_${path.basename(name, path.extname(name))}.png`);
+      await fs.writeFile(tempInputPath, prepared.image);
+
+      const params = createKtxCreateParams(prepared, ktxVersion, options);
+      await runCommand(ktxBinary, ["create", ...params, tempInputPath, targetPath]);
+
+      stats.converted += 1;
+      stats.files.push(outputName);
+      console.log(`  External lightmap: ${name} -> ${outputName}`);
+    }
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+
+  return stats;
+}
+
+function isExternalLightmapFile(name) {
+  return /(?:_light(?:_\d+)?|_ao_light(?:_\d+)?)\.(?:png|jpe?g)$/i.test(name);
+}
+
+async function prepareExternalLightmapForKTX(sourcePath, options) {
+  const profile = getQualityProfile(options.qualityProfile, options);
+  const source = await fs.readFile(sourcePath);
+  const metadata = await sharp(source, { limitInputPixels: true }).metadata();
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  const channels = metadata.channels ?? 4;
+  const resize = fitWithin(width, height, profile.maxTextureSizeData[0], profile.maxTextureSizeData[1]);
+  const targetWidth = ceilMultipleOfFour(Math.max(4, resize[0]));
+  const targetHeight = ceilMultipleOfFour(Math.max(4, resize[1]));
+  const image = await sharp(source, { limitInputPixels: true })
+    .resize(targetWidth, targetHeight, {
+      fit: "fill",
+      kernel: "lanczos3",
+    })
+    .png()
+    .toBuffer();
+
+  return {
+    image,
+    mode: options.ktx2Mode,
+    format: pickKtxFormat({
+      channels,
+      hasAlpha: channels === 4,
+      colorSpace: "linear",
+    }),
+    colorSpace: "linear",
+    isNormal: false,
+    isData: true,
+  };
 }
 
 async function prepareTextureForKTX(texture, usages, options, textureIndex = -1, textureOverrides = new Map()) {

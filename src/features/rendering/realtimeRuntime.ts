@@ -10,7 +10,7 @@ import type { GeometryBufferRenderer } from '@babylonjs/core/Rendering/geometryB
 import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
 import '@babylonjs/core/Rendering/prePassRendererSceneComponent'
 import type { Scene } from '@babylonjs/core/scene'
-import { syncImportedMaterialRenderingState } from '../material/importedMaterialRendering'
+import { syncImportedGlassEnvironmentTexture, syncImportedMaterialRenderingState } from '../material/importedMaterialRendering'
 import { collectPbrMaterialsFromMaterial, isTransparentMesh } from '../material/materialUtils'
 
 type RealtimeRenderingControllerOptions = {
@@ -182,8 +182,27 @@ export const createRealtimeRenderingController = ({
 
     materials.forEach(syncImportedMaterialRenderingState)
     getImportedMeshes().forEach(syncImportedMeshRenderingState)
+    if (ssrPipeline) {
+      configureSsrPipelineDefaults(ssrPipeline)
+    }
     initShadowGenerator()
     updateGBufferRenderList()
+    flushSceneRenderCaches()
+  }
+
+  const syncImportedEnvironmentTextures = () => {
+    const materials = new Set<PBRMaterial>()
+
+    getImportedMeshes().forEach((mesh) => {
+      collectPbrMaterialsFromMaterial(mesh.material, materials)
+    })
+
+    materials.forEach((material) => {
+      syncImportedGlassEnvironmentTexture(material)
+    })
+    if (ssrPipeline) {
+      configureSsrPipelineDefaults(ssrPipeline)
+    }
     flushSceneRenderCaches()
   }
 
@@ -241,6 +260,7 @@ export const createRealtimeRenderingController = ({
     enableRealtimeEffects,
     updateGBufferRenderList,
     refreshImportedRenderingState,
+    syncImportedEnvironmentTextures,
     getReceiveSsao: (mesh: AbstractMesh) => meshFXFlags.get(mesh)?.receiveSSAO ?? true,
     setReceiveSsao: (mesh: AbstractMesh, value: boolean) => {
       meshFXFlags.set(mesh, { receiveSSAO: value })

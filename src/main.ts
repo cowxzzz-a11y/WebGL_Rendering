@@ -16,16 +16,15 @@ import '@babylonjs/core/Rendering/prePassRendererSceneComponent'
 import { BaseTexture } from '@babylonjs/core/Materials/Textures/baseTexture'
 import { Material } from '@babylonjs/core/Materials/material'
 import { ImportMeshAsync } from '@babylonjs/core/Loading/sceneLoader'
-import { configStorageKey } from './features/config/viewerConfig'
 import type { ViewerConfig } from './features/config/viewerConfig'
-import { applyViewerConfigSnapshot, createViewerConfigSnapshot, loadStoredViewerConfig } from './features/config/viewerConfigRuntime'
+import { applyViewerConfigSnapshot } from './features/config/viewerConfigRuntime'
 import type { ApplyViewerConfigOptions } from './features/config/viewerConfigRuntime'
 import { configureLocalKtx2Decoder } from './core/ktx2'
 import { createViewerCamera, tuneTouchCameraControls } from './core/camera'
 import { createViewerEngineScene } from './core/engine'
 import { createSceneLights } from './core/lights'
 import { createClassicPipeline } from './core/pipeline'
-import { defaultEnvironmentKey, defaultModels, hdrEnvironmentOptions } from './features/assets/defaultAssets'
+import { defaultEnvironmentKey, hdrEnvironmentOptions } from './features/assets/defaultAssets'
 import { setupWechatShare } from './features/share/wechatShare'
 import { collectPbrMaterialsFromMaterial } from './features/material/materialUtils'
 import { tuneImportedMaterial } from './features/material/importedMaterialRendering'
@@ -38,6 +37,9 @@ import { createEnvironmentController } from './features/environment/environmentC
 import type { EnvironmentController } from './features/environment/environmentController'
 import { createLightmapController } from './features/lightmap/lightmapController'
 import type { LightmapController } from './features/lightmap/lightmapController'
+import { getProjectById, getProjectEntries } from './features/projects/projectAssets'
+import type { ProjectEntry } from './features/projects/projectAssets'
+import { renderProjectManager } from './features/projects/projectManager'
 import { renderRealtimePanel as renderRealtimePanelContent } from './features/rendering/realtimePanel'
 import { createRealtimeRenderingController } from './features/rendering/realtimeRuntime'
 import type { RealtimeRenderingController } from './features/rendering/realtimeRuntime'
@@ -75,6 +77,8 @@ renderAppShell(app)
 
 const {
   canvas,
+  projectManager,
+  projectBackButton,
   status,
   shareActions,
   shareWechatButton,
@@ -111,7 +115,6 @@ let currentModelRoots: TransformNode[] = []
 let importedFileNames: string[] = []
 let sceneCenter = Vector3.Zero()
 let sceneRadius = 8
-let defaultConfig: ViewerConfig | null = null
 const lightHelperVisible = {
   hemi: false,
   sun: false,
@@ -526,6 +529,7 @@ environmentController = createEnvironmentController({
   initialIntensity: scene.environmentIntensity,
   setStatus,
   refreshOutline: () => setOutline(currentMeshNodes),
+  onEnvironmentTextureChanged: () => realtimeController.syncImportedEnvironmentTextures(),
 })
 
 const camera = createViewerCamera({
@@ -653,11 +657,6 @@ const getCurrentModelSignature = () => {
   return getModelSignature(currentModelRoots, importedMeshes)
 }
 
-const hasCompatibleModelSignature = (config: ViewerConfig) => {
-  const currentSignature = getCurrentModelSignature()
-  return Boolean(config.modelSignature && currentSignature && config.modelSignature === currentSignature)
-}
-
 const updateSceneBoundsFromCurrentModels = () => {
   if (currentModelRoots.length === 0) {
     sceneCenter = Vector3.Zero()
@@ -754,30 +753,8 @@ const getViewerConfigRuntime = () => ({
   },
 })
 
-const createViewerConfig = (): ViewerConfig => createViewerConfigSnapshot(getViewerConfigRuntime())
-
 const applyViewerConfig = (config: ViewerConfig, options: ApplyViewerConfigOptions = {}) => {
   applyViewerConfigSnapshot(getViewerConfigRuntime(), config, options)
-}
-
-let pendingStoredConfig = loadStoredViewerConfig()
-
-const applyPendingStoredConfig = () => {
-  if (!pendingStoredConfig) {
-    return
-  }
-
-  const canApplyModelScopedSettings = hasCompatibleModelSignature(pendingStoredConfig)
-
-  applyViewerConfig(pendingStoredConfig, {
-    includeCamera: canApplyModelScopedSettings,
-    includeMaterials: canApplyModelScopedSettings,
-    includeMeshes: canApplyModelScopedSettings,
-  })
-  updateLightDirectionHelpers()
-  setOutline(currentMeshNodes)
-
-  pendingStoredConfig = null
 }
 
 const showTemporaryStatus = (message: string) => {
@@ -800,24 +777,8 @@ setupWechatShare({
   showTemporaryStatus,
 })
 
-const saveCurrentConfig = () => {
-  window.localStorage.setItem(configStorageKey, JSON.stringify(createViewerConfig(), null, 2))
-  showTemporaryStatus('\u914d\u7f6e\u5df2\u4fdd\u5b58')
-}
-
-const resetCurrentConfig = () => {
-  if (!defaultConfig) {
-    return
-  }
-
-  window.localStorage.removeItem(configStorageKey)
-  pendingStoredConfig = null
-  applyViewerConfig(defaultConfig)
-  showTemporaryStatus('\u5df2\u91cd\u7f6e\u4e3a\u9ed8\u8ba4\u914d\u7f6e')
-}
-
-saveConfigButton.addEventListener('click', saveCurrentConfig)
-resetConfigButton.addEventListener('click', resetCurrentConfig)
+saveConfigButton.hidden = true
+resetConfigButton.hidden = true
 
 const createMeshDetail = (mesh: AbstractMesh): DetailDescriptor => createMeshDetailDescriptor({
   mesh,
@@ -980,14 +941,13 @@ const deleteSelectedMesh = () => {
   pruneEmptyModelRoots()
   refreshImportedDetails()
   rebuildImportedOutline()
-  defaultConfig = createViewerConfig()
   flushSceneRenderCaches()
   setStatus(`闂備浇顕уù鐑藉箠閹捐绠熼梽鍥Φ閹版澘绀冩い鏃傚帶閻庮參鎮峰鍛暭閻㈩垱顨婇崺?${deletedName}`)
 
   return true
 }
 
-const loadModel = async (source: string | File, fileName: string, shouldApplyStoredConfig = false, replaceExisting = false) => {
+const loadModel = async (source: string | File, fileName: string, replaceExisting = false) => {
   setStatus(`\u6b63\u5728\u5bfc\u5165 ${fileName}...`)
 
   if (replaceExisting) {
@@ -1031,13 +991,6 @@ const loadModel = async (source: string | File, fileName: string, shouldApplySto
   }
 
   flushSceneRenderCaches()
-
-  defaultConfig = createViewerConfig()
-
-  if (shouldApplyStoredConfig && pendingStoredConfig) {
-    applyPendingStoredConfig()
-  }
-
   setStatus(null)
 }
 
@@ -1045,7 +998,7 @@ setupModelImportControls({
   glbImportInput,
   importButton,
   importModePopup,
-  loadModel: (file, fileName, replaceExisting) => loadModel(file, fileName, false, replaceExisting),
+  loadModel: (file, fileName, replaceExisting) => loadModel(file, fileName, replaceExisting),
   showTemporaryStatus,
   setStatus,
 })
@@ -1057,39 +1010,91 @@ const keyboardNavigationController = createKeyboardNavigationController({
   onDelete: deleteSelectedMesh,
 })
 
-const loadDefaultModels = async () => {
-  if (defaultModels.length === 0) {
-    setStatus('\u672a\u5728 assets \u4e2d\u627e\u5230 target.glb')
-    return
-  }
+const projects = getProjectEntries()
 
-  const failedModels: string[] = []
-
-  for (const model of defaultModels) {
-    try {
-      await loadModel(model.url, model.fileName)
-    } catch (error) {
-      console.error(`Failed to load ${model.fileName}`, error)
-      failedModels.push(model.fileName)
-    }
-  }
-
-  if (importedMeshes.length > 0 && pendingStoredConfig) {
-    applyPendingStoredConfig()
-  }
-
-  if (failedModels.length > 0) {
-    setStatus(`\u5df2\u5bfc\u5165 ${defaultModels.length - failedModels.length} \u4e2a GLB\uff0c${failedModels.length} \u4e2a\u5931\u8d25`)
-    return
-  }
-
+const showProjectManager = () => {
+  disposeCurrentModels()
+  resetRealtimePipelines()
+  flushSceneRenderCaches()
+  projectManager.hidden = false
+  projectBackButton.hidden = true
+  const nextUrl = new URL(window.location.href)
+  nextUrl.searchParams.delete('project')
+  window.history.replaceState(null, '', nextUrl)
   setStatus(null)
 }
 
-loadDefaultModels().catch((error) => {
-  console.error(error)
-  setStatus('Failed to load assets GLB files')
+const loadProject = async (project: ProjectEntry) => {
+  projectManager.hidden = true
+  projectBackButton.hidden = false
+  setStatus(`正在加载项目 ${project.title}...`)
+
+  if (project.models.length === 0) {
+    setStatus(`项目 ${project.title} 没有可加载的 GLB`)
+    projectManager.hidden = false
+    projectBackButton.hidden = true
+    return
+  }
+
+  try {
+    for (const [index, model] of project.models.entries()) {
+      await loadModel(model.url, model.fileName, index === 0)
+    }
+
+    if (project.config.config) {
+      applyViewerConfig(project.config.config)
+    }
+
+    if (project.lightmaps.length > 0) {
+      const result = await lightmapController.applyProjectLightmaps(project.lightmaps)
+      if (result.missing.length > 0) {
+        console.warn('Project lightmaps had no matching mesh/material:', result.missing)
+      }
+    }
+
+    if (project.config.mode === 'baked') {
+      techActiveSubTab = '\u6a21\u578b\u70d8\u70e4'
+      disableRealtimeEffects()
+      enableLightmaps()
+    } else {
+      techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
+      enableRealtimeEffects()
+    }
+
+    const nextUrl = new URL(window.location.href)
+    nextUrl.searchParams.set('project', project.id)
+    window.history.replaceState(null, '', nextUrl)
+    setOutline(currentMeshNodes)
+    setStatus(null)
+  } catch (error) {
+    console.error(error)
+    setStatus(`项目 ${project.title} 加载失败`)
+    projectManager.hidden = false
+    projectBackButton.hidden = true
+  }
+}
+
+projectBackButton.addEventListener('click', showProjectManager)
+
+renderProjectManager({
+  root: projectManager,
+  projects,
+  onProjectSelect: (project) => {
+    void loadProject(project)
+  },
 })
+
+const initialProjectId = new URLSearchParams(window.location.search).get('project')
+if (initialProjectId) {
+  const initialProject = getProjectById(initialProjectId)
+  if (initialProject) {
+    void loadProject(initialProject)
+  } else {
+    setStatus(`未找到项目 ${initialProjectId}`)
+  }
+} else {
+  setStatus(null)
+}
 
 const frameMetricsController = createFrameMetricsController({
   engine,

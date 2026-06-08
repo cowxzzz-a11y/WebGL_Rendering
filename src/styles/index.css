@@ -34,6 +34,142 @@ body,
   touch-action: none;
 }
 
+.project-manager {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  overflow: auto;
+  background: #d3d7d6;
+  color: #1f2424;
+}
+
+.project-manager[hidden] {
+  display: none;
+}
+
+.project-manager-shell {
+  width: min(1120px, calc(100vw - 40px));
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 56px 0;
+}
+
+.project-manager-header {
+  margin-bottom: 24px;
+}
+
+.project-manager-header h1 {
+  margin: 0;
+  color: #161a1a;
+  font-size: 32px;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.project-manager-header p {
+  margin: 8px 0 0;
+  color: #53605d;
+  font-size: 14px;
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.project-card {
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid rgba(20, 26, 25, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 16px 36px rgba(31, 38, 37, 0.12);
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.project-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(48, 98, 130, 0.46);
+  box-shadow: 0 20px 42px rgba(31, 38, 37, 0.18);
+}
+
+.project-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #192020;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-card span,
+.project-card em {
+  min-width: 0;
+  overflow: hidden;
+  color: #586561;
+  font-size: 12px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-card em {
+  align-self: end;
+  color: #2f607d;
+  font-weight: 700;
+}
+
+.project-empty {
+  padding: 22px;
+  border: 1px dashed rgba(20, 26, 25, 0.24);
+  border-radius: 8px;
+  color: #53605d;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.project-back-button {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(34, 38, 39, 0.9);
+  color: #e6ecea;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.project-back-button[hidden] {
+  display: none;
+}
+
+.project-back-button:hover {
+  background: rgba(48, 55, 57, 0.98);
+  color: #ffffff;
+}
+
+.project-back-button svg {
+  width: 20px;
+  height: 20px;
+}
+
 .outliner-panel {
   position: absolute;
   top: 12px;
@@ -170,7 +306,7 @@ input[type="radio"]:checked + .tab {
 }
 
 .config-actions {
-  display: grid;
+  display: none;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   padding: 7px 10px;

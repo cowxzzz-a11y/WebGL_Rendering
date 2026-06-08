@@ -1,6 +1,7 @@
 import { Engine } from '@babylonjs/core/Engines/engine'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Material } from '@babylonjs/core/Materials/material'
+import type { BaseTexture } from '@babylonjs/core/Materials/Textures/baseTexture'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { isTransparentPbrMaterial } from './materialUtils'
 import { clamp } from '../../utils/math'
@@ -94,9 +95,26 @@ const normalizeImportedGlassMaterial = (material: PBRMaterial) => {
   material.metallic = 0
   material.environmentIntensity = Math.max(material.environmentIntensity, 1.8)
   material.specularIntensity = Math.max(material.specularIntensity, 1)
-  material.needDepthPrePass = true
+  material.needDepthPrePass = false
   material.separateCullingPass = false
-  material.forceDepthWrite = true
+  material.forceDepthWrite = false
+  syncImportedGlassEnvironmentTexture(material)
+  material.markAsDirty(Material.MiscDirtyFlag | Material.TextureDirtyFlag)
+}
+
+export const syncImportedGlassEnvironmentTexture = (
+  material: PBRMaterial,
+  environmentTexture: BaseTexture | null = material.getScene().environmentTexture,
+) => {
+  const looksLikeGlass = isArchitecturalGlassMaterial(material) || material.subSurface.isRefractionEnabled
+
+  if (!looksLikeGlass) {
+    return
+  }
+
+  material.reflectionTexture = environmentTexture
+  material.subSurface.refractionTexture = null
+  material.subSurface.linkRefractionWithTransparency = false
   material.markAsDirty(Material.MiscDirtyFlag | Material.TextureDirtyFlag)
 }
 
@@ -110,11 +128,11 @@ export const syncImportedMaterialRenderingState = (material: PBRMaterial) => {
   }
 
   const transparent = isTransparentPbrMaterial(material)
-  const depthWritingGlass = isArchitecturalGlassMaterial(material) && transparent
+  const glass = isArchitecturalGlassMaterial(material) && transparent
 
-  material.needDepthPrePass = transparent
-  material.separateCullingPass = transparent && !depthWritingGlass
-  material.forceDepthWrite = depthWritingGlass
+  material.needDepthPrePass = transparent && !glass
+  material.separateCullingPass = transparent && !glass
+  material.forceDepthWrite = false
   material.twoSidedLighting = !material.backFaceCulling
 }
 

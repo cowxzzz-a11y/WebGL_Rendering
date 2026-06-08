@@ -2,7 +2,8 @@ import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Material } from '@babylonjs/core/Materials/material'
 import { MultiMaterial } from '@babylonjs/core/Materials/multiMaterial'
-import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
+import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
+import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import { createSlider } from '../../ui/controls'
 
@@ -29,6 +30,16 @@ type LightmapControllerOptions = {
   getSelectableMeshes: () => AbstractMesh[]
 }
 
+export type ProjectLightmapMapping = {
+  target: string
+  targetType: 'mesh' | 'material'
+  url: string
+  fileName: string
+  uv: number
+  invertY: boolean
+  level: number
+}
+
 const getPrimitiveBaseName = (name: string) => {
   const match = name.match(/^(.*?)(?:[_\-. ]?primitive\d+)$/i)
   return match?.[1]?.trim() || ''
@@ -52,6 +63,9 @@ export const createLightmapController = ({
   let selectedUVChannel = 1
   let lightmapInvertY = false
   let lastLightmapUrl = ''
+  let lastLightmapBuffer: ArrayBuffer | null = null
+  let lastLightmapMimeType: string | undefined
+  let lastLightmapForcedExtension: string | undefined
   let lastLightmapFileName = ''
   let lastLightmapFileSize = 0
   const lightmapTextureMeta = new WeakMap<Texture, LightmapTextureMeta>()
@@ -164,10 +178,83 @@ export const createLightmapController = ({
     }
   }
 
-  const createLightmapTextureFromCurrent = () => {
-    if (!lastLightmapUrl) return null
+  const normalizeTargetName = (name: string) => name.trim().toLowerCase()
 
-    const texture = new Texture(lastLightmapUrl, scene, undefined, lightmapInvertY)
+  const getMeshNameCandidates = (mesh: AbstractMesh) => {
+    const candidates = new Set<string>()
+    const push = (name: string | null | undefined) => {
+      const trimmed = name?.trim()
+      if (trimmed) {
+        candidates.add(normalizeTargetName(trimmed))
+      }
+    }
+
+    push(mesh.name)
+    push(mesh.id)
+    let parent: TransformNode | AbstractMesh | null =
+      mesh.parent instanceof AbstractMesh || mesh.parent?.getClassName?.() === 'TransformNode'
+        ? mesh.parent as TransformNode | AbstractMesh
+        : null
+
+    while (parent) {
+      push(parent.name)
+      parent = parent.parent instanceof AbstractMesh || parent.parent?.getClassName?.() === 'TransformNode'
+        ? parent.parent as TransformNode | AbstractMesh
+        : null
+    }
+
+    if (mesh.material instanceof MultiMaterial) {
+      mesh.material.subMaterials.forEach((material) => push(material?.name))
+    } else {
+      push(mesh.material?.name)
+    }
+
+    return candidates
+  }
+
+  const getMaterialNameCandidates = (mesh: AbstractMesh) => {
+    const candidates = new Set<string>()
+    const push = (name: string | null | undefined) => {
+      const trimmed = name?.trim()
+      if (trimmed) {
+        candidates.add(normalizeTargetName(trimmed))
+      }
+    }
+
+    if (mesh.material instanceof MultiMaterial) {
+      mesh.material.subMaterials.forEach((material) => push(material?.name))
+    } else {
+      push(mesh.material?.name)
+    }
+
+    return candidates
+  }
+
+  const getMeshesForProjectMapping = (mapping: ProjectLightmapMapping) => {
+    const target = normalizeTargetName(mapping.target)
+
+    return getSelectableMeshes().filter((mesh) => {
+      const candidates = mapping.targetType === 'material'
+        ? getMaterialNameCandidates(mesh)
+        : getMeshNameCandidates(mesh)
+
+      return candidates.has(target)
+    })
+  }
+
+  const createLightmapTextureFromCurrent = () => {
+    if (!lastLightmapUrl && !lastLightmapBuffer) return null
+
+    const texture = new Texture(
+      lastLightmapBuffer ? lastLightmapFileName : lastLightmapUrl,
+      scene,
+      {
+        invertY: lightmapInvertY,
+        buffer: lastLightmapBuffer,
+        mimeType: lastLightmapMimeType,
+        forcedExtension: lastLightmapForcedExtension,
+      },
+    )
     texture.coordinatesIndex = selectedUVChannel
     lightmapTextureMeta.set(texture, {
       url: lastLightmapUrl,
@@ -194,6 +281,40 @@ export const createLightmapController = ({
       mesh.material.lightmapTexture = texture
       mesh.material.useLightmapAsShadowmap = true
       mesh.material.markAsDirty(Material.TextureDirtyFlag)
+    }
+  }
+
+  const applyProjectLightmaps = async (mappings: ProjectLightmapMapping[]) => {
+    let applied = 0
+    const missing: string[] = []
+
+    for (const mapping of mappings) {
+      const meshes = getMeshesForProjectMapping(mapping)
+
+      if (meshes.length === 0) {
+        missing.push(mapping.target)
+        continue
+      }
+
+      const texture = new Texture(mapping.url, scene, {
+        invertY: mapping.invertY,
+      })
+      texture.coordinatesIndex = mapping.uv
+      texture.level = mapping.level
+      lightmapTextureMeta.set(texture, {
+        url: mapping.url,
+        fileName: mapping.fileName,
+        fileSize: 0,
+        uvChannel: mapping.uv,
+      })
+
+      meshes.forEach((mesh) => applyLightmapToMesh(mesh, texture))
+      applied += meshes.length
+    }
+
+    return {
+      applied,
+      missing,
     }
   }
 
@@ -415,7 +536,7 @@ export const createLightmapController = ({
     deleteBtn.textContent = '\u5220\u9664\u5149\u7167\u7eb9\u7406'
     const fileInput = document.createElement('input')
     fileInput.type = 'file'
-    fileInput.accept = '.png,.jpg,.jpeg,.tga,.exr,.hdr'
+    fileInput.accept = '.png,.jpg,.jpeg,.tga,.exr,.hdr,.ktx2'
     fileInput.hidden = true
     uploadDrop.addEventListener('click', () => fileInput.click())
     uploadBtn.addEventListener('click', () => {
@@ -430,11 +551,14 @@ export const createLightmapController = ({
       getTargetMeshes().forEach(clearLightmapFromMesh)
       renderLightmapSummary()
     })
-    fileInput.addEventListener('change', () => {
+    fileInput.addEventListener('change', async () => {
       const file = fileInput.files?.[0]
       if (!file) return
-      const url = URL.createObjectURL(file)
-      lastLightmapUrl = url
+      const isKtx2 = file.name.toLowerCase().endsWith('.ktx2')
+      lastLightmapBuffer = isKtx2 ? await file.arrayBuffer() : null
+      lastLightmapMimeType = isKtx2 ? 'image/ktx2' : undefined
+      lastLightmapForcedExtension = isKtx2 ? '.ktx2' : undefined
+      lastLightmapUrl = isKtx2 ? '' : URL.createObjectURL(file)
       lastLightmapFileName = file.name
       lastLightmapFileSize = file.size
       applyLightmapToTarget()
@@ -508,6 +632,7 @@ export const createLightmapController = ({
   }
 
   return {
+    applyProjectLightmaps,
     pruneMesh,
     renderPanel,
   }
