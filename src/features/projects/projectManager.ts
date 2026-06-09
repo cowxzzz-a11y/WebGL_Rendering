@@ -37,14 +37,10 @@ export const renderProjectManager = ({
   }
 
   projects.forEach((project) => {
-    const projectUrl = new URL(window.location.href)
-    projectUrl.searchParams.set('project', project.routeId)
-
-    const card = document.createElement('a')
+    const card = document.createElement('button')
     card.className = 'project-card'
-    card.href = `${projectUrl.pathname}${projectUrl.search}${projectUrl.hash}`
-    card.addEventListener('click', (e) => {
-      e.preventDefault()
+    card.type = 'button'
+    card.addEventListener('click', () => {
       onProjectSelect?.(project)
     })
 
