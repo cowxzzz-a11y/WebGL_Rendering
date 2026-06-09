@@ -112,7 +112,7 @@ export const syncImportedGlassEnvironmentTexture = (
     return
   }
 
-  material.reflectionTexture = environmentTexture
+  material.reflectionTexture = environmentTexture?.isReady() ? environmentTexture : null
   material.subSurface.refractionTexture = null
   material.subSurface.linkRefractionWithTransparency = false
   material.markAsDirty(Material.MiscDirtyFlag | Material.TextureDirtyFlag)

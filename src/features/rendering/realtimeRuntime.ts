@@ -48,6 +48,7 @@ export const createRealtimeRenderingController = ({
   let ssrEnabledPreference = true
   let shadowFilterMode = 6
   let savedSunIntensity = 0.62
+  let realtimeEffectsDisabled = false
   let geometryBufferRenderer: GeometryBufferRenderer | null = null
   const meshFXFlags = new WeakMap<AbstractMesh, { receiveSSAO: boolean }>()
 
@@ -207,7 +208,10 @@ export const createRealtimeRenderingController = ({
   }
 
   const disableRealtimeEffects = () => {
-    savedSunIntensity = sunLight.intensity
+    if (!realtimeEffectsDisabled) {
+      savedSunIntensity = sunLight.intensity
+      realtimeEffectsDisabled = true
+    }
     sunLight.intensity = 0
     applyRealtimeShadowState()
     resetRealtimePipelines()
@@ -216,6 +220,7 @@ export const createRealtimeRenderingController = ({
 
   const enableRealtimeEffects = () => {
     sunLight.intensity = savedSunIntensity
+    realtimeEffectsDisabled = false
     refreshImportedRenderingState()
     applyRealtimeShadowState()
 
@@ -231,6 +236,14 @@ export const createRealtimeRenderingController = ({
     } else if (ssrPipeline) {
       ssrPipeline.isEnabled = false
     }
+  }
+
+  const restoreRealtimeLightState = () => {
+    sunLight.intensity = savedSunIntensity
+    realtimeEffectsDisabled = false
+    applyRealtimeShadowState()
+    resetRealtimePipelines()
+    flushSceneRenderCaches()
   }
 
   return {
@@ -258,6 +271,7 @@ export const createRealtimeRenderingController = ({
     resetRealtimePipelines,
     disableRealtimeEffects,
     enableRealtimeEffects,
+    restoreRealtimeLightState,
     updateGBufferRenderList,
     refreshImportedRenderingState,
     syncImportedEnvironmentTextures,

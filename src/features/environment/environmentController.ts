@@ -138,38 +138,54 @@ export const createEnvironmentController = ({
         return
       }
 
-      const nextTexture = new HDRCubeTexture(
-        url,
-        scene,
-        256,
-        false,
-        true,
-        false,
-        true,
-        () => {
-          if (loadToken === environmentLoadToken) {
+      await new Promise<void>((resolve, reject) => {
+        const nextTexture = new HDRCubeTexture(
+          url,
+          scene,
+          256,
+          false,
+          true,
+          false,
+          true,
+          () => {
+            if (loadToken !== environmentLoadToken) {
+              nextTexture.dispose()
+              resolve()
+              return
+            }
+
+            nextTexture.rotationY = degreesToRadians(environmentRotationY)
+            scene.environmentTexture = nextTexture
+            scene.environmentIntensity = globalEnvironmentIntensity
+            updateEnvironmentBackground()
+            onEnvironmentTextureChanged?.()
+
+            if (previousTexture && previousTexture !== nextTexture) {
+              previousTexture.dispose()
+            }
+
             setStatus(null)
             if (shouldRefreshOutline) {
               refreshOutline()
             }
-          }
-        },
-        (message, exception) => {
-          if (loadToken === environmentLoadToken) {
-            console.error('Environment texture load failed', message, exception)
-            setStatus(`Environment load failed: ${option.label}`)
-          }
-        },
-      )
 
-      nextTexture.rotationY = degreesToRadians(environmentRotationY)
-      scene.environmentTexture = nextTexture
-      scene.environmentIntensity = globalEnvironmentIntensity
-      updateEnvironmentBackground()
-      onEnvironmentTextureChanged?.()
+            resolve()
+          },
+          (message, exception) => {
+            if (loadToken === environmentLoadToken) {
+              console.error('Environment texture load failed', message, exception)
+              setStatus(`Environment load failed: ${option.label}`)
+            }
 
-      if (previousTexture && previousTexture !== nextTexture) {
-        previousTexture.dispose()
+            reject(exception ?? new Error(message))
+          },
+        )
+
+        nextTexture.rotationY = degreesToRadians(environmentRotationY)
+      })
+
+      if (loadToken === environmentLoadToken && showLoadingStatus) {
+        setStatus(null)
       }
     } catch (error) {
       if (loadToken === environmentLoadToken) {

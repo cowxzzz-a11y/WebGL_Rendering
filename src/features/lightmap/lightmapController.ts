@@ -45,6 +45,28 @@ const getPrimitiveBaseName = (name: string) => {
   return match?.[1]?.trim() || ''
 }
 
+const waitForTextureReady = (texture: Texture) =>
+  new Promise<boolean>((resolve) => {
+    if (texture.isReady()) {
+      resolve(true)
+      return
+    }
+
+    let settled = false
+    const finish = (ready: boolean) => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      window.clearTimeout(timeoutId)
+      resolve(ready)
+    }
+    const timeoutId = window.setTimeout(() => finish(texture.isReady()), 8000)
+
+    texture.onLoadObservable.addOnce(() => finish(true))
+  })
+
 const formatFileSize = (size: number) => {
   if (size <= 0) return '\u672a\u77e5\u5927\u5c0f'
   if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
@@ -301,6 +323,13 @@ export const createLightmapController = ({
       })
       texture.coordinatesIndex = mapping.uv
       texture.level = mapping.level
+      const textureReady = await waitForTextureReady(texture)
+      if (!textureReady) {
+        texture.dispose()
+        missing.push(`${mapping.target} (${mapping.fileName} not ready)`)
+        continue
+      }
+
       lightmapTextureMeta.set(texture, {
         url: mapping.url,
         fileName: mapping.fileName,

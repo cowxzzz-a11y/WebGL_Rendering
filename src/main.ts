@@ -207,6 +207,8 @@ const disableRealtimeEffects = () => realtimeController.disableRealtimeEffects()
 
 const enableRealtimeEffects = () => realtimeController.enableRealtimeEffects()
 
+const restoreRealtimeLightState = () => realtimeController.restoreRealtimeLightState()
+
 const updateGBufferRenderList = () => realtimeController.updateGBufferRenderList()
 
 const refreshImportedRenderingState = () => realtimeController.refreshImportedRenderingState()
@@ -863,20 +865,118 @@ const frameHierarchy = (root: TransformNode, meshes: AbstractMesh[]) => {
   updateLightDirectionHelpers()
 }
 
+const frameCurrentModels = () => {
+  if (currentModelRoots.length === 0 || importedMeshes.length === 0) {
+    return
+  }
+
+  importedMeshes.forEach((mesh) => {
+    if (mesh.isDisposed()) {
+      return
+    }
+
+    mesh.computeWorldMatrix(true)
+    mesh.refreshBoundingInfo(true, false)
+  })
+
+  const frameMeshes = importedMeshes.filter((mesh) => !mesh.isDisposed() && !isBakedFloor(mesh))
+  const boundsMeshes = frameMeshes.length > 0 ? frameMeshes : importedMeshes.filter((mesh) => !mesh.isDisposed())
+  let aggregateMin = Vector3.Zero()
+  let aggregateMax = Vector3.Zero()
+  let hasBounds = false
+
+  currentModelRoots.forEach((root) => {
+    if (root.isDisposed()) {
+      return
+    }
+
+    root.computeWorldMatrix(true)
+    const bounds = root.getHierarchyBoundingVectors(true, (mesh) => boundsMeshes.includes(mesh))
+
+    if (!hasBounds) {
+      aggregateMin = bounds.min.clone()
+      aggregateMax = bounds.max.clone()
+      hasBounds = true
+      return
+    }
+
+    aggregateMin = Vector3.Minimize(aggregateMin, bounds.min)
+    aggregateMax = Vector3.Maximize(aggregateMax, bounds.max)
+  })
+
+  if (!hasBounds) {
+    return
+  }
+
+  const size = aggregateMax.subtract(aggregateMin)
+  const center = aggregateMin.add(aggregateMax).scale(0.5)
+  const radius = Math.max(Math.max(size.x, size.y, size.z, 0.001) * 1.48, 4)
+
+  sceneCenter = center
+  sceneRadius = radius
+  camera.setTarget(center.add(new Vector3(0, size.y * 0.02, 0)))
+  camera.upperRadiusLimit = Math.max(radius * 8, 500)
+  camera.radius = radius
+  camera.alpha = -Math.PI / 2.15
+  camera.beta = Math.PI / 2.62
+  sunLight.position = center.add(new Vector3(8, 10, 6))
+
+  updateCameraDepthRange()
+  updateLightDirectionHelpers()
+}
+
+const ensureCurrentModelsRenderable = () => {
+  const renderableMeshes = importedMeshes.filter((mesh) => !mesh.isDisposed())
+
+  currentModelRoots.forEach((root) => {
+    if (!root.isDisposed()) {
+      root.setEnabled(true)
+    }
+  })
+
+  renderableMeshes.forEach((mesh) => {
+    mesh.setEnabled(true)
+    mesh.isVisible = true
+    mesh.visibility = 1
+    mesh.alwaysSelectAsActiveMesh = true
+    mesh.computeWorldMatrix(true)
+    mesh.refreshBoundingInfo(true, false)
+  })
+
+  let framesRemaining = 4
+  const restoreAutomaticCulling = () => {
+    framesRemaining -= 1
+    if (framesRemaining > 0) {
+      requestAnimationFrame(restoreAutomaticCulling)
+      return
+    }
+
+    renderableMeshes.forEach((mesh) => {
+      if (!mesh.isDisposed()) {
+        mesh.alwaysSelectAsActiveMesh = false
+      }
+    })
+  }
+
+  requestAnimationFrame(restoreAutomaticCulling)
+}
+
 const disposeCurrentModels = () => {
   clearMeshSelection()
   billboardController.clearAll()
   dynamicDetailsRegistry.unregisterImportedDetails()
-  currentModelRoots.forEach((root) => root.dispose(false, true))
+  currentModelRoots.forEach((root) => root.dispose(false, false))
   currentModelRoots = []
   importedMeshes = []
   importedMaterialTotal = 0
   importedFileNames = []
   importedFileName = '\u672a\u5bfc\u5165'
+  savedLightmaps = new WeakMap<PBRMaterial, BaseTexture>()
   const shadowMap = shadowGenerator.getShadowMap()
   if (shadowMap) {
     shadowMap.renderList = []
   }
+  updateGBufferRenderList()
   setOutline([])
 }
 
@@ -910,7 +1010,7 @@ const pruneEmptyModelRoots = () => {
       return
     }
 
-    root.dispose(false, true)
+    root.dispose(false, false)
   })
 
   currentModelRoots = nextRoots
@@ -947,7 +1047,16 @@ const deleteSelectedMesh = () => {
   return true
 }
 
-const loadModel = async (source: string | File, fileName: string, replaceExisting = false) => {
+type LoadModelOptions = {
+  shouldContinue?: () => boolean
+}
+
+const loadModel = async (
+  source: string | File,
+  fileName: string,
+  replaceExisting = false,
+  options: LoadModelOptions = {},
+) => {
   setStatus(`\u6b63\u5728\u5bfc\u5165 ${fileName}...`)
 
   if (replaceExisting) {
@@ -960,9 +1069,23 @@ const loadModel = async (source: string | File, fileName: string, replaceExistin
     pluginExtension: '.glb',
     name: fileName,
     onProgress: (event) => {
+      if (options.shouldContinue && !options.shouldContinue()) {
+        return
+      }
+
       setStatus(getImportProgressMessage(fileName, event))
     },
   })
+
+  if (options.shouldContinue && !options.shouldContinue()) {
+    result.meshes.forEach((mesh) => mesh.dispose(false, false))
+    result.transformNodes.forEach((node) => node.dispose(false, false))
+    result.animationGroups.forEach((group) => group.dispose())
+    result.skeletons.forEach((skeleton) => skeleton.dispose())
+    flushSceneRenderCaches()
+    return
+  }
+
   const root = new TransformNode(`${fileName.replace(/\.glb$/i, '') || 'Imported'}Root`, scene)
   const topLevelNodes = [...result.transformNodes, ...result.meshes].filter((node) => !node.parent)
   const materials = new Set<PBRMaterial>()
@@ -1011,10 +1134,13 @@ const keyboardNavigationController = createKeyboardNavigationController({
 })
 
 const projects = getProjectEntries()
+let projectLoadSerial = 0
 
 const showProjectManager = () => {
+  projectLoadSerial += 1
   disposeCurrentModels()
-  resetRealtimePipelines()
+  techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
+  restoreRealtimeLightState()
   flushSceneRenderCaches()
   projectManager.hidden = false
   projectBackButton.hidden = true
@@ -1025,6 +1151,8 @@ const showProjectManager = () => {
 }
 
 const loadProject = async (project: ProjectEntry) => {
+  const loadSerial = projectLoadSerial + 1
+  projectLoadSerial = loadSerial
   projectManager.hidden = true
   projectBackButton.hidden = false
   setStatus(`正在加载项目 ${project.title}...`)
@@ -1038,7 +1166,12 @@ const loadProject = async (project: ProjectEntry) => {
 
   try {
     for (const [index, model] of project.models.entries()) {
-      await loadModel(model.url, model.fileName, index === 0)
+      await loadModel(model.url, model.fileName, index === 0, {
+        shouldContinue: () => loadSerial === projectLoadSerial,
+      })
+      if (loadSerial !== projectLoadSerial) {
+        return
+      }
     }
 
     if (project.config.config) {
@@ -1047,10 +1180,15 @@ const loadProject = async (project: ProjectEntry) => {
 
     if (project.lightmaps.length > 0) {
       const result = await lightmapController.applyProjectLightmaps(project.lightmaps)
+      if (loadSerial !== projectLoadSerial) {
+        return
+      }
       if (result.missing.length > 0) {
         console.warn('Project lightmaps had no matching mesh/material:', result.missing)
       }
     }
+
+    ensureCurrentModelsRenderable()
 
     if (project.config.mode === 'baked') {
       techActiveSubTab = '\u6a21\u578b\u70d8\u70e4'
@@ -1060,6 +1198,19 @@ const loadProject = async (project: ProjectEntry) => {
       techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
       enableRealtimeEffects()
     }
+
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve())
+    })
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve())
+    })
+    if (loadSerial !== projectLoadSerial) {
+      return
+    }
+
+    frameCurrentModels()
+    flushSceneRenderCaches()
 
     const nextUrl = new URL(window.location.href)
     nextUrl.searchParams.set('project', project.id)
