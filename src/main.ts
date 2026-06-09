@@ -75,6 +75,10 @@ if (!app) {
 
 renderAppShell(app)
 
+const isConstrainedMobileRuntime =
+  window.matchMedia('(pointer: coarse), (max-width: 760px)').matches ||
+  /MicroMessenger/i.test(navigator.userAgent)
+
 const {
   canvas,
   projectManager,
@@ -520,7 +524,7 @@ const updateSelectionBox = () => selectionController.updateSelectionBox()
 
 const { engine, scene, imageProcessing } = createViewerEngineScene({
   canvas,
-  hasHdrEnvironments: hdrEnvironmentOptions.length > 0,
+  hasHdrEnvironments: hdrEnvironmentOptions.length > 0 && !isConstrainedMobileRuntime,
   legacyEnvironmentUrl,
 })
 
@@ -638,7 +642,7 @@ realtimeController = createRealtimeRenderingController({
 initShadowGenerator()
 setOutline()
 const initialEnvironmentKey = getEnvironmentState().selectedEnvironmentKey
-if (hdrEnvironmentOptions.length > 0 && initialEnvironmentKey) {
+if (!isConstrainedMobileRuntime && hdrEnvironmentOptions.length > 0 && initialEnvironmentKey) {
   await setSceneEnvironmentTexture(initialEnvironmentKey, {
     force: true,
     showLoadingStatus: false,

@@ -3,13 +3,12 @@ import type { ProjectEntry } from './projectAssets'
 export type ProjectManagerOptions = {
   root: HTMLElement
   projects: ProjectEntry[]
-  onProjectSelect: (project: ProjectEntry) => void
+  onProjectSelect?: (project: ProjectEntry) => void
 }
 
 export const renderProjectManager = ({
   root,
   projects,
-  onProjectSelect,
 }: ProjectManagerOptions) => {
   root.textContent = ''
   root.hidden = false
@@ -54,10 +53,6 @@ export const renderProjectManager = ({
     meta.textContent = `${project.models.length} 个模型 / ${project.lightmaps.length} 张光照贴图`
 
     card.append(name, path, meta)
-    card.addEventListener('click', (event) => {
-      event.preventDefault()
-      onProjectSelect(project)
-    })
     grid.append(card)
   })
 
