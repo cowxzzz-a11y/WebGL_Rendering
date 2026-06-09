@@ -40,7 +40,14 @@ export const renderProjectManager = ({
     const card = document.createElement('button')
     card.className = 'project-card'
     card.type = 'button'
+    let tapped = false
+    card.addEventListener('touchend', (e) => {
+      tapped = true
+      e.preventDefault()
+      onProjectSelect?.(project)
+    })
     card.addEventListener('click', () => {
+      if (tapped) { tapped = false; return }
       onProjectSelect?.(project)
     })
 

@@ -859,9 +859,10 @@ button.outliner-icon.outliner-visibility {
 }
 
 .status {
-  position: absolute;
+  position: fixed;
   left: 18px;
   bottom: 18px;
+  z-index: 200;
   padding: 9px 12px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
@@ -1136,6 +1137,27 @@ button.outliner-icon.outliner-visibility {
   grid-column: 1 / -1;
 }
 
+.billboard-profile-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.billboard-profile-toolbar input {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  background: rgba(12, 14, 14, 0.5);
+  color: #e7ecea;
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+}
+
 .bake-toolbar button {
   height: 28px;
   padding: 0 10px;
@@ -1158,6 +1180,23 @@ button.outliner-icon.outliner-visibility {
   font: inherit;
   font-size: 11px;
   cursor: pointer;
+}
+
+.billboard-profile-toolbar button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #c8d0ce;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.billboard-profile-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .bake-search input {

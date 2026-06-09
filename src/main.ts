@@ -1223,7 +1223,8 @@ const loadProject = async (project: ProjectEntry) => {
     setStatus(null)
   } catch (error) {
     console.error(error)
-    setStatus(`项目 ${project.title} 加载失败`)
+    const msg = `项目 ${project.title} 加载失败: ${error instanceof Error ? error.message : '未知错误'}`
+    setStatus(msg)
     projectManager.hidden = false
     projectBackButton.hidden = true
   }

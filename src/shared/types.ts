@@ -74,6 +74,7 @@ export type DetailDescriptor = {
 }
 
 export type BillboardBinding = {
+  profileId: string
   mesh: AbstractMesh
   material: StandardMaterial
   texture: Texture
@@ -125,4 +126,3 @@ export type BakeTargetGroup = {
   label: string
   meshes: AbstractMesh[]
 }
-

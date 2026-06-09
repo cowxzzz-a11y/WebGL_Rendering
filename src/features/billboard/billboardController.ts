@@ -21,6 +21,29 @@ type BillboardControllerOptions = {
   onSceneCacheInvalidated: () => void
 }
 
+type BillboardProfile = {
+  id: string
+  name: string
+  sheetUrl: string
+  sheetFileName: string
+  sheetWidth: number
+  sheetHeight: number
+  columns: number
+  rows: number
+  directions: number
+  startFrame: number
+  angleOffset: number
+  pitchSplit: number
+  removeBlack: boolean
+  alphaThreshold: number
+  alphaFeather: number
+  lockY: boolean
+  autoFrame: boolean
+  rotateMesh: boolean
+  doubleSided: boolean
+  sheetSourceFile: File | null
+}
+
 const getBillboardLocalNormal = (mesh: AbstractMesh) => {
   const positions = mesh.getVerticesData('position')
 
@@ -92,48 +115,62 @@ export const createBillboardController = ({
   onSceneCacheInvalidated,
 }: BillboardControllerOptions) => {
   let selectedMeshIds = new Set<string>()
-  let sheetUrl = ''
-  let sheetFileName = ''
-  let sheetWidth = 0
-  let sheetHeight = 0
-  let columns = 16
-  let rows = 2
-  let directions = 16
-  let startFrame = 1
-  let angleOffset = 0
-  let pitchSplit = 25
-  let removeBlack = false
-  let alphaThreshold = 8
-  let alphaFeather = 12
-  let lockY = true
-  let autoFrame = true
-  let rotateMesh = true
-  let doubleSided = true
   let modelFilter = '__all__'
-  let sheetSourceFile: File | null = null
+  let profileSequence = 1
+  const createProfile = (name = `广告牌组 ${profileSequence}`): BillboardProfile => ({
+    id: `billboard-profile-${profileSequence++}`,
+    name,
+    sheetUrl: '',
+    sheetFileName: '',
+    sheetWidth: 0,
+    sheetHeight: 0,
+    columns: 16,
+    rows: 2,
+    directions: 16,
+    startFrame: 1,
+    angleOffset: 0,
+    pitchSplit: 25,
+    removeBlack: false,
+    alphaThreshold: 8,
+    alphaFeather: 12,
+    lockY: true,
+    autoFrame: true,
+    rotateMesh: true,
+    doubleSided: true,
+    sheetSourceFile: null,
+  })
+  const profiles = new Map<string, BillboardProfile>()
+  const firstProfile = createProfile()
+  profiles.set(firstProfile.id, firstProfile)
+  let activeProfileId = firstProfile.id
   const bindings = new Map<number, BillboardBinding>()
+
+  const getActiveProfile = () => profiles.get(activeProfileId) ?? firstProfile
+
+  const getBindingProfile = (binding: BillboardBinding) =>
+    profiles.get(binding.profileId) ?? getActiveProfile()
 
   const getTargetMeshes = () =>
     getSelectableMeshes().filter((mesh) => selectedMeshIds.has(String(mesh.uniqueId)))
 
-  const normalizeFrameIndex = (index: number) => {
-    const totalFrames = Math.max(1, columns * rows)
+  const normalizeFrameIndex = (profile: BillboardProfile, index: number) => {
+    const totalFrames = Math.max(1, profile.columns * profile.rows)
     return ((index % totalFrames) + totalFrames) % totalFrames
   }
 
-  const applyFrame = (binding: BillboardBinding, frameIndex: number) => {
-    const col = frameIndex % columns
-    const row = Math.floor(frameIndex / columns)
+  const applyFrame = (binding: BillboardBinding, profile: BillboardProfile, frameIndex: number) => {
+    const col = frameIndex % profile.columns
+    const row = Math.floor(frameIndex / profile.columns)
 
-    binding.texture.uScale = 1 / Math.max(1, columns)
-    binding.texture.vScale = 1 / Math.max(1, rows)
-    binding.texture.uOffset = col / Math.max(1, columns)
-    binding.texture.vOffset = row / Math.max(1, rows)
+    binding.texture.uScale = 1 / Math.max(1, profile.columns)
+    binding.texture.vScale = 1 / Math.max(1, profile.rows)
+    binding.texture.uOffset = col / Math.max(1, profile.columns)
+    binding.texture.vOffset = row / Math.max(1, profile.rows)
   }
 
-  const getFrameForMesh = (mesh: AbstractMesh) => {
-    if (!autoFrame) {
-      return normalizeFrameIndex(startFrame - 1)
+  const getFrameForMesh = (mesh: AbstractMesh, profile: BillboardProfile) => {
+    if (!profile.autoFrame) {
+      return normalizeFrameIndex(profile, profile.startFrame - 1)
     }
 
     const meshPosition = mesh.getAbsolutePosition()
@@ -143,21 +180,22 @@ export const createBillboardController = ({
     const horizontalDistance = Math.hypot(dx, dz)
     const elevation = radiansToDegrees(Math.atan2(cameraPosition.y - meshPosition.y, horizontalDistance))
     const angle = Math.atan2(dx, dz)
-    const step = (Math.PI * 2) / Math.max(1, directions)
-    const offset = degreesToRadians(angleOffset)
-    const directionIndex = ((Math.round((angle + offset) / step) % directions) + directions) % directions
-    const columnIndex = directionIndex % Math.max(1, columns)
-    const rowIndex = Math.max(1, rows) > 1 && elevation >= pitchSplit ? 0 : Math.max(0, rows - 1)
+    const step = (Math.PI * 2) / Math.max(1, profile.directions)
+    const offset = degreesToRadians(profile.angleOffset)
+    const directionIndex = ((Math.round((angle + offset) / step) % profile.directions) + profile.directions) % profile.directions
+    const columnIndex = directionIndex % Math.max(1, profile.columns)
+    const rowIndex = Math.max(1, profile.rows) > 1 && elevation >= profile.pitchSplit ? 0 : Math.max(0, profile.rows - 1)
 
-    return normalizeFrameIndex(rowIndex * Math.max(1, columns) + columnIndex + startFrame - 1)
+    return normalizeFrameIndex(profile, rowIndex * Math.max(1, profile.columns) + columnIndex + profile.startFrame - 1)
   }
 
   const update = () => {
     bindings.forEach((binding) => {
+      const profile = getBindingProfile(binding)
       binding.mesh.billboardMode = AbstractMesh.BILLBOARDMODE_NONE
-      binding.material.backFaceCulling = !doubleSided
+      binding.material.backFaceCulling = !profile.doubleSided
 
-      if (lockY && rotateMesh) {
+      if (profile.lockY && profile.rotateMesh) {
         const toCamera = camera.position.subtract(binding.mesh.getAbsolutePosition())
         toCamera.y = 0
 
@@ -181,7 +219,7 @@ export const createBillboardController = ({
         binding.mesh.rotation.copyFrom(binding.originalRotation)
       }
 
-      applyFrame(binding, getFrameForMesh(binding.mesh))
+      applyFrame(binding, profile, getFrameForMesh(binding.mesh, profile))
     })
   }
 
@@ -209,13 +247,13 @@ export const createBillboardController = ({
     Array.from(bindings.values()).forEach((binding) => removeFromMesh(binding.mesh))
   }
 
-  const applyToMesh = (mesh: AbstractMesh) => {
-    if (!sheetUrl) return
+  const applyToMesh = (mesh: AbstractMesh, profile = getActiveProfile()) => {
+    if (!profile.sheetUrl) return
 
     removeFromMesh(mesh)
 
-    const texture = new Texture(sheetUrl, scene, false, false)
-    texture.name = sheetFileName || '\u5e7f\u544a\u724c\u96ea\u78a7\u56fe'
+    const texture = new Texture(profile.sheetUrl, scene, false, false)
+    texture.name = profile.sheetFileName || '\u5e7f\u544a\u724c\u96ea\u78a7\u56fe'
     texture.hasAlpha = true
     texture.wrapU = Texture.CLAMP_ADDRESSMODE
     texture.wrapV = Texture.CLAMP_ADDRESSMODE
@@ -227,13 +265,14 @@ export const createBillboardController = ({
     material.emissiveColor = Color3.White()
     material.disableLighting = true
     material.useAlphaFromDiffuseTexture = true
-    material.backFaceCulling = !doubleSided
+    material.backFaceCulling = !profile.doubleSided
     material.transparencyMode = Material.MATERIAL_ALPHATEST
     material.alphaCutOff = 0.01
     material.needDepthPrePass = false
     material.forceDepthWrite = true
 
     const binding: BillboardBinding = {
+      profileId: profile.id,
       mesh,
       material,
       texture,
@@ -251,15 +290,16 @@ export const createBillboardController = ({
     bindings.set(mesh.uniqueId, binding)
     onRenderStateChanged()
     update()
-    applyFrame(binding, getFrameForMesh(mesh))
+    applyFrame(binding, profile, getFrameForMesh(mesh, profile))
   }
 
   const applyToTargets = () => {
-    getTargetMeshes().forEach(applyToMesh)
+    const profile = getActiveProfile()
+    getTargetMeshes().forEach((mesh) => applyToMesh(mesh, profile))
     onSceneCacheInvalidated()
   }
 
-  const createBlackMaskedUrl = (image: HTMLImageElement) =>
+  const createBlackMaskedUrl = (image: HTMLImageElement, profile: BillboardProfile) =>
     new Promise<string>((resolve) => {
       const maskCanvas = document.createElement('canvas')
       const maskContext = maskCanvas.getContext('2d', { willReadFrequently: true })
@@ -275,8 +315,8 @@ export const createBillboardController = ({
 
       const imageData = maskContext.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
       const data = imageData.data
-      const threshold = Math.max(0, alphaThreshold)
-      const feather = Math.max(1, alphaFeather)
+      const threshold = Math.max(0, profile.alphaThreshold)
+      const feather = Math.max(1, profile.alphaFeather)
       const cornerIndexes = [
         0,
         (maskCanvas.width - 1) * 4,
@@ -313,49 +353,50 @@ export const createBillboardController = ({
       }, 'image/png')
     })
 
-  const loadSheetFile = (file: File, onReady?: () => void) => {
-    if (sheetUrl) {
-      URL.revokeObjectURL(sheetUrl)
+  const loadSheetFile = (profile: BillboardProfile, file: File, onReady?: () => void) => {
+    if (profile.sheetUrl) {
+      URL.revokeObjectURL(profile.sheetUrl)
     }
 
     const url = URL.createObjectURL(file)
-    sheetSourceFile = file
-    sheetUrl = ''
-    sheetFileName = file.name
-    sheetWidth = 0
-    sheetHeight = 0
+    profile.sheetSourceFile = file
+    profile.sheetUrl = ''
+    profile.sheetFileName = file.name
+    profile.sheetWidth = 0
+    profile.sheetHeight = 0
 
     const image = new Image()
     image.onload = async () => {
-      sheetWidth = image.naturalWidth
-      sheetHeight = image.naturalHeight
-      sheetUrl = removeBlack ? await createBlackMaskedUrl(image) : url
+      profile.sheetWidth = image.naturalWidth
+      profile.sheetHeight = image.naturalHeight
+      profile.sheetUrl = profile.removeBlack ? await createBlackMaskedUrl(image, profile) : url
 
-      if (sheetUrl !== url) {
+      if (profile.sheetUrl !== url) {
         URL.revokeObjectURL(url)
       }
 
       onReady?.()
     }
     image.onerror = () => {
-      sheetUrl = url
+      profile.sheetUrl = url
       onReady?.()
     }
     image.src = url
   }
 
-  const reloadSheetProcessing = (onReady?: () => void) => {
-    if (!sheetSourceFile) {
+  const reloadSheetProcessing = (profile: BillboardProfile, onReady?: () => void) => {
+    if (!profile.sheetSourceFile) {
       onReady?.()
       return
     }
 
     const appliedMeshes = Array.from(bindings.values())
+      .filter((binding) => binding.profileId === profile.id)
       .map((binding) => binding.mesh)
       .filter((mesh) => !mesh.isDisposed())
 
-    loadSheetFile(sheetSourceFile, () => {
-      appliedMeshes.forEach(applyToMesh)
+    loadSheetFile(profile, profile.sheetSourceFile, () => {
+      appliedMeshes.forEach((mesh) => applyToMesh(mesh, profile))
       onSceneCacheInvalidated()
       onReady?.()
     })
@@ -373,6 +414,93 @@ export const createBillboardController = ({
 
     const root = document.createElement('div')
     root.className = 'bake-panel'
+    const activeProfile = getActiveProfile()
+
+    const profileCard = document.createElement('section')
+    profileCard.className = 'bake-card'
+    const profileTitle = document.createElement('div')
+    profileTitle.className = 'bake-card-title'
+    profileTitle.innerHTML = '<strong>\u5e7f\u544a\u724c\u7ec4</strong><span>\u6bcf\u7ec4\u53ef\u4f7f\u7528\u72ec\u7acb\u96ea\u78a7\u56fe\u548c\u5e03\u5c40</span>'
+    const profileToolbar = document.createElement('div')
+    profileToolbar.className = 'billboard-profile-toolbar'
+    const profileSelect = document.createElement('select')
+    profileSelect.className = 'tech-select'
+    Array.from(profiles.values()).forEach((profile) => {
+      const option = document.createElement('option')
+      option.value = profile.id
+      option.textContent = profile.name
+      profileSelect.append(option)
+    })
+    profileSelect.value = activeProfile.id
+    const profileNameInput = document.createElement('input')
+    profileNameInput.type = 'text'
+    profileNameInput.value = activeProfile.name
+    profileNameInput.placeholder = '\u5e7f\u544a\u724c\u7ec4\u540d\u79f0'
+    const addProfileBtn = document.createElement('button')
+    addProfileBtn.type = 'button'
+    addProfileBtn.textContent = '\u65b0\u589e'
+    const duplicateProfileBtn = document.createElement('button')
+    duplicateProfileBtn.type = 'button'
+    duplicateProfileBtn.textContent = '\u590d\u5236'
+    const deleteProfileBtn = document.createElement('button')
+    deleteProfileBtn.type = 'button'
+    deleteProfileBtn.textContent = '\u5220\u9664'
+    deleteProfileBtn.disabled = profiles.size <= 1
+    profileToolbar.append(profileSelect, addProfileBtn, duplicateProfileBtn, deleteProfileBtn, profileNameInput)
+    profileSelect.addEventListener('change', () => {
+      activeProfileId = profileSelect.value
+      renderPanel(panel)
+    })
+    profileNameInput.addEventListener('change', () => {
+      const name = profileNameInput.value.trim()
+      activeProfile.name = name || activeProfile.name
+      renderPanel(panel)
+    })
+    addProfileBtn.addEventListener('click', () => {
+      const profile = createProfile()
+      profiles.set(profile.id, profile)
+      activeProfileId = profile.id
+      renderPanel(panel)
+    })
+    duplicateProfileBtn.addEventListener('click', () => {
+      const source = getActiveProfile()
+      const profile = createProfile(`${source.name} \u526f\u672c`)
+      Object.assign(profile, {
+        columns: source.columns,
+        rows: source.rows,
+        directions: source.directions,
+        startFrame: source.startFrame,
+        angleOffset: source.angleOffset,
+        pitchSplit: source.pitchSplit,
+        removeBlack: source.removeBlack,
+        alphaThreshold: source.alphaThreshold,
+        alphaFeather: source.alphaFeather,
+        lockY: source.lockY,
+        autoFrame: source.autoFrame,
+        rotateMesh: source.rotateMesh,
+        doubleSided: source.doubleSided,
+      })
+      profiles.set(profile.id, profile)
+      activeProfileId = profile.id
+      if (source.sheetSourceFile) {
+        loadSheetFile(profile, source.sheetSourceFile, () => renderPanel(panel))
+      }
+      renderPanel(panel)
+    })
+    deleteProfileBtn.addEventListener('click', () => {
+      if (profiles.size <= 1) return
+      Array.from(bindings.values())
+        .filter((binding) => binding.profileId === activeProfile.id)
+        .forEach((binding) => removeFromMesh(binding.mesh))
+      if (activeProfile.sheetUrl) {
+        URL.revokeObjectURL(activeProfile.sheetUrl)
+      }
+      profiles.delete(activeProfile.id)
+      activeProfileId = Array.from(profiles.keys())[0] ?? firstProfile.id
+      onSceneCacheInvalidated()
+      renderPanel(panel)
+    })
+    profileCard.append(profileTitle, profileToolbar)
 
     const meshCard = document.createElement('section')
     meshCard.className = 'bake-card'
@@ -441,10 +569,12 @@ export const createBillboardController = ({
 
       filteredMeshes.forEach((mesh) => {
         const id = String(mesh.uniqueId)
+        const existingBinding = bindings.get(mesh.uniqueId)
+        const existingProfile = existingBinding ? profiles.get(existingBinding.profileId) : null
         const row = document.createElement('div')
         row.className = 'billboard-mesh-row bake-mesh-row'
         row.classList.toggle('selected', selectedMeshIds.has(id))
-        row.classList.toggle('applied', bindings.has(mesh.uniqueId))
+        row.classList.toggle('applied', Boolean(existingBinding))
         const cb = document.createElement('input')
         cb.type = 'checkbox'
         cb.checked = selectedMeshIds.has(id)
@@ -466,13 +596,15 @@ export const createBillboardController = ({
 
         const icon = document.createElement('span')
         icon.className = 'bake-mesh-icon'
-        icon.textContent = bindings.has(mesh.uniqueId) ? '\u25c8' : '\u25a1'
+        icon.textContent = existingBinding ? '\u25c8' : '\u25a1'
         const nameWrap = document.createElement('span')
         nameWrap.className = 'billboard-mesh-name'
         const name = document.createElement('strong')
         name.textContent = mesh.name || `Mesh ${mesh.uniqueId}`
         const model = document.createElement('small')
-        model.textContent = getModelNameForMesh(mesh)
+        model.textContent = existingProfile
+          ? `${getModelNameForMesh(mesh)} / ${existingProfile.name}`
+          : getModelNameForMesh(mesh)
         nameWrap.append(name, model)
         row.append(cb, icon, nameWrap)
         list.append(row)
@@ -504,11 +636,11 @@ export const createBillboardController = ({
     const sheetInfo = document.createElement('div')
     sheetInfo.className = 'billboard-sheet-info'
     const sheetName = document.createElement('strong')
-    sheetName.textContent = sheetFileName || '\u672a\u4e0a\u4f20'
+    sheetName.textContent = activeProfile.sheetFileName || '\u672a\u4e0a\u4f20'
     const sheetMeta = document.createElement('span')
     sheetMeta.textContent =
-      sheetWidth > 0 && sheetHeight > 0
-        ? `${sheetWidth} \u00d7 ${sheetHeight}`
+      activeProfile.sheetWidth > 0 && activeProfile.sheetHeight > 0
+        ? `${activeProfile.sheetWidth} \u00d7 ${activeProfile.sheetHeight}`
         : '\u652f\u6301 PNG / JPG / WEBP'
     sheetInfo.append(sheetName, sheetMeta)
 
@@ -524,7 +656,7 @@ export const createBillboardController = ({
     fileInput.addEventListener('change', () => {
       const file = fileInput.files?.[0]
       if (!file) return
-      loadSheetFile(file, () => {
+      loadSheetFile(activeProfile, file, () => {
         applyToTargets()
         renderPanel(panel)
       })
@@ -532,58 +664,58 @@ export const createBillboardController = ({
     sheetCard.append(sheetTitle, sheetInfo, uploadBtn, fileInput)
 
     const layoutBody: HTMLElement[] = []
-    layoutBody.push(createNumberInput('\u5217\u6570', columns, 1, 16, 1, (value) => {
-      columns = Math.max(1, Math.round(value))
+    layoutBody.push(createNumberInput('\u5217\u6570', activeProfile.columns, 1, 16, 1, (value) => {
+      activeProfile.columns = Math.max(1, Math.round(value))
       update()
     }))
-    layoutBody.push(createNumberInput('\u884c\u6570', rows, 1, 16, 1, (value) => {
-      rows = Math.max(1, Math.round(value))
+    layoutBody.push(createNumberInput('\u884c\u6570', activeProfile.rows, 1, 16, 1, (value) => {
+      activeProfile.rows = Math.max(1, Math.round(value))
       update()
     }))
-    layoutBody.push(createNumberInput('\u65b9\u5411\u6570', directions, 1, 32, 1, (value) => {
-      directions = Math.max(1, Math.round(value))
+    layoutBody.push(createNumberInput('\u65b9\u5411\u6570', activeProfile.directions, 1, 32, 1, (value) => {
+      activeProfile.directions = Math.max(1, Math.round(value))
       update()
     }))
-    layoutBody.push(createNumberInput('\u8d77\u59cb\u683c', startFrame, 1, 64, 1, (value) => {
-      startFrame = Math.max(1, Math.round(value))
+    layoutBody.push(createNumberInput('\u8d77\u59cb\u683c', activeProfile.startFrame, 1, 64, 1, (value) => {
+      activeProfile.startFrame = Math.max(1, Math.round(value))
       update()
     }))
-    layoutBody.push(createSlider('\u89d2\u5ea6\u504f\u79fb', angleOffset, -180, 180, 1, (value) => {
-      angleOffset = value
+    layoutBody.push(createSlider('\u89d2\u5ea6\u504f\u79fb', activeProfile.angleOffset, -180, 180, 1, (value) => {
+      activeProfile.angleOffset = value
       update()
     }))
-    layoutBody.push(createSlider('\u4fef\u89c6\u884c\u9608\u503c', pitchSplit, 0, 80, 1, (value) => {
-      pitchSplit = value
+    layoutBody.push(createSlider('\u4fef\u89c6\u884c\u9608\u503c', activeProfile.pitchSplit, 0, 80, 1, (value) => {
+      activeProfile.pitchSplit = value
       update()
     }))
-    layoutBody.push(createCheckbox('\u6309\u80cc\u666f\u8272\u62a0\u900f\u660e', removeBlack, (value) => {
-      removeBlack = value
-      reloadSheetProcessing(() => renderPanel(panel))
+    layoutBody.push(createCheckbox('\u6309\u80cc\u666f\u8272\u62a0\u900f\u660e', activeProfile.removeBlack, (value) => {
+      activeProfile.removeBlack = value
+      reloadSheetProcessing(activeProfile, () => renderPanel(panel))
     }))
-    layoutBody.push(createSlider('\u9ed1\u5e95\u9608\u503c', alphaThreshold, 0, 80, 1, (value) => {
-      alphaThreshold = value
-      reloadSheetProcessing(() => renderPanel(panel))
+    layoutBody.push(createSlider('\u9ed1\u5e95\u9608\u503c', activeProfile.alphaThreshold, 0, 80, 1, (value) => {
+      activeProfile.alphaThreshold = value
+      reloadSheetProcessing(activeProfile, () => renderPanel(panel))
     }))
-    layoutBody.push(createSlider('\u906e\u7f69\u7fbd\u5316', alphaFeather, 1, 120, 1, (value) => {
-      alphaFeather = value
-      reloadSheetProcessing(() => renderPanel(panel))
+    layoutBody.push(createSlider('\u906e\u7f69\u7fbd\u5316', activeProfile.alphaFeather, 1, 120, 1, (value) => {
+      activeProfile.alphaFeather = value
+      reloadSheetProcessing(activeProfile, () => renderPanel(panel))
     }))
 
     const orientBody: HTMLElement[] = []
-    orientBody.push(createCheckbox('\u9501\u5b9a Y \u8f74\u9762\u5411\u76f8\u673a', lockY, (value) => {
-      lockY = value
+    orientBody.push(createCheckbox('\u9501\u5b9a Y \u8f74\u9762\u5411\u76f8\u673a', activeProfile.lockY, (value) => {
+      activeProfile.lockY = value
       update()
     }))
-    orientBody.push(createCheckbox('\u81ea\u52a8\u6309\u76f8\u673a\u89d2\u5ea6\u5207\u683c', autoFrame, (value) => {
-      autoFrame = value
+    orientBody.push(createCheckbox('\u81ea\u52a8\u6309\u76f8\u673a\u89d2\u5ea6\u5207\u683c', activeProfile.autoFrame, (value) => {
+      activeProfile.autoFrame = value
       update()
     }))
-    orientBody.push(createCheckbox('\u65cb\u8f6c\u9762\u7247', rotateMesh, (value) => {
-      rotateMesh = value
+    orientBody.push(createCheckbox('\u65cb\u8f6c\u9762\u7247', activeProfile.rotateMesh, (value) => {
+      activeProfile.rotateMesh = value
       update()
     }))
-    orientBody.push(createCheckbox('\u6750\u8d28\u53cc\u9762\u663e\u793a', doubleSided, (value) => {
-      doubleSided = value
+    orientBody.push(createCheckbox('\u6750\u8d28\u53cc\u9762\u663e\u793a', activeProfile.doubleSided, (value) => {
+      activeProfile.doubleSided = value
       update()
     }))
 
@@ -595,7 +727,7 @@ export const createBillboardController = ({
     applyBtn.type = 'button'
     applyBtn.className = 'bake-action-primary'
     applyBtn.textContent = '\u5e94\u7528\u5230\u5df2\u9009\u5bf9\u8c61'
-    applyBtn.disabled = !sheetUrl || selectedMeshIds.size === 0
+    applyBtn.disabled = !activeProfile.sheetUrl || selectedMeshIds.size === 0
     applyBtn.addEventListener('click', () => {
       applyToTargets()
       renderPanel(panel)
@@ -612,7 +744,7 @@ export const createBillboardController = ({
     actions.append(applyBtn, removeBtn)
     actionsCard.append(actions)
 
-    root.append(meshCard, sheetCard, createModule('\u5e03\u5c40', layoutBody), createModule('\u671d\u5411', orientBody), actionsCard)
+    root.append(profileCard, meshCard, sheetCard, createModule('\u5e03\u5c40', layoutBody), createModule('\u671d\u5411', orientBody), actionsCard)
     panel.append(root)
     syncRows()
   }
