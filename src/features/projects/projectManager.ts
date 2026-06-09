@@ -36,19 +36,14 @@ export const renderProjectManager = ({
     grid.append(empty)
   }
 
-  projects.forEach((project) => {
+  projects.forEach((project, index) => {
     const card = document.createElement('button')
     card.className = 'project-card'
     card.type = 'button'
-    let tapped = false
-    card.addEventListener('touchend', (e) => {
-      tapped = true
-      e.preventDefault()
-      onProjectSelect?.(project)
-    })
+    card.dataset.index = String(index)
     card.addEventListener('click', () => {
-      if (tapped) { tapped = false; return }
-      onProjectSelect?.(project)
+      const idx = Number.parseInt(card.dataset.index!, 10)
+      onProjectSelect?.(projects[idx])
     })
 
     const name = document.createElement('strong')

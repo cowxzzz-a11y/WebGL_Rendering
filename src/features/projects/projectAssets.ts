@@ -63,8 +63,16 @@ const getProjectIdFromConfigPath = (path: string) => {
 const getAssetPath = (projectId: string, relativePath: string) =>
   `../../../assets/${projectId}/${relativePath.replace(/^\/+/, '')}`
 
-const resolveProjectAssetUrl = (projectId: string, relativePath: string) =>
-  projectAssetUrls[getAssetPath(projectId, relativePath)] ?? null
+const resolveProjectAssetUrl = (projectId: string, relativePath: string) => {
+  const exactPath = getAssetPath(projectId, relativePath)
+  const exact = projectAssetUrls[exactPath]
+  if (exact) return exact
+
+  const matched = Object.entries(projectAssetUrls).find(([key]) =>
+    key.replace(/\\/g, '/').endsWith(`/${projectId}/${relativePath.replace(/^\/+/, '')}`)
+  )
+  return matched?.[1] ?? null
+}
 
 const getFileName = (path: string) => path.split('/').pop() ?? path
 
