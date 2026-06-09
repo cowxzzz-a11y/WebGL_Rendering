@@ -1155,6 +1155,9 @@ const loadProject = async (project: ProjectEntry) => {
   projectLoadSerial = loadSerial
   projectManager.hidden = true
   projectBackButton.hidden = false
+  const nextUrl = new URL(window.location.href)
+  nextUrl.searchParams.set('project', project.id)
+  window.history.replaceState(null, '', nextUrl)
   setStatus(`正在加载项目 ${project.title}...`)
 
   if (project.models.length === 0) {
@@ -1212,9 +1215,6 @@ const loadProject = async (project: ProjectEntry) => {
     frameCurrentModels()
     flushSceneRenderCaches()
 
-    const nextUrl = new URL(window.location.href)
-    nextUrl.searchParams.set('project', project.id)
-    window.history.replaceState(null, '', nextUrl)
     setOutline(currentMeshNodes)
     setStatus(null)
   } catch (error) {
