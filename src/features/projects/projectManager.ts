@@ -37,7 +37,7 @@ export const renderProjectManager = ({
 
   projects.forEach((project) => {
     const projectUrl = new URL(window.location.href)
-    projectUrl.searchParams.set('project', project.id)
+    projectUrl.searchParams.set('project', project.routeId)
 
     const card = document.createElement('a')
     card.className = 'project-card'

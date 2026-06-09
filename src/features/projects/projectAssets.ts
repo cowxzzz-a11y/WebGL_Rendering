@@ -36,6 +36,7 @@ export type ResolvedProjectLightmap = {
 
 export type ProjectEntry = {
   id: string
+  routeId: string
   title: string
   basePath: string
   config: ProjectConfig
@@ -66,6 +67,8 @@ const resolveProjectAssetUrl = (projectId: string, relativePath: string) =>
   projectAssetUrls[getAssetPath(projectId, relativePath)] ?? null
 
 const getFileName = (path: string) => path.split('/').pop() ?? path
+
+export const getProjectRouteId = (id: string) => encodeURIComponent(id)
 
 const resolveConfiguredModels = (projectId: string, config: ProjectConfig): ResolvedProjectModel[] => {
   const configuredModels = config.models ?? (config.model ? [config.model] : ['target.glb'])
@@ -125,6 +128,7 @@ export const getProjectEntries = (): ProjectEntry[] =>
 
       return [{
         id,
+        routeId: getProjectRouteId(id),
         title: config.title ?? id,
         basePath: `assets/${id}`,
         config,
@@ -135,4 +139,4 @@ export const getProjectEntries = (): ProjectEntry[] =>
     .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
 
 export const getProjectById = (id: string) =>
-  getProjectEntries().find((project) => project.id === id) ?? null
+  getProjectEntries().find((project) => project.id === id || project.routeId === id) ?? null

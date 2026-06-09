@@ -1160,7 +1160,7 @@ const loadProject = async (project: ProjectEntry) => {
   projectManager.hidden = true
   projectBackButton.hidden = false
   const nextUrl = new URL(window.location.href)
-  nextUrl.searchParams.set('project', project.id)
+  nextUrl.searchParams.set('project', project.routeId)
   window.history.replaceState(null, '', nextUrl)
   setStatus(`正在加载项目 ${project.title}...`)
 
@@ -1239,9 +1239,10 @@ renderProjectManager({
   },
 })
 
-const initialProjectId = new URLSearchParams(window.location.search).get('project')
+const initialProjectParam = new URLSearchParams(window.location.search).get('project')
+const initialProjectId = initialProjectParam ? decodeURIComponent(initialProjectParam) : null
 if (initialProjectId) {
-  const initialProject = getProjectById(initialProjectId)
+  const initialProject = getProjectById(initialProjectParam ?? initialProjectId) ?? getProjectById(initialProjectId)
   if (initialProject) {
     void loadProject(initialProject)
   } else {
