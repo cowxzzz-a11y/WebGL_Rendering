@@ -9,6 +9,7 @@ export type ProjectManagerOptions = {
 export const renderProjectManager = ({
   root,
   projects,
+  onProjectSelect,
 }: ProjectManagerOptions) => {
   root.textContent = ''
   root.hidden = false
@@ -42,6 +43,10 @@ export const renderProjectManager = ({
     const card = document.createElement('a')
     card.className = 'project-card'
     card.href = `${projectUrl.pathname}${projectUrl.search}${projectUrl.hash}`
+    card.addEventListener('click', (e) => {
+      e.preventDefault()
+      onProjectSelect?.(project)
+    })
 
     const name = document.createElement('strong')
     name.textContent = project.title
