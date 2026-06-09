@@ -51,7 +51,50 @@ export const renderProjectManager = ({
     meta.textContent = `${project.models.length} 个模型 / ${project.lightmaps.length} 张光照贴图`
 
     button.append(name, path, meta)
-    button.addEventListener('click', () => onProjectSelect(project))
+
+    let pointerDownPosition: { x: number; y: number } | null = null
+    let handledPointerSelection = false
+    const selectProject = () => onProjectSelect(project)
+
+    button.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) {
+        pointerDownPosition = null
+        return
+      }
+
+      handledPointerSelection = false
+      pointerDownPosition = { x: event.clientX, y: event.clientY }
+    })
+
+    button.addEventListener('pointerup', (event) => {
+      if (!pointerDownPosition || event.button !== 0) {
+        return
+      }
+
+      const distance = Math.hypot(event.clientX - pointerDownPosition.x, event.clientY - pointerDownPosition.y)
+      pointerDownPosition = null
+
+      if (distance > 10) {
+        return
+      }
+
+      handledPointerSelection = true
+      selectProject()
+    })
+
+    button.addEventListener('pointercancel', () => {
+      pointerDownPosition = null
+      handledPointerSelection = false
+    })
+
+    button.addEventListener('click', () => {
+      if (handledPointerSelection) {
+        handledPointerSelection = false
+        return
+      }
+
+      selectProject()
+    })
     grid.append(button)
   })
 
