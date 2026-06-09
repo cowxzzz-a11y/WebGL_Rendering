@@ -90,16 +90,23 @@ body,
   color: inherit;
   font: inherit;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   touch-action: manipulation;
   box-shadow: 0 16px 36px rgba(31, 38, 37, 0.12);
   transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
-.project-card:hover {
+.project-card:hover,
+.project-card:focus-visible {
   transform: translateY(-2px);
   border-color: rgba(48, 98, 130, 0.46);
   box-shadow: 0 20px 42px rgba(31, 38, 37, 0.18);
+}
+
+.project-card:focus-visible {
+  outline: 2px solid rgba(48, 98, 130, 0.7);
+  outline-offset: 3px;
 }
 
 .project-card strong {

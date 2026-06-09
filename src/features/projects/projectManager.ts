@@ -3,13 +3,12 @@ import type { ProjectEntry } from './projectAssets'
 export type ProjectManagerOptions = {
   root: HTMLElement
   projects: ProjectEntry[]
-  onProjectSelect: (project: ProjectEntry) => void
+  onProjectSelect?: (project: ProjectEntry) => void
 }
 
 export const renderProjectManager = ({
   root,
   projects,
-  onProjectSelect,
 }: ProjectManagerOptions) => {
   root.textContent = ''
   root.hidden = false
@@ -37,9 +36,12 @@ export const renderProjectManager = ({
   }
 
   projects.forEach((project) => {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'project-card'
+    const projectUrl = new URL(window.location.href)
+    projectUrl.searchParams.set('project', project.id)
+
+    const card = document.createElement('a')
+    card.className = 'project-card'
+    card.href = `${projectUrl.pathname}${projectUrl.search}${projectUrl.hash}`
 
     const name = document.createElement('strong')
     name.textContent = project.title
@@ -50,88 +52,8 @@ export const renderProjectManager = ({
     const meta = document.createElement('em')
     meta.textContent = `${project.models.length} 个模型 / ${project.lightmaps.length} 张光照贴图`
 
-    button.append(name, path, meta)
-
-    let downPosition: { x: number; y: number } | null = null
-    let handledDirectSelection = false
-    const selectProject = () => onProjectSelect(project)
-    const shouldSelectFromPosition = (x: number, y: number) => {
-      if (!downPosition) {
-        return false
-      }
-
-      const distance = Math.hypot(x - downPosition.x, y - downPosition.y)
-      downPosition = null
-      return distance <= 10
-    }
-    const selectProjectOnce = () => {
-      if (handledDirectSelection) {
-        return
-      }
-
-      handledDirectSelection = true
-      selectProject()
-    }
-
-    button.addEventListener('pointerdown', (event) => {
-      if (event.pointerType === 'mouse' && event.button !== 0) {
-        downPosition = null
-        return
-      }
-
-      handledDirectSelection = false
-      downPosition = { x: event.clientX, y: event.clientY }
-    })
-
-    button.addEventListener('pointerup', (event) => {
-      if (event.pointerType === 'mouse' && event.button !== 0) {
-        return
-      }
-
-      if (shouldSelectFromPosition(event.clientX, event.clientY)) {
-        selectProjectOnce()
-      }
-    })
-
-    button.addEventListener('pointercancel', () => {
-      downPosition = null
-      handledDirectSelection = false
-    })
-
-    button.addEventListener('touchstart', (event) => {
-      const touch = event.changedTouches[0]
-      if (!touch) {
-        return
-      }
-
-      handledDirectSelection = false
-      downPosition = { x: touch.clientX, y: touch.clientY }
-    })
-
-    button.addEventListener('touchend', (event) => {
-      const touch = event.changedTouches[0]
-      if (!touch || !shouldSelectFromPosition(touch.clientX, touch.clientY)) {
-        return
-      }
-
-      event.preventDefault()
-      selectProjectOnce()
-    })
-
-    button.addEventListener('touchcancel', () => {
-      downPosition = null
-      handledDirectSelection = false
-    })
-
-    button.addEventListener('click', () => {
-      if (handledDirectSelection) {
-        handledDirectSelection = false
-        return
-      }
-
-      selectProject()
-    })
-    grid.append(button)
+    card.append(name, path, meta)
+    grid.append(card)
   })
 
   shell.append(header, grid)
