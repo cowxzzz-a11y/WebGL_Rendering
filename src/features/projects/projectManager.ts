@@ -52,44 +52,80 @@ export const renderProjectManager = ({
 
     button.append(name, path, meta)
 
-    let pointerDownPosition: { x: number; y: number } | null = null
-    let handledPointerSelection = false
+    let downPosition: { x: number; y: number } | null = null
+    let handledDirectSelection = false
     const selectProject = () => onProjectSelect(project)
+    const shouldSelectFromPosition = (x: number, y: number) => {
+      if (!downPosition) {
+        return false
+      }
 
-    button.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) {
-        pointerDownPosition = null
+      const distance = Math.hypot(x - downPosition.x, y - downPosition.y)
+      downPosition = null
+      return distance <= 10
+    }
+    const selectProjectOnce = () => {
+      if (handledDirectSelection) {
         return
       }
 
-      handledPointerSelection = false
-      pointerDownPosition = { x: event.clientX, y: event.clientY }
+      handledDirectSelection = true
+      selectProject()
+    }
+
+    button.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) {
+        downPosition = null
+        return
+      }
+
+      handledDirectSelection = false
+      downPosition = { x: event.clientX, y: event.clientY }
     })
 
     button.addEventListener('pointerup', (event) => {
-      if (!pointerDownPosition || event.button !== 0) {
+      if (event.pointerType === 'mouse' && event.button !== 0) {
         return
       }
 
-      const distance = Math.hypot(event.clientX - pointerDownPosition.x, event.clientY - pointerDownPosition.y)
-      pointerDownPosition = null
-
-      if (distance > 10) {
-        return
+      if (shouldSelectFromPosition(event.clientX, event.clientY)) {
+        selectProjectOnce()
       }
-
-      handledPointerSelection = true
-      selectProject()
     })
 
     button.addEventListener('pointercancel', () => {
-      pointerDownPosition = null
-      handledPointerSelection = false
+      downPosition = null
+      handledDirectSelection = false
+    })
+
+    button.addEventListener('touchstart', (event) => {
+      const touch = event.changedTouches[0]
+      if (!touch) {
+        return
+      }
+
+      handledDirectSelection = false
+      downPosition = { x: touch.clientX, y: touch.clientY }
+    })
+
+    button.addEventListener('touchend', (event) => {
+      const touch = event.changedTouches[0]
+      if (!touch || !shouldSelectFromPosition(touch.clientX, touch.clientY)) {
+        return
+      }
+
+      event.preventDefault()
+      selectProjectOnce()
+    })
+
+    button.addEventListener('touchcancel', () => {
+      downPosition = null
+      handledDirectSelection = false
     })
 
     button.addEventListener('click', () => {
-      if (handledPointerSelection) {
-        handledPointerSelection = false
+      if (handledDirectSelection) {
+        handledDirectSelection = false
         return
       }
 
