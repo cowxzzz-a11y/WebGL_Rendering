@@ -13,6 +13,7 @@ type TuneTouchCameraControlsOptions = {
   camera: ArcRotateCamera
   desktopPanningSensibility: number
   mobilePanningSensibility: number
+  sceneCenter?: Vector3
   sceneRadius?: number
 }
 
@@ -49,7 +50,7 @@ const getPinchDeltaPercentage = (controlRadius: number) => {
 }
 
 const getScaledPanningSensibility = (baseSensibility: number, controlRadius: number) => {
-  const scale = clamp(4 / controlRadius, 0.75, 3.5)
+  const scale = clamp(16 / controlRadius, 1, 40)
   return Math.round(baseSensibility * scale)
 }
 
@@ -87,6 +88,7 @@ export const tuneTouchCameraControls = ({
   camera,
   desktopPanningSensibility,
   mobilePanningSensibility,
+  sceneCenter,
   sceneRadius,
 }: TuneTouchCameraControlsOptions) => {
   const controlRadius = getControlRadius(sceneRadius)
@@ -99,6 +101,8 @@ export const tuneTouchCameraControls = ({
   camera.wheelDeltaPercentage = getWheelDeltaPercentage(controlRadius)
   camera.pinchDeltaPercentage = getPinchDeltaPercentage(controlRadius)
   camera.panningSensibility = panningSensibility
+  camera.panningDistanceLimit = Math.max(controlRadius * 2.5, 1.5)
+  camera.panningOriginTarget.copyFrom(sceneCenter ?? camera.target)
 
   if (!pointersInput) {
     return

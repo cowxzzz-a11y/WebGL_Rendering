@@ -599,6 +599,7 @@ tuneTouchCameraControls({
   camera,
   desktopPanningSensibility,
   mobilePanningSensibility,
+  sceneCenter,
   sceneRadius,
 })
 
@@ -607,6 +608,7 @@ const tuneCameraControlsForCurrentScene = () => {
     camera,
     desktopPanningSensibility,
     mobilePanningSensibility,
+    sceneCenter,
     sceneRadius,
   })
 }
@@ -1359,6 +1361,7 @@ window.addEventListener('resize', () => {
     camera,
     desktopPanningSensibility,
     mobilePanningSensibility,
+    sceneCenter,
     sceneRadius,
   })
 })
