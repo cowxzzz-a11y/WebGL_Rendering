@@ -21,7 +21,11 @@ import { applyViewerConfigSnapshot } from './features/config/viewerConfigRuntime
 import type { ApplyViewerConfigOptions } from './features/config/viewerConfigRuntime'
 import { configureLocalKtx2Decoder } from './core/ktx2'
 import { createViewerCamera, tuneTouchCameraControls } from './core/camera'
-import { createViewerEngineScene } from './core/engine'
+import {
+  createViewerEngineScene,
+  setStoredViewerEnginePreference,
+} from './core/engine'
+import type { ViewerEnginePreference } from './core/engine'
 import { createSceneLights } from './core/lights'
 import { createClassicPipeline } from './core/pipeline'
 import { defaultEnvironmentKey, hdrEnvironmentOptions } from './features/assets/defaultAssets'
@@ -154,6 +158,17 @@ panelCollapseToggle.addEventListener('click', () => {
 const setStatus = (message: string | null) => {
   status.textContent = message ?? ''
   status.hidden = message === null
+}
+
+const setEnginePreference = (value: ViewerEnginePreference) => {
+  setStoredViewerEnginePreference(value)
+  const nextUrl = new URL(window.location.href)
+  nextUrl.searchParams.set('renderer', value)
+  window.history.replaceState(null, '', nextUrl)
+  setStatus(`正在切换渲染器到 ${value.toUpperCase()}...`)
+  window.setTimeout(() => {
+    window.location.reload()
+  }, 120)
 }
 
 const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
@@ -308,6 +323,11 @@ const renderGeneralPanel = () => {
     },
     getHemiLightHelperVisible: () => lightHelperTouched.hemi && lightHelperVisible.hemi,
     updateLightDirectionHelpers: () => updateLightDirectionHelpers(),
+    enginePreference,
+    engineMode,
+    webgpuSupported,
+    engineFallbackReason,
+    setEnginePreference,
   }))
 }
 
@@ -537,10 +557,19 @@ const updateFocusAnimation = () => selectionController.updateFocusAnimation()
 
 const updateSelectionBox = () => selectionController.updateSelectionBox()
 
-const { engine, scene, imageProcessing } = createViewerEngineScene({
+const {
+  engine,
+  scene,
+  imageProcessing,
+  engineMode,
+  enginePreference,
+  webgpuSupported,
+  fallbackReason: engineFallbackReason,
+} = await createViewerEngineScene({
   canvas,
   hasHdrEnvironments: hdrEnvironmentOptions.length > 0 && !isConstrainedMobileRuntime,
   legacyEnvironmentUrl,
+  isConstrainedMobileRuntime,
 })
 
 environmentController = createEnvironmentController({

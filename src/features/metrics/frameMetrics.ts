@@ -1,10 +1,10 @@
-import type { Engine } from '@babylonjs/core/Engines/engine'
+import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { SceneInstrumentation } from '@babylonjs/core/Instrumentation/sceneInstrumentation'
 import type { Scene } from '@babylonjs/core/scene'
 
 type FrameMetricsOptions = {
-  engine: Engine
+  engine: AbstractEngine
   scene: Scene
   frameGrid: HTMLDivElement
   frameOverlay: HTMLDivElement
@@ -101,4 +101,3 @@ export const createFrameMetricsController = ({
     },
   }
 }
-
