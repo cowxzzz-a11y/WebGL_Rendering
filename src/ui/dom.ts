@@ -72,6 +72,11 @@ export const renderAppShell = (app: HTMLDivElement) => {
     <section id="sceneOutline" class="outliner-tree"></section>
     <section id="detailPanel" class="detail-panel" hidden></section>
   </aside>
+  <div class="mobile-gesture-hint" aria-label="移动端操作提示">
+    <span>单指拖动：旋转</span>
+    <span>双指捏合：拉近/拉远</span>
+    <span>双指同向滑动：平移</span>
+  </div>
   <input id="glbImportInput" class="import-file-input" type="file" accept=".glb,model/gltf-binary" />
   <div id="status" class="status">Loading scene...</div>
   <div id="shareOverlay" class="share-overlay" aria-modal="true" role="dialog">

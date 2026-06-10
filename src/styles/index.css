@@ -517,6 +517,10 @@ button.outliner-icon.outliner-visibility {
   display: none;
 }
 
+.mobile-gesture-hint {
+  display: none;
+}
+
 .share-actions {
   position: absolute;
   left: 18px;
@@ -1625,5 +1629,28 @@ button.outliner-icon.outliner-visibility {
   .share-actions {
     left: 18px;
     bottom: 18px;
+  }
+
+  .mobile-gesture-hint {
+    position: absolute;
+    right: 12px;
+    bottom: 16px;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    max-width: min(240px, calc(100vw - 112px));
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    background: rgba(23, 27, 28, 0.28);
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 11px;
+    line-height: 1.35;
+    pointer-events: none;
+    text-align: right;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
 }

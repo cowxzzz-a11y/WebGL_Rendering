@@ -32,6 +32,7 @@ type SelectionControllerOptions = {
 }
 
 const selectionClickMaxDistance = 5
+const pinchZoomClearDistance = 8
 
 const getSelectionBoxLines = (mesh: AbstractMesh) => {
   mesh.computeWorldMatrix(true)
@@ -114,6 +115,9 @@ export const createSelectionController = ({
         dragged: boolean
       }
     | null = null
+  const activeTouchPointers = new Map<number, { x: number, y: number }>()
+  let pinchStartDistance: number | null = null
+  let pinchSelectionCleared = false
 
   const getMeshesForRoot = (root: TransformNode) =>
     getImportedMeshes().filter((mesh) => {
@@ -188,6 +192,23 @@ export const createSelectionController = ({
     onOutlineChanged()
   }
 
+  const clearSelectionForZoom = () => {
+    if (!selectedMesh && !selectionBox) {
+      return
+    }
+
+    clearSelection()
+  }
+
+  const getTouchPinchDistance = () => {
+    const [first, second] = [...activeTouchPointers.values()]
+    if (!first || !second) {
+      return null
+    }
+
+    return Math.hypot(second.x - first.x, second.y - first.y)
+  }
+
   const selectMesh = (mesh: AbstractMesh) => {
     if (selectedMesh && selectedMesh !== mesh) {
       selectedMesh.showBoundingBox = false
@@ -255,6 +276,17 @@ export const createSelectionController = ({
   }
 
   canvas.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'touch') {
+      activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+
+      if (activeTouchPointers.size >= 2) {
+        pointerSelectionState = null
+        pinchStartDistance = getTouchPinchDistance()
+        pinchSelectionCleared = false
+        return
+      }
+    }
+
     if (event.button === 2) {
       clearSelection()
       return
@@ -273,6 +305,26 @@ export const createSelectionController = ({
   })
 
   canvas.addEventListener('pointermove', (event) => {
+    if (event.pointerType === 'touch' && activeTouchPointers.has(event.pointerId)) {
+      activeTouchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+
+      if (activeTouchPointers.size >= 2) {
+        pointerSelectionState = null
+        const nextPinchDistance = getTouchPinchDistance()
+
+        if (pinchStartDistance !== null && nextPinchDistance !== null && !pinchSelectionCleared) {
+          const pinchDelta = Math.abs(nextPinchDistance - pinchStartDistance)
+
+          if (pinchDelta >= pinchZoomClearDistance) {
+            clearSelectionForZoom()
+            pinchSelectionCleared = true
+          }
+        }
+
+        return
+      }
+    }
+
     if (!pointerSelectionState || pointerSelectionState.button !== 0) {
       return
     }
@@ -288,6 +340,17 @@ export const createSelectionController = ({
   })
 
   canvas.addEventListener('pointerup', (event) => {
+    if (event.pointerType === 'touch') {
+      activeTouchPointers.delete(event.pointerId)
+
+      if (activeTouchPointers.size < 2) {
+        pinchStartDistance = null
+        pinchSelectionCleared = false
+      } else {
+        pinchStartDistance = getTouchPinchDistance()
+      }
+    }
+
     if (!pointerSelectionState || pointerSelectionState.button !== 0) {
       pointerSelectionState = null
       return
@@ -308,6 +371,29 @@ export const createSelectionController = ({
       selectMesh(pickInfo.pickedMesh)
     }
   })
+
+  canvas.addEventListener('pointercancel', (event) => {
+    if (event.pointerType !== 'touch') {
+      return
+    }
+
+    activeTouchPointers.delete(event.pointerId)
+
+    if (activeTouchPointers.size < 2) {
+      pinchStartDistance = null
+      pinchSelectionCleared = false
+    }
+
+    pointerSelectionState = null
+  })
+
+  canvas.addEventListener('wheel', (event) => {
+    if (event.deltaY === 0) {
+      return
+    }
+
+    clearSelectionForZoom()
+  }, { passive: true })
 
   return {
     clearSelection,
