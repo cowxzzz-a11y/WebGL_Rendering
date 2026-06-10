@@ -314,7 +314,7 @@ export const buildCameraPanelContent = (camera: ArcRotateCamera) => {
   lensBody.push(createSlider('FOV', camera.fov, 0.1, 1.6, 0.01, (value) => {
     camera.fov = value
   }))
-  lensBody.push(createSlider('\u534a\u5f84', camera.radius, 0.35, Math.max(camera.upperRadiusLimit ?? 500, 1), 0.1, (value) => {
+  lensBody.push(createSlider('\u534a\u5f84', camera.radius, camera.lowerRadiusLimit ?? 0.03, Math.max(camera.upperRadiusLimit ?? 500, 1), 0.1, (value) => {
     camera.radius = value
   }))
   lensBody.push(createSlider('Alpha', camera.alpha, -Math.PI * 2, Math.PI * 2, 0.01, (value) => {

@@ -10,6 +10,11 @@ type ImportProgressEvent = {
 
 export const isBakedFloor = (mesh: AbstractMesh) => mesh.name === '\u5e73\u9762' || /floor/i.test(mesh.name)
 
+export const getSceneFrameRadius = (size: Vector3) => {
+  const maxDimension = Math.max(size.x, size.y, size.z, 0.001)
+  return Math.max(maxDimension * 1.48, 0.75)
+}
+
 export const getImportProgressMessage = (fileName: string, event: ImportProgressEvent) => {
   if (!event.lengthComputable || event.total <= 0) {
     return `\u6b63\u5728\u5bfc\u5165 ${fileName}...`
@@ -32,8 +37,7 @@ export const getModelFrame = (root: TransformNode, meshes: AbstractMesh[]) => {
       : root.getHierarchyBoundingVectors(true)
   const size = bounds.max.subtract(bounds.min)
   const center = bounds.min.add(bounds.max).scale(0.5)
-  const maxDimension = Math.max(size.x, size.y, size.z, 0.001)
-  const radius = Math.max(maxDimension * 1.48, 4)
+  const radius = getSceneFrameRadius(size)
 
   return {
     center,

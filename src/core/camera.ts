@@ -13,6 +13,44 @@ type TuneTouchCameraControlsOptions = {
   camera: ArcRotateCamera
   desktopPanningSensibility: number
   mobilePanningSensibility: number
+  sceneRadius?: number
+}
+
+const defaultSceneControlRadius = 8
+const minimumSceneControlRadius = 0.75
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+
+const getControlRadius = (sceneRadius: number | undefined) =>
+  Math.max(sceneRadius ?? defaultSceneControlRadius, minimumSceneControlRadius)
+
+const getWheelDeltaPercentage = (controlRadius: number) => {
+  if (controlRadius <= 1.5) {
+    return 0.025
+  }
+
+  if (controlRadius <= 8) {
+    return 0.035
+  }
+
+  return 0.045
+}
+
+const getPinchDeltaPercentage = (controlRadius: number) => {
+  if (controlRadius <= 1.5) {
+    return 0.008
+  }
+
+  if (controlRadius <= 8) {
+    return 0.012
+  }
+
+  return 0.014
+}
+
+const getScaledPanningSensibility = (baseSensibility: number, controlRadius: number) => {
+  const scale = clamp(4 / controlRadius, 0.75, 3.5)
+  return Math.round(baseSensibility * scale)
 }
 
 export const createViewerCamera = ({ canvas, scene, desktopPanningSensibility }: CreateViewerCameraOptions) => {
@@ -37,14 +75,29 @@ export const createViewerCamera = ({ canvas, scene, desktopPanningSensibility }:
 
 export const isMobileViewport = () => window.matchMedia('(pointer: coarse), (max-width: 760px)').matches
 
+export const clearCameraInertia = (camera: ArcRotateCamera) => {
+  camera.inertialAlphaOffset = 0
+  camera.inertialBetaOffset = 0
+  camera.inertialRadiusOffset = 0
+  camera.inertialPanningX = 0
+  camera.inertialPanningY = 0
+}
+
 export const tuneTouchCameraControls = ({
   camera,
   desktopPanningSensibility,
   mobilePanningSensibility,
+  sceneRadius,
 }: TuneTouchCameraControlsOptions) => {
-  const panningSensibility = isMobileViewport() ? mobilePanningSensibility : desktopPanningSensibility
+  const controlRadius = getControlRadius(sceneRadius)
+  const basePanningSensibility = isMobileViewport() ? mobilePanningSensibility : desktopPanningSensibility
+  const panningSensibility = getScaledPanningSensibility(basePanningSensibility, controlRadius)
   const pointersInput = camera.inputs.attached.pointers as Partial<ArcRotateTouchInput> | undefined
 
+  camera.lowerRadiusLimit = Math.max(controlRadius * 0.02, 0.03)
+  camera.upperRadiusLimit = Math.max(controlRadius * 12, 8)
+  camera.wheelDeltaPercentage = getWheelDeltaPercentage(controlRadius)
+  camera.pinchDeltaPercentage = getPinchDeltaPercentage(controlRadius)
   camera.panningSensibility = panningSensibility
 
   if (!pointersInput) {
@@ -56,9 +109,8 @@ export const tuneTouchCameraControls = ({
   pointersInput.pinchZoom = true
   pointersInput.useNaturalPinchZoom = true
   pointersInput.pinchPrecision = isMobileViewport() ? 22 : 28
-  pointersInput.pinchDeltaPercentage = isMobileViewport() ? 0.016 : 0.012
+  pointersInput.pinchDeltaPercentage = getPinchDeltaPercentage(controlRadius)
   pointersInput.panningSensibility = panningSensibility
   pointersInput.angularSensibilityX = isMobileViewport() ? 780 : 1000
   pointersInput.angularSensibilityY = isMobileViewport() ? 780 : 1000
 }
-

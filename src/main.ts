@@ -20,7 +20,7 @@ import type { ViewerConfig } from './features/config/viewerConfig'
 import { applyViewerConfigSnapshot } from './features/config/viewerConfigRuntime'
 import type { ApplyViewerConfigOptions } from './features/config/viewerConfigRuntime'
 import { configureLocalKtx2Decoder } from './core/ktx2'
-import { createViewerCamera, tuneTouchCameraControls } from './core/camera'
+import { clearCameraInertia, createViewerCamera, tuneTouchCameraControls } from './core/camera'
 import {
   createViewerEngineScene,
   setStoredViewerEnginePreference,
@@ -53,7 +53,7 @@ import { createMaterialDetail as createMaterialDetailDescriptor, createMeshDetai
 import { registerStaticDetails } from './features/details/staticDetails'
 import { getCurrentModelSignature as getModelSignature } from './features/model/modelIdentity'
 import { setupModelImportControls } from './features/model/modelImportControls'
-import { getImportProgressMessage, getModelFrame, isBakedFloor } from './features/model/modelImportUtils'
+import { getImportProgressMessage, getModelFrame, getSceneFrameRadius, isBakedFloor } from './features/model/modelImportUtils'
 import { getImportedDisplayName, makeModelOutlineNode } from './features/model/modelOutline'
 import { createKeyboardNavigationController } from './features/navigation/keyboardNavigation'
 import { createSelectionController } from './features/selection/selectionController'
@@ -599,7 +599,17 @@ tuneTouchCameraControls({
   camera,
   desktopPanningSensibility,
   mobilePanningSensibility,
+  sceneRadius,
 })
+
+const tuneCameraControlsForCurrentScene = () => {
+  tuneTouchCameraControls({
+    camera,
+    desktopPanningSensibility,
+    mobilePanningSensibility,
+    sceneRadius,
+  })
+}
 
 selectionController = createSelectionController({
   canvas,
@@ -723,6 +733,8 @@ const updateSceneBoundsFromCurrentModels = () => {
   if (currentModelRoots.length === 0) {
     sceneCenter = Vector3.Zero()
     sceneRadius = 8
+    tuneCameraControlsForCurrentScene()
+    clearCameraInertia(camera)
     updateCameraDepthRange()
     updateLightDirectionHelpers()
     return
@@ -758,7 +770,9 @@ const updateSceneBoundsFromCurrentModels = () => {
 
   const size = aggregateMax.subtract(aggregateMin)
   sceneCenter = aggregateMin.add(aggregateMax).scale(0.5)
-  sceneRadius = Math.max(Math.max(size.x, size.y, size.z, 0.001) * 1.48, 4)
+  sceneRadius = getSceneFrameRadius(size)
+  tuneCameraControlsForCurrentScene()
+  clearCameraInertia(camera)
   updateCameraDepthRange()
   updateLightDirectionHelpers()
 }
@@ -913,8 +927,9 @@ const frameHierarchy = (root: TransformNode, meshes: AbstractMesh[]) => {
 
   sceneCenter = frame.center
   sceneRadius = frame.radius
+  tuneCameraControlsForCurrentScene()
+  clearCameraInertia(camera)
   camera.setTarget(frame.target)
-  camera.upperRadiusLimit = Math.max(frame.radius * 8, 500)
   camera.radius = frame.radius
   camera.alpha = -Math.PI / 2.15
   camera.beta = Math.PI / 2.62
@@ -970,12 +985,13 @@ const frameCurrentModels = () => {
 
   const size = aggregateMax.subtract(aggregateMin)
   const center = aggregateMin.add(aggregateMax).scale(0.5)
-  const radius = Math.max(Math.max(size.x, size.y, size.z, 0.001) * 1.48, 4)
+  const radius = getSceneFrameRadius(size)
 
   sceneCenter = center
   sceneRadius = radius
+  tuneCameraControlsForCurrentScene()
+  clearCameraInertia(camera)
   camera.setTarget(center.add(new Vector3(0, size.y * 0.02, 0)))
-  camera.upperRadiusLimit = Math.max(radius * 8, 500)
   camera.radius = radius
   camera.alpha = -Math.PI / 2.15
   camera.beta = Math.PI / 2.62
@@ -1343,5 +1359,6 @@ window.addEventListener('resize', () => {
     camera,
     desktopPanningSensibility,
     mobilePanningSensibility,
+    sceneRadius,
   })
 })
