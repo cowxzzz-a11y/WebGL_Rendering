@@ -31,3 +31,5 @@ dist-ssr
 # Large binary assets
 *.glb
 !assets/target.glb
+!assets/大厦植被烘焙/target.glb
+!assets/苏娜珊烘焙/target.glb
