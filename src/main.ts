@@ -131,7 +131,7 @@ const lightHelperTouched = {
   hemi: false,
   sun: false,
 }
-let panelCollapsed = false
+let panelCollapsed = isConstrainedMobileRuntime
 let environmentController: EnvironmentController
 let selectionController: SelectionController
 let lightDirectionHelpers: LightDirectionHelperController
@@ -144,16 +144,23 @@ const getCurrentEnvironmentLabel = () => environmentController.getCurrentLabel()
 
 const getCurrentEnvironmentUrl = () => environmentController.getCurrentUrl()
 
-panelCollapseToggle.addEventListener('click', () => {
-  panelCollapsed = !panelCollapsed
+const applyPanelCollapsedState = () => {
+  const panelRight = Number.parseFloat(window.getComputedStyle(outlinerPanel).right) || 12
   outlinerPanel.classList.toggle('outliner-panel-collapsed', panelCollapsed)
   panelCollapseToggle.classList.toggle('panel-collapse-toggle-collapsed', panelCollapsed)
-  outlinerPanel.style.transform = panelCollapsed ? `translateX(${outlinerPanel.offsetWidth + 12}px)` : 'translateX(0)'
-  panelCollapseToggle.style.right = panelCollapsed ? '12px' : 'calc(12px + var(--panel-width))'
+  outlinerPanel.style.transform = panelCollapsed ? `translateX(${outlinerPanel.offsetWidth + panelRight}px)` : 'translateX(0)'
+  panelCollapseToggle.style.right = panelCollapsed ? `${panelRight}px` : `calc(${panelRight}px + var(--panel-width))`
   panelCollapseToggle.textContent = panelCollapsed ? '<' : '>'
   panelCollapseToggle.ariaLabel = panelCollapsed ? '\u5c55\u5f00\u53c2\u6570\u9762\u677f' : '\u6536\u8d77\u53c2\u6570\u9762\u677f'
   panelCollapseToggle.title = panelCollapsed ? '\u5c55\u5f00\u53c2\u6570\u9762\u677f' : '\u6536\u8d77\u53c2\u6570\u9762\u677f'
+}
+
+panelCollapseToggle.addEventListener('click', () => {
+  panelCollapsed = !panelCollapsed
+  applyPanelCollapsedState()
 })
+
+applyPanelCollapsedState()
 
 const setStatus = (message: string | null) => {
   status.textContent = message ?? ''
@@ -1331,6 +1338,7 @@ engine.runRenderLoop(() => {
 window.addEventListener('resize', () => {
   engine.resize()
   engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 1.6))
+  applyPanelCollapsedState()
   tuneTouchCameraControls({
     camera,
     desktopPanningSensibility,
