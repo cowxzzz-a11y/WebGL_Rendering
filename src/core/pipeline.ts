@@ -3,8 +3,46 @@ import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPi
 import type { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
 import type { Scene } from '@babylonjs/core/scene'
 
+type ClassicImageProcessing = {
+  toneMappingEnabled: boolean
+  toneMappingType: number
+  exposure: number
+  contrast: number
+  ditheringEnabled: boolean
+}
+
+export type ClassicPipeline = {
+  name: string
+  samples: number
+  fxaaEnabled: boolean
+  imageProcessingEnabled: boolean
+  imageProcessing: ClassicImageProcessing
+  bloomEnabled: boolean
+  chromaticAberrationEnabled: boolean
+  sharpenEnabled: boolean
+  grainEnabled: boolean
+}
+
 export const createClassicPipeline = (scene: Scene, camera: ArcRotateCamera) => {
-  const pipeline = new DefaultRenderingPipeline('ClassicPipeline', true, scene, [camera])
+  let pipeline: ClassicPipeline
+
+  try {
+    pipeline = new DefaultRenderingPipeline('ClassicPipeline', true, scene, [camera])
+  } catch (error) {
+    console.warn('Default rendering pipeline was not available; falling back to scene image processing.', error)
+    pipeline = {
+      name: 'SceneImageProcessing',
+      samples: 1,
+      fxaaEnabled: false,
+      imageProcessingEnabled: true,
+      imageProcessing: scene.imageProcessingConfiguration,
+      bloomEnabled: false,
+      chromaticAberrationEnabled: false,
+      sharpenEnabled: false,
+      grainEnabled: false,
+    }
+  }
+
   pipeline.samples = 4
   pipeline.fxaaEnabled = true
   pipeline.imageProcessingEnabled = true
@@ -20,4 +58,3 @@ export const createClassicPipeline = (scene: Scene, camera: ArcRotateCamera) => 
 
   return pipeline
 }
-

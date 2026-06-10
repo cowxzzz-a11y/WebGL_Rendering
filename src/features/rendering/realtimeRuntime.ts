@@ -224,17 +224,25 @@ export const createRealtimeRenderingController = ({
     refreshImportedRenderingState()
     applyRealtimeShadowState()
 
-    if (ssaoEnabledPreference) {
-      ensureSsaoPipeline()
-      applySsaoSettings()
-    } else if (ssao2Pipeline) {
-      ssao2Pipeline.totalStrength = 0
+    if (getImportedMeshes().length === 0) {
+      return
     }
 
-    if (ssrEnabledPreference) {
-      ensureSsrPipeline().isEnabled = true
-    } else if (ssrPipeline) {
-      ssrPipeline.isEnabled = false
+    try {
+      if (ssaoEnabledPreference) {
+        ensureSsaoPipeline()
+        applySsaoSettings()
+      } else if (ssao2Pipeline) {
+        ssao2Pipeline.totalStrength = 0
+      }
+
+      if (ssrEnabledPreference) {
+        ensureSsrPipeline().isEnabled = true
+      } else if (ssrPipeline) {
+        ssrPipeline.isEnabled = false
+      }
+    } catch (error) {
+      console.warn('Realtime post-processing pipeline was not available.', error)
     }
   }
 

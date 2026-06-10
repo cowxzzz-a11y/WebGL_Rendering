@@ -1,8 +1,8 @@
 import type { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
 import type { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
-import type { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
 import type { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
+import type { ClassicPipeline } from '../../core/pipeline'
 import type { EnvironmentOption } from '../../shared/types'
 import { createCheckbox, createColorInput, createModule, createNumberInput, createSelect, createSlider } from '../../ui/controls'
 
@@ -15,7 +15,7 @@ type GeneralPanelOptions = {
   environmentRotationY: number
   globalEnvironmentIntensity: number
   imageProcessing: ImageProcessingConfiguration
-  pipeline: DefaultRenderingPipeline
+  pipeline: ClassicPipeline
   hemiLight: HemisphericLight
   getCurrentEnvironmentUrl: () => string
   getClearColor: () => Color4

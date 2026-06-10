@@ -5,9 +5,9 @@ import type { ImageProcessingConfiguration } from '@babylonjs/core/Materials/ima
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Color4 } from '@babylonjs/core/Maths/math.color'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
-import type { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
 import type { Scene } from '@babylonjs/core/scene'
 import { tuneTouchCameraControls } from '../../core/camera'
+import type { ClassicPipeline } from '../../core/pipeline'
 import { desktopPanningSensibility, mobilePanningSensibility, viewerConfigVersion } from '../../shared/constants'
 import type { EnvironmentController } from '../environment/environmentController'
 import { getMaterialKey, getMeshKey } from '../model/modelIdentity'
@@ -24,7 +24,7 @@ type ViewerConfigRuntime = {
   scene: Scene
   camera: ArcRotateCamera
   imageProcessing: ImageProcessingConfiguration
-  pipeline: DefaultRenderingPipeline
+  pipeline: ClassicPipeline
   hemiLight: HemisphericLight
   sunLight: DirectionalLight
   environmentController: EnvironmentController

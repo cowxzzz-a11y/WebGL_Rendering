@@ -61,7 +61,7 @@ import type {
   PanelTab,
 } from './shared/types'
 import { queryAppDom, renderAppShell } from './ui/dom'
-import { renderDetailDescriptor } from './ui/detailPanel'
+import { renderDetailDescriptor, renderDetailPlaceholder } from './ui/detailPanel'
 import { createPanelTabsRenderer, makeOutlineBranch } from './ui/outliner'
 import { clamp } from './utils/math'
 
@@ -201,6 +201,16 @@ let viewportActiveSubTab = '\u6444\u50cf\u673a'
 let savedLightmaps = new WeakMap<PBRMaterial, BaseTexture>()
 let realtimeController: RealtimeRenderingController
 
+const hideDetailPanel = () => {
+  detailPanel.hidden = true
+  detailPanel.textContent = ''
+}
+
+const renderOutlineDetailPlaceholder = () => {
+  selectedDetailId = null
+  renderDetailPlaceholder(detailPanel)
+}
+
 const isBillboardMesh = (mesh: AbstractMesh) => billboardController.hasBillboard(mesh)
 
 const applyRealtimeShadowState = () => realtimeController.applyRealtimeShadowState()
@@ -266,6 +276,7 @@ const getModelNameForMesh = (mesh: AbstractMesh) => {
 const renderGeneralPanel = () => {
   const environmentState = getEnvironmentState()
 
+  hideDetailPanel()
   sceneOutline.textContent = ''
   sceneOutline.append(renderGeneralPanelContent({
     activeSubTab: generalActiveSubTab,
@@ -306,8 +317,7 @@ const renderBillboardPanel = (panel: HTMLElement) => {
 
 const renderViewportPanel = () => {
   selectedDetailId = null
-  detailPanel.hidden = true
-  detailPanel.textContent = ''
+  hideDetailPanel()
   sceneOutline.textContent = ''
   sceneOutline.append(renderViewportPanelContent({
     activeSubTab: viewportActiveSubTab,
@@ -371,6 +381,7 @@ let techPanelCache: {
 } | null = null
 
 const renderTechPanel = () => {
+  hideDetailPanel()
   sceneOutline.textContent = ''
 
   if (!techPanelCache) {
@@ -464,6 +475,10 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
     return
   }
 
+  if (!selectedDetailId || !detailRegistry.has(selectedDetailId)) {
+    renderDetailPlaceholder(detailPanel)
+  }
+
   activeTab.nodes.forEach((node) =>
     sceneOutline.append(
       makeOutlineBranch(node, {
@@ -484,11 +499,7 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
 }
 
 const renderDetail = (descriptor: DetailDescriptor) => {
-  renderDetailDescriptor(detailPanel, descriptor, () => {
-    selectedDetailId = null
-    detailPanel.hidden = true
-    setOutline(currentMeshNodes)
-  })
+  renderDetailDescriptor(detailPanel, descriptor)
 }
 
 const selectDetail = (detailId: string | undefined) => {
@@ -499,6 +510,10 @@ const selectDetail = (detailId: string | undefined) => {
   const getDetail = detailRegistry.get(detailId)
 
   if (!getDetail) {
+    if (activeTabId === 'outline') {
+      renderOutlineDetailPlaceholder()
+      setOutline(currentMeshNodes)
+    }
     return
   }
 
@@ -558,8 +573,13 @@ selectionController = createSelectionController({
   getDeltaTime: () => engine.getDeltaTime(),
   onSelectDetail: selectDetail,
   onClearDetail: () => {
-    selectedDetailId = null
-    detailPanel.hidden = true
+    if (activeTabId === 'outline') {
+      renderOutlineDetailPlaceholder()
+      setOutline(currentMeshNodes)
+    } else {
+      selectedDetailId = null
+      hideDetailPanel()
+    }
   },
   onOutlineChanged: () => setOutline(currentMeshNodes),
 })
@@ -643,7 +663,7 @@ initShadowGenerator()
 setOutline()
 const initialEnvironmentKey = getEnvironmentState().selectedEnvironmentKey
 if (!isConstrainedMobileRuntime && hdrEnvironmentOptions.length > 0 && initialEnvironmentKey) {
-  await setSceneEnvironmentTexture(initialEnvironmentKey, {
+  void setSceneEnvironmentTexture(initialEnvironmentKey, {
     force: true,
     showLoadingStatus: false,
     refreshOutline: false,

@@ -343,8 +343,9 @@ input[type="radio"]:checked + .tab {
 }
 
 .outliner-tree {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
+  max-height: 58%;
   overflow: auto;
   padding: 6px 0 8px;
   font-size: 12px;
@@ -704,13 +705,15 @@ button.outliner-icon.outliner-visibility {
 }
 
 .detail-panel {
-  flex: 0 0 auto;
-  max-height: min(360px, 46vh);
-  margin: 10px;
+  flex: 0 0 min(360px, 38%);
+  min-height: 210px;
+  max-height: 38%;
+  margin: 0;
   overflow: auto;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  background: rgba(25, 28, 29, 0.9);
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  background: rgba(25, 28, 29, 0.78);
   font-size: 12px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
@@ -723,12 +726,12 @@ button.outliner-icon.outliner-visibility {
 .detail-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
-  min-height: 40px;
+  min-height: 36px;
   padding: 8px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(32, 36, 37, 0.98);
+  background: rgba(32, 36, 37, 0.72);
 }
 
 .detail-title {
@@ -773,6 +776,24 @@ button.outliner-icon.outliner-visibility {
 .detail-close:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
+}
+
+.detail-empty {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-height: 100%;
+  padding: 24px 18px;
+  color: #96a4a1;
+}
+
+.detail-empty strong {
+  color: #d8dfdd;
+  font-size: 13px;
+}
+
+.detail-empty span {
+  font-size: 12px;
 }
 
 .detail-section {

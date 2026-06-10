@@ -7,7 +7,7 @@ import { clamp } from '../utils/math'
 export const renderDetailDescriptor = (
   detailPanel: HTMLElement,
   descriptor: DetailDescriptor,
-  onClose: () => void,
+  onClose?: () => void,
 ) => {
   detailPanel.textContent = ''
   detailPanel.hidden = false
@@ -16,20 +16,27 @@ export const renderDetailDescriptor = (
   const title = document.createElement('div')
   const eyebrow = document.createElement('span')
   const name = document.createElement('strong')
-  const closeButton = document.createElement('button')
 
   header.className = 'detail-header'
   title.className = 'detail-title'
   eyebrow.className = 'detail-kind'
   eyebrow.textContent = descriptor.kind
   name.textContent = descriptor.title
-  closeButton.className = 'detail-close'
-  closeButton.type = 'button'
-  closeButton.textContent = 'x'
-  closeButton.ariaLabel = 'Close detail panel'
-  closeButton.addEventListener('click', onClose)
   title.append(eyebrow, name)
-  header.append(title, closeButton)
+
+  if (onClose) {
+    const closeButton = document.createElement('button')
+
+    closeButton.className = 'detail-close'
+    closeButton.type = 'button'
+    closeButton.textContent = 'x'
+    closeButton.ariaLabel = 'Close detail panel'
+    closeButton.addEventListener('click', onClose)
+    header.append(title, closeButton)
+  } else {
+    header.append(title)
+  }
+
   detailPanel.append(header)
 
   descriptor.sections.forEach((section) => {
@@ -133,6 +140,21 @@ export const renderDetailDescriptor = (
 
     detailPanel.append(sectionElement)
   })
+}
+
+export const renderDetailPlaceholder = (detailPanel: HTMLElement) => {
+  detailPanel.textContent = ''
+  detailPanel.hidden = false
+
+  const empty = document.createElement('div')
+  const title = document.createElement('strong')
+  const text = document.createElement('span')
+
+  empty.className = 'detail-empty'
+  title.textContent = '属性'
+  text.textContent = '从上方大纲选择对象或材质'
+  empty.append(title, text)
+  detailPanel.append(empty)
 }
 
 export const numberItem = (

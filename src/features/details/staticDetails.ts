@@ -3,8 +3,8 @@ import type { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import type { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import type { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { Color4 } from '@babylonjs/core/Maths/math.color'
-import type { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
 import type { Scene } from '@babylonjs/core/scene'
+import type { ClassicPipeline } from '../../core/pipeline'
 import type { EnvironmentState } from '../environment/environmentController'
 import type { DetailDescriptor, EnvironmentOption } from '../../shared/types'
 import { checkboxItem, colorItem, numberItem, selectItem, textItem, vectorItems } from '../../ui/detailPanel'
@@ -33,7 +33,7 @@ type StaticDetailsOptions = {
   setShadowBias: (value: number) => void
   scene: Scene
   imageProcessing: ImageProcessingConfiguration
-  pipeline: DefaultRenderingPipeline
+  pipeline: ClassicPipeline
   hdrEnvironmentOptions: EnvironmentOption[]
   getEnvironmentState: () => EnvironmentState
   setSceneEnvironmentTexture: (environmentKey: string) => void
