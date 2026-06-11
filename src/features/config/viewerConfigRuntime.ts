@@ -4,6 +4,7 @@ import type { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import type { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Color4 } from '@babylonjs/core/Maths/math.color'
+import type { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Scene } from '@babylonjs/core/scene'
 import { tuneTouchCameraControls } from '../../core/camera'
@@ -30,6 +31,8 @@ type ViewerConfigRuntime = {
   environmentController: EnvironmentController
   getImportedMeshes: () => AbstractMesh[]
   getCurrentModelSignature: () => string | null
+  getSceneCenter: () => Vector3
+  getSceneRadius: () => number
   getShadowMapSize: () => number
   getShadowBias: () => number
   applyShadowConfig: (shadowMapSize: number, shadowBias: number) => void
@@ -164,6 +167,8 @@ export const applyViewerConfigSnapshot = (
     sunLight,
     environmentController,
     getImportedMeshes,
+    getSceneCenter,
+    getSceneRadius,
     applyShadowConfig,
     resetLightHelpers,
     updateSceneBoundsFromCurrentModels,
@@ -185,6 +190,8 @@ export const applyViewerConfigSnapshot = (
       camera,
       desktopPanningSensibility,
       mobilePanningSensibility,
+      sceneCenter: getSceneCenter(),
+      sceneRadius: getSceneRadius(),
     })
   }
 

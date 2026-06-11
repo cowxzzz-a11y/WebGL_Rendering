@@ -50,8 +50,12 @@ const getPinchDeltaPercentage = (controlRadius: number) => {
 }
 
 const getScaledPanningSensibility = (baseSensibility: number, controlRadius: number) => {
-  const scale = clamp(16 / controlRadius, 1, 40)
+  const scale = clamp(180 / controlRadius, 1, 80)
   return Math.round(baseSensibility * scale)
+}
+
+const getScaledPanSpeed = (controlRadius: number) => {
+  return clamp(controlRadius / 180, 0.06, 1)
 }
 
 export const createViewerCamera = ({ canvas, scene, desktopPanningSensibility }: CreateViewerCameraOptions) => {
@@ -63,6 +67,7 @@ export const createViewerCamera = ({ canvas, scene, desktopPanningSensibility }:
   camera.pinchPrecision = 28
   camera.pinchDeltaPercentage = 0.012
   camera.useNaturalPinchZoom = true
+  camera.panningInertia = 0.35
   camera.lowerRadiusLimit = 0.35
   camera.upperRadiusLimit = 500
   camera.lowerBetaLimit = 0.18
@@ -82,6 +87,7 @@ export const clearCameraInertia = (camera: ArcRotateCamera) => {
   camera.inertialRadiusOffset = 0
   camera.inertialPanningX = 0
   camera.inertialPanningY = 0
+  camera.movement.resetPanVelocity()
 }
 
 export const tuneTouchCameraControls = ({
@@ -101,8 +107,11 @@ export const tuneTouchCameraControls = ({
   camera.wheelDeltaPercentage = getWheelDeltaPercentage(controlRadius)
   camera.pinchDeltaPercentage = getPinchDeltaPercentage(controlRadius)
   camera.panningSensibility = panningSensibility
-  camera.panningDistanceLimit = Math.max(controlRadius * 2.5, 1.5)
+  camera.panningInertia = 0.35
+  camera.panningDistanceLimit = Math.max(controlRadius * 1.25, 1.5)
   camera.panningOriginTarget.copyFrom(sceneCenter ?? camera.target)
+  camera.movement.panSpeed = getScaledPanSpeed(controlRadius)
+  camera.movement.resetPanVelocity()
 
   if (!pointersInput) {
     return

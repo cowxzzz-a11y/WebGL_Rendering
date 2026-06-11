@@ -803,6 +803,8 @@ const getViewerConfigRuntime = () => ({
   environmentController,
   getImportedMeshes: () => importedMeshes,
   getCurrentModelSignature,
+  getSceneCenter: () => sceneCenter,
+  getSceneRadius: () => sceneRadius,
   getShadowMapSize: () => shadowMapSize,
   getShadowBias: () => shadowBias,
   applyShadowConfig: (nextShadowMapSize: number, nextShadowBias: number) => {
