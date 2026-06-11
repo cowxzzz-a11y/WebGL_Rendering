@@ -9,7 +9,7 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Scene } from '@babylonjs/core/scene'
 import { tuneTouchCameraControls } from '../../core/camera'
 import type { ClassicPipeline } from '../../core/pipeline'
-import { desktopPanningSensibility, mobilePanningSensibility, viewerConfigVersion } from '../../shared/constants'
+import { viewerConfigVersion } from '../../shared/constants'
 import type { EnvironmentController } from '../environment/environmentController'
 import { getMaterialKey, getMeshKey } from '../model/modelIdentity'
 import { assignColor3, assignVector, colorToConfig, vectorToConfig } from './configMapping'
@@ -188,8 +188,6 @@ export const applyViewerConfigSnapshot = (
     camera.panningSensibility = config.camera.panningSensibility
     tuneTouchCameraControls({
       camera,
-      desktopPanningSensibility,
-      mobilePanningSensibility,
       sceneCenter: getSceneCenter(),
       sceneRadius: getSceneRadius(),
     })

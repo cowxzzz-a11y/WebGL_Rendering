@@ -58,7 +58,7 @@ import { getImportedDisplayName, makeModelOutlineNode } from './features/model/m
 import { createKeyboardNavigationController } from './features/navigation/keyboardNavigation'
 import { createSelectionController } from './features/selection/selectionController'
 import type { SelectionController } from './features/selection/selectionController'
-import { legacyEnvironmentUrl, desktopPanningSensibility, mobilePanningSensibility } from './shared/constants'
+import { legacyEnvironmentUrl } from './shared/constants'
 import type {
   DetailDescriptor,
   OutlineNode,
@@ -592,13 +592,10 @@ environmentController = createEnvironmentController({
 const camera = createViewerCamera({
   canvas,
   scene,
-  desktopPanningSensibility,
 })
 
 tuneTouchCameraControls({
   camera,
-  desktopPanningSensibility,
-  mobilePanningSensibility,
   sceneCenter,
   sceneRadius,
 })
@@ -606,8 +603,6 @@ tuneTouchCameraControls({
 const tuneCameraControlsForCurrentScene = () => {
   tuneTouchCameraControls({
     camera,
-    desktopPanningSensibility,
-    mobilePanningSensibility,
     sceneCenter,
     sceneRadius,
   })
@@ -1361,8 +1356,6 @@ window.addEventListener('resize', () => {
   applyPanelCollapsedState()
   tuneTouchCameraControls({
     camera,
-    desktopPanningSensibility,
-    mobilePanningSensibility,
     sceneCenter,
     sceneRadius,
   })
