@@ -487,6 +487,7 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
 
   renderPanelTabs(tabs)
   sceneOutline.textContent = ''
+  sceneOutline.classList.toggle('outliner-tree-outline', activeTab.id === 'outline')
 
   if (activeTab.id === 'tech') {
     renderTechPanel()

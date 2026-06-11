@@ -16,7 +16,7 @@ type TuneTouchCameraControlsOptions = {
 
 const defaultSceneControlRadius = 8
 const minimumSceneControlRadius = 0.75
-const defaultPanningSensibility = 15
+const defaultPanningSensibility = 11
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
