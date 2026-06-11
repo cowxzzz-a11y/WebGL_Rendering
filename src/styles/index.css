@@ -521,6 +521,10 @@ button.outliner-icon.outliner-visibility {
   display: none;
 }
 
+.touch-mode-toggle {
+  display: none;
+}
+
 .share-actions {
   position: absolute;
   left: 18px;
@@ -1652,5 +1656,79 @@ button.outliner-icon.outliner-visibility {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.36);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+  }
+
+  .touch-mode-toggle {
+    position: absolute;
+    right: 12px;
+    bottom: 86px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 38px;
+    min-width: 82px;
+    padding: 0 11px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    background: rgba(23, 27, 28, 0.42);
+    color: rgba(255, 255, 255, 0.76);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .touch-mode-toggle[aria-pressed='true'] {
+    border-color: rgba(126, 188, 236, 0.68);
+    background: rgba(48, 94, 132, 0.72);
+    color: #ffffff;
+  }
+
+  .touch-mode-toggle:active {
+    transform: scale(0.96);
+  }
+
+  .touch-mode-icon {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+
+  .touch-mode-icon::before,
+  .touch-mode-icon::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+  }
+
+  .touch-mode-icon::after {
+    inset: 6px 1px;
+    border: 0;
+    border-top: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    border-radius: 0;
+  }
+
+  .touch-mode-toggle[aria-pressed='true'] .touch-mode-icon::before {
+    inset: 7px 1px;
+    border: 0;
+    border-top: 2px solid currentColor;
+    border-radius: 0;
+  }
+
+  .touch-mode-toggle[aria-pressed='true'] .touch-mode-icon::after {
+    inset: 1px 7px;
+    border: 0;
+    border-left: 2px solid currentColor;
+    border-radius: 0;
   }
 }

@@ -15,6 +15,7 @@ export type AppDom = {
   sceneTabs: HTMLElement
   outlinerPanel: HTMLElement
   panelCollapseToggle: HTMLButtonElement
+  touchModeToggle: HTMLButtonElement
   saveConfigButton: HTMLButtonElement
   resetConfigButton: HTMLButtonElement
   sceneOutline: HTMLElement
@@ -75,8 +76,11 @@ export const renderAppShell = (app: HTMLDivElement) => {
   <div class="mobile-gesture-hint" aria-label="移动端操作提示">
     <span>单指拖动：旋转</span>
     <span>双指捏合：拉近/拉远</span>
-    <span>双指同向滑动：平移</span>
   </div>
+  <button id="touchModeToggle" class="touch-mode-toggle" type="button" aria-pressed="false" aria-label="切换为平移模式" title="切换为平移模式">
+    <span class="touch-mode-icon" aria-hidden="true"></span>
+    <span class="touch-mode-text">旋转</span>
+  </button>
   <input id="glbImportInput" class="import-file-input" type="file" accept=".glb,model/gltf-binary" />
   <div id="status" class="status">Loading scene...</div>
   <div id="shareOverlay" class="share-overlay" aria-modal="true" role="dialog">
@@ -127,6 +131,7 @@ export const queryAppDom = (): AppDom => ({
   sceneTabs: requireElement<HTMLElement>('#sceneTabs', 'Scene tabs'),
   outlinerPanel: requireElement<HTMLElement>('#outlinerPanel', 'Outliner panel'),
   panelCollapseToggle: requireElement<HTMLButtonElement>('#panelCollapseToggle', 'Panel collapse toggle'),
+  touchModeToggle: requireElement<HTMLButtonElement>('#touchModeToggle', 'Touch mode toggle'),
   saveConfigButton: requireElement<HTMLButtonElement>('#saveConfig', 'Save config button'),
   resetConfigButton: requireElement<HTMLButtonElement>('#resetConfig', 'Reset config button'),
   sceneOutline: requireElement<HTMLElement>('#sceneOutline', 'Scene outline'),

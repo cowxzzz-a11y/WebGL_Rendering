@@ -26,6 +26,7 @@ type SelectionControllerOptions = {
   camera: ArcRotateCamera
   getImportedMeshes: () => AbstractMesh[]
   getDeltaTime: () => number
+  getSingleTouchPanMode?: () => boolean
   onSelectDetail: (detailId: string) => void
   onClearDetail: () => void
   onOutlineChanged: () => void
@@ -100,6 +101,7 @@ export const createSelectionController = ({
   camera,
   getImportedMeshes,
   getDeltaTime,
+  getSingleTouchPanMode = () => false,
   onSelectDetail,
   onClearDetail,
   onOutlineChanged,
@@ -285,6 +287,11 @@ export const createSelectionController = ({
         pinchSelectionCleared = false
         return
       }
+
+      if (getSingleTouchPanMode()) {
+        pointerSelectionState = null
+        return
+      }
     }
 
     if (event.button === 2) {
@@ -323,6 +330,11 @@ export const createSelectionController = ({
 
         return
       }
+
+      if (getSingleTouchPanMode()) {
+        pointerSelectionState = null
+        return
+      }
     }
 
     if (!pointerSelectionState || pointerSelectionState.button !== 0) {
@@ -348,6 +360,11 @@ export const createSelectionController = ({
         pinchSelectionCleared = false
       } else {
         pinchStartDistance = getTouchPinchDistance()
+      }
+
+      if (getSingleTouchPanMode()) {
+        pointerSelectionState = null
+        return
       }
     }
 

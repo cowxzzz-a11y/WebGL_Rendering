@@ -83,6 +83,11 @@ export const clearCameraInertia = (camera: ArcRotateCamera) => {
   camera.movement.resetPanVelocity()
 }
 
+export const setSinglePointerPanMode = (camera: ArcRotateCamera, enabled: boolean) => {
+  camera.movement.input.setInteraction('pointer', { button: 0, modifiers: {} }, enabled ? 'pan' : 'rotate')
+  clearCameraInertia(camera)
+}
+
 export const tuneTouchCameraControls = ({
   camera,
   sceneCenter,

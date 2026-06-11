@@ -20,7 +20,7 @@ import type { ViewerConfig } from './features/config/viewerConfig'
 import { applyViewerConfigSnapshot } from './features/config/viewerConfigRuntime'
 import type { ApplyViewerConfigOptions } from './features/config/viewerConfigRuntime'
 import { configureLocalKtx2Decoder } from './core/ktx2'
-import { clearCameraInertia, createViewerCamera, tuneTouchCameraControls } from './core/camera'
+import { clearCameraInertia, createViewerCamera, setSinglePointerPanMode, tuneTouchCameraControls } from './core/camera'
 import {
   createViewerEngineScene,
   setStoredViewerEnginePreference,
@@ -98,6 +98,7 @@ const {
   sceneTabs,
   outlinerPanel,
   panelCollapseToggle,
+  touchModeToggle,
   saveConfigButton,
   resetConfigButton,
   sceneOutline,
@@ -608,12 +609,41 @@ const tuneCameraControlsForCurrentScene = () => {
   })
 }
 
+let singleTouchPanMode = false
+const touchModeHint = document.querySelector<HTMLElement>('.mobile-gesture-hint')
+
+const applyTouchMode = () => {
+  setSinglePointerPanMode(camera, singleTouchPanMode)
+  touchModeToggle.setAttribute('aria-pressed', String(singleTouchPanMode))
+  touchModeToggle.ariaLabel = singleTouchPanMode ? '切换为旋转模式' : '切换为平移模式'
+  touchModeToggle.title = singleTouchPanMode ? '切换为旋转模式' : '切换为平移模式'
+  const modeText = touchModeToggle.querySelector<HTMLElement>('.touch-mode-text')
+  if (modeText) {
+    modeText.textContent = singleTouchPanMode ? '平移' : '旋转'
+  }
+  if (touchModeHint) {
+    const dragHint = document.createElement('span')
+    const pinchHint = document.createElement('span')
+    dragHint.textContent = singleTouchPanMode ? '单指拖动：平移' : '单指拖动：旋转'
+    pinchHint.textContent = '双指捏合：拉近 / 拉远'
+    touchModeHint.replaceChildren(dragHint, pinchHint)
+  }
+}
+
+touchModeToggle.addEventListener('click', () => {
+  singleTouchPanMode = !singleTouchPanMode
+  applyTouchMode()
+})
+
+applyTouchMode()
+
 selectionController = createSelectionController({
   canvas,
   scene,
   camera,
   getImportedMeshes: () => importedMeshes,
   getDeltaTime: () => engine.getDeltaTime(),
+  getSingleTouchPanMode: () => singleTouchPanMode,
   onSelectDetail: selectDetail,
   onClearDetail: () => {
     if (activeTabId === 'outline') {
