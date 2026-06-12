@@ -48,14 +48,20 @@ export const createFrameMetricsController = ({
 
   let frameOverlayVisible = false
   let frameUpdateTimer = 0
-  const frameUpdateIntervalMs = 800
+  let frameMsAverage = 0
+  const frameUpdateIntervalMs = 250
 
   const metrics: { label: string; get: () => string }[] = [
     { label: 'FPS', get: () => String(Math.round(engine.getFps())) },
+    { label: 'Frame ms', get: () => `${engine.getDeltaTime().toFixed(2)} / avg ${frameMsAverage.toFixed(2)}` },
     { label: 'Draw Calls', get: () => String(sceneInstrumentation?.drawCallsCounter.current ?? 0) },
-    { label: 'Model Triangles', get: () => String(getImportedTriangleCount(getImportedMeshes())) },
-    { label: 'Rendered Indices', get: () => String(scene.getActiveIndices() ?? 0) },
-    { label: 'Meshes', get: () => String(scene.getActiveMeshes().length) + ' / ' + String(scene.meshes.length) },
+    { label: 'Active Triangles', get: () => String(Math.floor((scene.getActiveIndices() ?? 0) / 3)) },
+    { label: 'Total Triangles', get: () => String(getImportedTriangleCount(getImportedMeshes())) },
+    { label: 'Active Meshes', get: () => String(scene.getActiveMeshes().length) + ' / ' + String(scene.meshes.length) },
+    { label: 'Materials', get: () => String(scene.materials.length) },
+    { label: 'Textures', get: () => String(scene.textures.length) },
+    { label: 'Render Size', get: () => `${engine.getRenderWidth()} x ${engine.getRenderHeight()}` },
+    { label: 'Hardware Scale', get: () => engine.getHardwareScalingLevel().toFixed(2) },
   ]
 
   const updateFrameGrid = () => {
@@ -89,6 +95,8 @@ export const createFrameMetricsController = ({
 
   return {
     update(deltaMs: number) {
+      frameMsAverage = frameMsAverage === 0 ? deltaMs : frameMsAverage * 0.9 + deltaMs * 0.1
+
       if (!frameOverlayVisible) {
         return
       }

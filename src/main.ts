@@ -37,6 +37,12 @@ import type { LightDirectionHelperController } from './features/lights/lightDire
 import { createFrameMetricsController } from './features/metrics/frameMetrics'
 import { createBillboardController } from './features/billboard/billboardController'
 import type { BillboardController } from './features/billboard/billboardController'
+import { setupContentBrowser } from './features/content/contentBrowser'
+import {
+  applyRiverWaterMaterial,
+  createRiverWaterMaterialDetail,
+  isRiverWaterMaterial,
+} from './features/content/materials/riverWaterMaterial'
 import { createEnvironmentController } from './features/environment/environmentController'
 import type { EnvironmentController } from './features/environment/environmentController'
 import { createLightmapController } from './features/lightmap/lightmapController'
@@ -65,7 +71,7 @@ import type {
   PanelTab,
 } from './shared/types'
 import { queryAppDom, renderAppShell } from './ui/dom'
-import { renderDetailDescriptor, renderDetailPlaceholder } from './ui/detailPanel'
+import { renderDetailDescriptor, renderDetailPlaceholder, textItem } from './ui/detailPanel'
 import { createPanelTabsRenderer, makeOutlineBranch } from './ui/outliner'
 import { clamp } from './utils/math'
 
@@ -89,6 +95,8 @@ const {
   projectBackButton,
   status,
   shareActions,
+  contentBrowserButton,
+  contentBrowserPanel,
   shareWechatButton,
   shareOverlay,
   shareWechatGuide,
@@ -883,6 +891,35 @@ setupWechatShare({
   showTemporaryStatus,
 })
 
+setupContentBrowser({
+  button: contentBrowserButton,
+  panel: contentBrowserPanel,
+  onAssetActivate: (kind) => {
+    if (kind !== 'material.riverWater') {
+      return
+    }
+
+    const selectedMesh = selectionController.getSelectedMesh() ?? getMeshFromDetailId(selectedDetailId ?? undefined)
+    if (!selectedMesh || selectedMesh.isDisposed()) {
+      showTemporaryStatus('请先在场景里选中一个网格')
+      return
+    }
+
+    applyRiverWaterMaterial({
+      scene,
+      camera,
+      sunLight,
+      mesh: selectedMesh,
+    })
+    refreshImportedDetails()
+    rebuildImportedOutline()
+    selectMesh(selectedMesh)
+    refreshImportedRenderingState()
+    flushSceneRenderCaches()
+    showTemporaryStatus(`已应用河流水材质：${selectedMesh.name || `Mesh ${selectedMesh.uniqueId}`}`)
+  },
+})
+
 saveConfigButton.hidden = true
 resetConfigButton.hidden = true
 
@@ -892,10 +929,31 @@ const createMeshDetail = (mesh: AbstractMesh): DetailDescriptor => createMeshDet
   setReceiveSsao: realtimeController.setReceiveSsao,
 })
 
-const createMaterialDetail = (material: PBRMaterial): DetailDescriptor => createMaterialDetailDescriptor({
-  material,
-  refreshImportedRenderingState,
-})
+const createMaterialDetail = (material: Material): DetailDescriptor => {
+  if (isRiverWaterMaterial(material)) {
+    return createRiverWaterMaterialDetail(material)
+  }
+
+  if (material instanceof PBRMaterial) {
+    return createMaterialDetailDescriptor({
+      material,
+      refreshImportedRenderingState,
+    })
+  }
+
+  return {
+    title: material.name || `Material ${material.uniqueId}`,
+    kind: '材质',
+    sections: [
+      {
+        title: '基础',
+        items: [
+          textItem('类型', material.getClassName()),
+        ],
+      },
+    ],
+  }
+}
 
 const dynamicDetailsRegistry = createDynamicDetailsRegistry({
   detailRegistry,
@@ -1211,7 +1269,7 @@ const loadModel = async (
   refreshImportedRenderingState()
   importedMaterialTotal += materials.size
   importedFileNames.push(fileName)
-  dynamicDetailsRegistry.registerImportedDetails(result.meshes, materials)
+  dynamicDetailsRegistry.registerImportedDetails(result.meshes, new Set<Material>(materials))
   rebuildImportedOutline()
   frameHierarchy(root, result.meshes)
 

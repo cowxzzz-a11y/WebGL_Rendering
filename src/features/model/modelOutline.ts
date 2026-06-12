@@ -1,4 +1,4 @@
-import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
+import { Material } from '@babylonjs/core/Materials/material'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { OutlineNode } from '../../shared/types'
@@ -29,7 +29,7 @@ export const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
     },
     open: true,
     children:
-      mesh.material instanceof PBRMaterial
+      mesh.material instanceof Material
         ? [{ name: mesh.material.name || `Material ${mesh.material.uniqueId}`, kind: 'material', detailId: `material:${mesh.material.uniqueId}` }]
         : undefined,
   }))

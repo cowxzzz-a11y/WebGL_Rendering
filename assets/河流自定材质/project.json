@@ -1,0 +1,5 @@
+{
+  "title": "河流自定材质",
+  "models": ["target.glb"],
+  "mode": "realtime"
+}

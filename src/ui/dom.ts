@@ -6,6 +6,8 @@ export type AppDom = {
   projectBackButton: HTMLButtonElement
   status: HTMLDivElement
   shareActions: HTMLElement
+  contentBrowserButton: HTMLButtonElement
+  contentBrowserPanel: HTMLDivElement
   shareWechatButton: HTMLButtonElement
   shareOverlay: HTMLDivElement
   shareWechatGuide: HTMLDivElement
@@ -56,6 +58,13 @@ export const renderAppShell = (app: HTMLDivElement) => {
       <button type="button" data-mode="replace">替换</button>
       <button type="button" data-mode="insert">追加</button>
     </div>
+    <button id="contentBrowserButton" class="content-browser-button share-button" type="button" aria-label="Content" aria-expanded="false" title="Content">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 5.75A2.75 2.75 0 0 1 5.75 3h4.18c.73 0 1.42.29 1.94.8l1.32 1.32c.14.15.34.23.55.23h4.51A2.75 2.75 0 0 1 21 8.1v10.15A2.75 2.75 0 0 1 18.25 21H5.75A2.75 2.75 0 0 1 3 18.25V5.75Zm2.75-.95a.95.95 0 0 0-.95.95v12.5c0 .52.43.95.95.95h12.5c.52 0 .95-.43.95-.95V8.1a.95.95 0 0 0-.95-.95h-4.51c-.69 0-1.35-.27-1.84-.76l-1.31-1.32a.95.95 0 0 0-.67-.27H5.75Z" fill="currentColor" />
+        <path d="M7 10.25h10v1.5H7v-1.5Zm0 3h7v1.5H7v-1.5Z" fill="currentColor" />
+      </svg>
+    </button>
+    <div id="contentBrowserPanel" class="content-browser-panel" aria-label="Content browser" aria-hidden="true"></div>
     <button id="shareWechat" class="share-button" type="button" aria-label="Share" title="Share">
       <svg viewBox="0 0 1024 1024" aria-hidden="true">
         <path d="M690.1 377.4c5.9 0 11.8.2 17.6.5-24.4-128.7-158.3-227.1-319.9-227.1C209 150.8 64 270.8 64 420.2c0 81.1 43.6 154.2 111.9 203.6l-29.5 88.3 99.4-49.7c37.4 9.8 75.2 14.8 105 14.8 11.1 0 21.9-1 32.5-2.4C377 637.9 369.6 598.9 369.6 558.2c0-99.8 88-180.8 320.5-180.8zM445.8 276c21.2 0 36.8 15.6 36.8 36.8s-15.6 36.8-36.8 36.8-36.8-15.6-36.8-36.8 15.7-36.8 36.8-36.8zm-159.2 73.6c-21.2 0-36.8-15.6-36.8-36.8s15.6-36.8 36.8-36.8 36.8 15.6 36.8 36.8-15.6 36.8-36.8 36.8z" />
@@ -122,6 +131,8 @@ export const queryAppDom = (): AppDom => ({
   projectBackButton: requireElement<HTMLButtonElement>('#projectBackButton', 'Project back button'),
   status: requireElement<HTMLDivElement>('#status', 'Status'),
   shareActions: requireElement<HTMLElement>('.share-actions', 'Share actions'),
+  contentBrowserButton: requireElement<HTMLButtonElement>('#contentBrowserButton', 'Content browser button'),
+  contentBrowserPanel: requireElement<HTMLDivElement>('#contentBrowserPanel', 'Content browser panel'),
   shareWechatButton: requireElement<HTMLButtonElement>('#shareWechat', 'Share button'),
   shareOverlay: requireElement<HTMLDivElement>('#shareOverlay', 'Share overlay'),
   shareWechatGuide: requireElement<HTMLDivElement>('#shareWechatGuide', 'Share guide'),

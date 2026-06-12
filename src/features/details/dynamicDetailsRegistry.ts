@@ -1,14 +1,14 @@
-import type { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
+import type { Material } from '@babylonjs/core/Materials/material'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { DetailDescriptor } from '../../shared/types'
-import { collectPbrMaterialsFromMaterial } from '../material/materialUtils'
+import { collectMaterialsFromMaterial } from '../material/materialUtils'
 
 type DetailRegistry = Map<string, () => DetailDescriptor>
 
 type DynamicDetailsRegistryOptions = {
   detailRegistry: DetailRegistry
   createMeshDetail: (mesh: AbstractMesh) => DetailDescriptor
-  createMaterialDetail: (material: PBRMaterial) => DetailDescriptor
+  createMaterialDetail: (material: Material) => DetailDescriptor
 }
 
 export const createDynamicDetailsRegistry = ({
@@ -23,7 +23,7 @@ export const createDynamicDetailsRegistry = ({
     dynamicDetailIds.clear()
   }
 
-  const registerImportedDetails = (meshes: AbstractMesh[], materials: Set<PBRMaterial>) => {
+  const registerImportedDetails = (meshes: AbstractMesh[], materials: Set<Material>) => {
     meshes.forEach((mesh) => {
       const detailId = `mesh:${mesh.uniqueId}`
 
@@ -40,9 +40,9 @@ export const createDynamicDetailsRegistry = ({
   }
 
   const refreshImportedDetails = (meshes: AbstractMesh[]) => {
-    const materials = new Set<PBRMaterial>()
+    const materials = new Set<Material>()
 
-    meshes.forEach((mesh) => collectPbrMaterialsFromMaterial(mesh.material, materials))
+    meshes.forEach((mesh) => collectMaterialsFromMaterial(mesh.material, materials))
     unregisterImportedDetails()
     registerImportedDetails(meshes, materials)
 

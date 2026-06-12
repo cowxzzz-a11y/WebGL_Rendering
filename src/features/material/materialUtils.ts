@@ -3,6 +3,21 @@ import { Material } from '@babylonjs/core/Materials/material'
 import { MultiMaterial } from '@babylonjs/core/Materials/multiMaterial'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 
+export const collectMaterialsFromMaterial = (material: unknown, target: Set<Material>) => {
+  if (material instanceof MultiMaterial) {
+    material.subMaterials.forEach((subMaterial) => {
+      if (subMaterial instanceof Material) {
+        target.add(subMaterial)
+      }
+    })
+    return
+  }
+
+  if (material instanceof Material) {
+    target.add(material)
+  }
+}
+
 export const collectPbrMaterialsFromMaterial = (material: unknown, target: Set<PBRMaterial>) => {
   if (material instanceof PBRMaterial) {
     target.add(material)
@@ -56,4 +71,3 @@ export const getMeshesUsingPbrMaterial = (material: PBRMaterial, meshes: Abstrac
     return mesh.material instanceof MultiMaterial && mesh.material.subMaterials.includes(material)
   })
 }
-
