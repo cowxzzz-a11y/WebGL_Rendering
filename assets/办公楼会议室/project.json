@@ -1,0 +1,12 @@
+{
+  "title": "办公楼会议室",
+  "models": ["target.glb"],
+  "mode": "baked",
+  "lightmaps": [
+    {
+      "mesh": "Plane001",
+      "texture": "Plane001_ao_light.png",
+      "uv": 1
+    }
+  ]
+}

@@ -1355,6 +1355,19 @@ const loadProject = async (project: ProjectEntry) => {
       }
     }
 
+    if (project.config.customMaterials) {
+      for (const [meshName, materialKind] of Object.entries(project.config.customMaterials)) {
+        const targetMesh = importedMeshes.find((m) => m.name === meshName)
+        if (!targetMesh || targetMesh.isDisposed()) {
+          console.warn(`Custom material target mesh not found: ${meshName}`)
+          continue
+        }
+        if (materialKind === 'material.riverWater') {
+          applyRiverWaterMaterial({ scene, camera, sunLight, mesh: targetMesh })
+        }
+      }
+    }
+
     ensureCurrentModelsRenderable()
 
     if (project.config.mode === 'baked') {
@@ -1377,6 +1390,31 @@ const loadProject = async (project: ProjectEntry) => {
     }
 
     frameCurrentModels()
+
+    if (project.config.camera) {
+      const cc = project.config.camera
+      if (cc.target) {
+        camera.target.x = cc.target[0]
+        camera.target.y = cc.target[1]
+        camera.target.z = cc.target[2]
+      }
+      if (cc.position) {
+        const dx = cc.position[0] - camera.target.x
+        const dy = cc.position[1] - camera.target.y
+        const dz = cc.position[2] - camera.target.z
+        const r = Math.sqrt(dx * dx + dy * dy + dz * dz)
+        if (r > 0) {
+          camera.radius = r
+          camera.alpha = Math.atan2(dx, dz)
+          camera.beta = Math.acos(Math.max(-1, Math.min(1, dy / r)))
+        }
+      } else {
+        if (cc.alpha !== undefined) camera.alpha = cc.alpha
+        if (cc.beta !== undefined) camera.beta = cc.beta
+        if (cc.radius !== undefined) camera.radius = cc.radius
+      }
+    }
+
     flushSceneRenderCaches()
 
     setOutline(currentMeshNodes)

@@ -17,6 +17,14 @@ export type ProjectConfig = {
   mode?: 'baked' | 'realtime'
   config?: ViewerConfig
   lightmaps?: ProjectLightmapConfig[]
+  customMaterials?: Record<string, string>
+  camera?: {
+    alpha?: number
+    beta?: number
+    radius?: number
+    target?: [number, number, number]
+    position?: [number, number, number]
+  }
 }
 
 export type ResolvedProjectModel = {
