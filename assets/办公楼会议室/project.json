@@ -1,12 +1,6 @@
 {
   "title": "办公楼会议室",
-  "models": ["target.glb"],
-  "mode": "baked",
-  "lightmaps": [
-    {
-      "mesh": "Plane001",
-      "texture": "Plane001_ao_light.png",
-      "uv": 1
-    }
-  ]
+  "models": ["纯地面融合.glb", "建筑精简后.glb"],
+  "mode": "baked"
+
 }

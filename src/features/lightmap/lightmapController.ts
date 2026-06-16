@@ -35,6 +35,7 @@ export type ProjectLightmapMapping = {
   targetType: 'mesh' | 'material'
   url: string
   fileName: string
+  model?: string
   uv: number
   invertY: boolean
   level: number
@@ -256,6 +257,17 @@ export const createLightmapController = ({
     const target = normalizeTargetName(mapping.target)
 
     return getSelectableMeshes().filter((mesh) => {
+      if (mapping.model) {
+        const modelName = mapping.model.replace(/\.glb$/i, '').toLowerCase() + 'root'
+        let top: any = mesh
+        while (top.parent) {
+          top = top.parent
+        }
+        if (!top.name.toLowerCase().startsWith(modelName)) {
+          return false
+        }
+      }
+
       const candidates = mapping.targetType === 'material'
         ? getMaterialNameCandidates(mesh)
         : getMeshNameCandidates(mesh)

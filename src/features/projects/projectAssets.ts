@@ -4,6 +4,7 @@ export type ProjectLightmapConfig = {
   mesh?: string
   material?: string
   texture: string
+  model?: string
   uv?: number
   invertY?: boolean
   level?: number
@@ -37,6 +38,7 @@ export type ResolvedProjectLightmap = {
   targetType: 'mesh' | 'material'
   url: string
   fileName: string
+  model?: string
   uv: number
   invertY: boolean
   level: number
@@ -126,6 +128,7 @@ const resolveConfiguredLightmaps = (projectId: string, config: ProjectConfig): R
       targetType: lightmap.material ? 'material' : 'mesh',
       url,
       fileName: getFileName(lightmap.texture),
+      model: lightmap.model,
       uv: lightmap.uv ?? 1,
       invertY: lightmap.invertY ?? false,
       level: lightmap.level ?? 1,
