@@ -29,6 +29,9 @@ export type AppDom = {
   frameOverlay: HTMLDivElement
   frameOverlayClose: HTMLButtonElement
   frameGrid: HTMLDivElement
+  selectionModePanel: HTMLDivElement
+  selectModePartButton: HTMLButtonElement
+  selectModeModelButton: HTMLButtonElement
 }
 
 export const renderAppShell = (app: HTMLDivElement) => {
@@ -75,9 +78,11 @@ export const renderAppShell = (app: HTMLDivElement) => {
   <button id="panelCollapseToggle" class="panel-collapse-toggle" type="button" aria-label="Toggle panel" title="Toggle panel">&gt;</button>
   <aside id="outlinerPanel" class="outliner-panel" aria-label="Scene panel">
     <header id="sceneTabs" class="outliner-tabs" aria-label="Scene panel tabs"></header>
-    <div class="config-actions" aria-label="Config actions">
-      <button id="saveConfig" type="button">保存</button>
-      <button id="resetConfig" type="button">重置</button>
+    <div id="selectionModePanel" class="config-actions" aria-label="Selection mode" style="display: none;">
+      <button id="selectModePart" type="button" class="active">选择零件</button>
+      <button id="selectModeModel" type="button">选择整模</button>
+      <button id="saveConfig" type="button" style="display: none;">保存</button>
+      <button id="resetConfig" type="button" style="display: none;">重置</button>
     </div>
     <section id="sceneOutline" class="outliner-tree"></section>
     <section id="detailPanel" class="detail-panel" hidden></section>
@@ -154,4 +159,7 @@ export const queryAppDom = (): AppDom => ({
   frameOverlay: requireElement<HTMLDivElement>('#frameOverlay', 'Frame overlay'),
   frameOverlayClose: requireElement<HTMLButtonElement>('#frameOverlayClose', 'Frame overlay close'),
   frameGrid: requireElement<HTMLDivElement>('#frameGrid', 'Frame grid'),
+  selectionModePanel: requireElement<HTMLDivElement>('#selectionModePanel', 'Selection mode panel'),
+  selectModePartButton: requireElement<HTMLButtonElement>('#selectModePart', 'Select part button'),
+  selectModeModelButton: requireElement<HTMLButtonElement>('#selectModeModel', 'Select model button'),
 })

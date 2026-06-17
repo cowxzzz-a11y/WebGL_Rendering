@@ -55,7 +55,7 @@ import { createRealtimeRenderingController } from './features/rendering/realtime
 import type { RealtimeRenderingController } from './features/rendering/realtimeRuntime'
 import { renderGeneralPanelContent, renderViewportPanelContent } from './features/panels/viewerPanels'
 import { createDynamicDetailsRegistry } from './features/details/dynamicDetailsRegistry'
-import { createMaterialDetail as createMaterialDetailDescriptor, createMeshDetail as createMeshDetailDescriptor } from './features/details/modelDetails'
+import { createMaterialDetail as createMaterialDetailDescriptor, createMeshDetail as createMeshDetailDescriptor, createModelDetail as createModelDetailDescriptor } from './features/details/modelDetails'
 import { registerStaticDetails } from './features/details/staticDetails'
 import { getCurrentModelSignature as getModelSignature } from './features/model/modelIdentity'
 import { setupModelImportControls } from './features/model/modelImportControls'
@@ -118,10 +118,14 @@ const {
   frameOverlay,
   frameOverlayClose,
   frameGrid,
+  selectionModePanel,
+  selectModePartButton,
+  selectModeModelButton,
 } = queryAppDom()
 
 let activeTabId = 'tech'
 let selectedDetailId: string | null = null
+let selectionMode: 'part' | 'model' = 'part'
 let currentMeshNodes: OutlineNode[] = []
 let importedFileName = '\u672a\u5bfc\u5165'
 let generalActiveSubTab = '\u73af\u5883'
@@ -497,6 +501,9 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
   sceneOutline.textContent = ''
   sceneOutline.classList.toggle('outliner-tree-outline', activeTab.id === 'outline')
 
+  const showSelectionPanel = activeTab.id === 'outline' && currentModelRoots.length > 0
+  selectionModePanel.style.display = showSelectionPanel ? 'grid' : 'none'
+
   if (activeTab.id === 'tech') {
     renderTechPanel()
     return
@@ -542,6 +549,10 @@ const renderDetail = (descriptor: DetailDescriptor) => {
 const selectDetail = (detailId: string | undefined) => {
   if (!detailId) {
     return
+  }
+
+  if (detailId.startsWith('model:')) {
+    clearMeshSelection()
   }
 
   const getDetail = detailRegistry.get(detailId)
@@ -664,6 +675,8 @@ selectionController = createSelectionController({
     }
   },
   onOutlineChanged: () => setOutline(currentMeshNodes),
+  getSelectionMode: () => selectionMode,
+  getModelRootForMesh,
 })
 
 billboardController = createBillboardController({
@@ -955,10 +968,54 @@ const createMaterialDetail = (material: Material): DetailDescriptor => {
   }
 }
 
+const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: number) => {
+  root.metadata = root.metadata || {}
+  root.metadata.explosionIntensity = intensity
+
+  const scaleFactor = root.metadata.modelRadius * 1.5
+
+  const sortedMeshes = [...meshes].sort((a, b) => {
+    let depthA = 0
+    let depthB = 0
+    let currA = a.parent
+    let currB = b.parent
+    while (currA && currA !== root) { depthA++; currA = currA.parent; }
+    while (currB && currB !== root) { depthB++; currB = currB.parent; }
+    return depthA - depthB
+  })
+
+  sortedMeshes.forEach((mesh) => {
+    const originalPosLocal = mesh.metadata.originalPositionRootLocal
+    if (!originalPosLocal) return
+
+    const dir = mesh.metadata.explosionDirRootLocal
+    const dist = mesh.metadata.originalDistance || 0
+
+    const targetPosRootLocal = originalPosLocal.add(dir.scale(intensity * scaleFactor * (0.5 + 0.5 * dist)))
+    const targetWorldPos = Vector3.TransformCoordinates(targetPosRootLocal, root.getWorldMatrix())
+
+    mesh.setAbsolutePosition(targetWorldPos)
+    mesh.computeWorldMatrix(true)
+  })
+
+  updateSelectionBox()
+}
+
+const createModelDetail = (root: TransformNode, meshes: AbstractMesh[]) => createModelDetailDescriptor({
+  root,
+  meshes,
+  onExplosionChange: (value) => {
+    applyExplosion(root, meshes, value)
+  }
+})
+
 const dynamicDetailsRegistry = createDynamicDetailsRegistry({
   detailRegistry,
   createMeshDetail,
   createMaterialDetail,
+  createModelDetail,
+  getModelRoots: () => currentModelRoots,
+  getMeshesForRoot,
 })
 
 registerStaticDetails({
@@ -1269,6 +1326,46 @@ const loadModel = async (
   refreshImportedRenderingState()
   importedMaterialTotal += materials.size
   importedFileNames.push(fileName)
+
+  // Initialize explosion metadata and cached positions relative to model root
+  const bounds = root.getHierarchyBoundingVectors(true, (m) => result.meshes.includes(m))
+  const modelCenter = bounds.min.add(bounds.max).scale(0.5)
+  const modelRadius = Math.max(bounds.max.subtract(bounds.min).length() * 0.5, 0.5)
+
+  root.metadata = root.metadata || {}
+  root.metadata.modelCenter = modelCenter
+  root.metadata.modelRadius = modelRadius
+  root.metadata.explosionIntensity = 0
+
+  root.computeWorldMatrix(true)
+  const invRootMatrix = root.getWorldMatrix().clone().invert()
+
+  result.meshes.forEach((mesh) => {
+    mesh.metadata = mesh.metadata || {}
+    mesh.metadata.originalPosition = mesh.position.clone()
+
+    mesh.computeWorldMatrix(true)
+    const originalWorldPos = mesh.getAbsolutePosition().clone()
+    const originalPosRootLocal = Vector3.TransformCoordinates(originalWorldPos, invRootMatrix)
+    mesh.metadata.originalWorldPosition = originalWorldPos
+    mesh.metadata.originalPositionRootLocal = originalPosRootLocal
+
+    const meshCenterWorld = mesh.getBoundingInfo().boundingBox.centerWorld.clone()
+    const meshCenterRootLocal = Vector3.TransformCoordinates(meshCenterWorld, invRootMatrix)
+    const modelCenterRootLocal = Vector3.TransformCoordinates(modelCenter, invRootMatrix)
+
+    let dirRootLocal = meshCenterRootLocal.subtract(modelCenterRootLocal)
+    if (dirRootLocal.length() < 0.001) {
+      dirRootLocal = originalPosRootLocal.clone()
+      if (dirRootLocal.length() < 0.001) {
+        dirRootLocal = new Vector3(0, 1, 0)
+      }
+    }
+    const originalDistance = dirRootLocal.length()
+    mesh.metadata.explosionDirRootLocal = dirRootLocal.normalize()
+    mesh.metadata.originalDistance = originalDistance
+  })
+
   dynamicDetailsRegistry.registerImportedDetails(result.meshes, new Set<Material>(materials))
   rebuildImportedOutline()
   frameHierarchy(root, result.meshes)
@@ -1288,6 +1385,25 @@ setupModelImportControls({
   loadModel: (file, fileName, replaceExisting) => loadModel(file, fileName, replaceExisting),
   showTemporaryStatus,
   setStatus,
+})
+
+const updateSelectionModeUI = () => {
+  selectModePartButton.classList.toggle('active', selectionMode === 'part')
+  selectModeModelButton.classList.toggle('active', selectionMode === 'model')
+}
+
+selectModePartButton.addEventListener('click', () => {
+  if (selectionMode === 'part') return
+  selectionMode = 'part'
+  updateSelectionModeUI()
+  clearMeshSelection()
+})
+
+selectModeModelButton.addEventListener('click', () => {
+  if (selectionMode === 'model') return
+  selectionMode = 'model'
+  updateSelectionModeUI()
+  clearMeshSelection()
 })
 
 const keyboardNavigationController = createKeyboardNavigationController({

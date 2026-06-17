@@ -1,11 +1,13 @@
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Material } from '@babylonjs/core/Materials/material'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { DetailDescriptor } from '../../shared/types'
 import {
   checkboxItem,
   colorItem,
   numberItem,
+  textItem,
   vectorItems,
 } from '../../ui/detailPanel'
 
@@ -149,3 +151,52 @@ export const createMaterialDetail = ({
     },
   ],
 })
+
+type ModelDetailOptions = {
+  root: TransformNode
+  meshes: AbstractMesh[]
+  onExplosionChange: (value: number) => void
+}
+
+export const createModelDetail = ({
+  root,
+  meshes,
+  onExplosionChange,
+}: ModelDetailOptions): DetailDescriptor => {
+  root.metadata = root.metadata || {}
+  const intensity = root.metadata.explosionIntensity ?? 0
+
+  return {
+    title: root.name.replace(/Root$/i, ''),
+    kind: '模型',
+    sections: [
+      {
+        title: '基本信息',
+        items: [
+          textItem('零件数量', String(meshes.length)),
+        ],
+      },
+      {
+        title: '结构炸开',
+        items: [
+          numberItem('炸开力度', intensity, 0, 1, 0.01, (value) => {
+            onExplosionChange(value)
+          }),
+        ],
+      },
+      {
+        title: '位置',
+        items: vectorItems(root.position, ['X', 'Y', 'Z'], -200, 200, 0.01),
+      },
+      {
+        title: '旋转',
+        items: vectorItems(root.rotation, ['X', 'Y', 'Z'], -Math.PI, Math.PI, 0.01),
+      },
+      {
+        title: '缩放',
+        items: vectorItems(root.scaling, ['X', 'Y', 'Z'], 0.01, 10, 0.01),
+      },
+    ],
+  }
+}
+

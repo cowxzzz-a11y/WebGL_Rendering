@@ -37,6 +37,7 @@ export const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
 export const makeModelOutlineNode = (fileName: string, root: TransformNode, meshes: AbstractMesh[]): OutlineNode => ({
   name: fileName,
   kind: 'model',
+  detailId: `model:${root.uniqueId}`,
   focusTarget: root,
   visibilityTarget: {
     getVisible: () => root.isEnabled(false),
