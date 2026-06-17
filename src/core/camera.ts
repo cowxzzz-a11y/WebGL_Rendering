@@ -96,11 +96,13 @@ export const tuneTouchCameraControls = ({
   const controlRadius = getControlRadius(sceneRadius)
   const pointersInput = camera.inputs.attached.pointers as Partial<ArcRotateTouchInput> | undefined
 
+  const panningSens = clamp(defaultPanningSensibility * (8 / controlRadius), 2, 2000)
+
   camera.lowerRadiusLimit = Math.max(controlRadius * 0.02, 0.03)
   camera.upperRadiusLimit = Math.max(controlRadius * 12, 8)
   camera.wheelDeltaPercentage = getWheelDeltaPercentage(controlRadius)
   camera.pinchDeltaPercentage = getPinchDeltaPercentage(controlRadius)
-  camera.panningSensibility = defaultPanningSensibility
+  camera.panningSensibility = panningSens
   camera.panningInertia = 0.35
   camera.panningDistanceLimit = Math.max(controlRadius * 1.25, 1.5)
   camera.panningOriginTarget.copyFrom(sceneCenter ?? camera.target)
@@ -117,7 +119,7 @@ export const tuneTouchCameraControls = ({
   pointersInput.useNaturalPinchZoom = true
   pointersInput.pinchPrecision = isMobileViewport() ? 22 : 28
   pointersInput.pinchDeltaPercentage = getPinchDeltaPercentage(controlRadius)
-  pointersInput.panningSensibility = defaultPanningSensibility
+  pointersInput.panningSensibility = panningSens
   pointersInput.angularSensibilityX = isMobileViewport() ? 780 : 1000
   pointersInput.angularSensibilityY = isMobileViewport() ? 780 : 1000
 }

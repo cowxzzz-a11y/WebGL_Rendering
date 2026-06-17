@@ -294,7 +294,7 @@ export const createSelectionController = ({
       from: camera.target.clone(),
       to: bounds.center,
       fromRadius: camera.radius,
-      toRadius: Math.max(bounds.radius * 2.8, 2),
+      toRadius: Math.max(bounds.radius * 2.5, camera.lowerRadiusLimit ?? 0.1),
       target,
     }
   }
@@ -311,7 +311,7 @@ export const createSelectionController = ({
       from: camera.target.clone(),
       to: bounds.center,
       fromRadius: camera.radius,
-      toRadius: Math.max(bounds.radius * 2.8, 2),
+      toRadius: Math.max(bounds.radius * 2.5, camera.lowerRadiusLimit ?? 0.1),
       target,
     }
   }

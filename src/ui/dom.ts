@@ -32,6 +32,7 @@ export type AppDom = {
   selectionModePanel: HTMLDivElement
   selectModePartButton: HTMLButtonElement
   selectModeModelButton: HTMLButtonElement
+  resetCameraButton: HTMLButtonElement
 }
 
 export const renderAppShell = (app: HTMLDivElement) => {
@@ -43,6 +44,11 @@ export const renderAppShell = (app: HTMLDivElement) => {
       <path d="M10.8 5.2 4 12l6.8 6.8 1.4-1.4L7.8 13H20v-2H7.8l4.4-4.4-1.4-1.4z" fill="currentColor" />
     </svg>
     <span>项目</span>
+  </button>
+  <button id="resetCameraButton" class="reset-camera-button" type="button" aria-label="重置视角" title="重置视角">
+    <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20">
+      <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" fill="currentColor"/>
+    </svg>
   </button>
   <div class="share-actions" data-url="${shareUrl}" data-title="${shareTitle}" data-desc="${shareDescription}">
     <button id="frameToggle" class="frame-toggle-button share-button" type="button" aria-label="Frame stats" title="Frame stats">
@@ -162,4 +168,5 @@ export const queryAppDom = (): AppDom => ({
   selectionModePanel: requireElement<HTMLDivElement>('#selectionModePanel', 'Selection mode panel'),
   selectModePartButton: requireElement<HTMLButtonElement>('#selectModePart', 'Select part button'),
   selectModeModelButton: requireElement<HTMLButtonElement>('#selectModeModel', 'Select model button'),
+  resetCameraButton: requireElement<HTMLButtonElement>('#resetCameraButton', 'Reset camera button'),
 })

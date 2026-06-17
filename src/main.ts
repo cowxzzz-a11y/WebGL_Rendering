@@ -121,6 +121,7 @@ const {
   selectionModePanel,
   selectModePartButton,
   selectModeModelButton,
+  resetCameraButton,
 } = queryAppDom()
 
 let activeTabId = 'tech'
@@ -1404,6 +1405,23 @@ selectModeModelButton.addEventListener('click', () => {
   selectionMode = 'model'
   updateSelectionModeUI()
   clearMeshSelection()
+})
+
+resetCameraButton.addEventListener('click', () => {
+  if (currentModelRoots.length > 0 && importedMeshes.length > 0) {
+    frameCurrentModels()
+  } else {
+    sceneCenter = Vector3.Zero()
+    sceneRadius = 8
+    tuneCameraControlsForCurrentScene()
+    clearCameraInertia(camera)
+    camera.setTarget(new Vector3(0, 1.5, 0))
+    camera.radius = 8
+    camera.alpha = -Math.PI / 2.15
+    camera.beta = Math.PI / 2.62
+    updateCameraDepthRange()
+    updateLightDirectionHelpers()
+  }
 })
 
 const keyboardNavigationController = createKeyboardNavigationController({
