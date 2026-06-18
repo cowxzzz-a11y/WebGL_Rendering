@@ -142,6 +142,7 @@ export const createSelectionController = ({
   let selectedModel: TransformNode | null = null
   let selectionBox: LinesMesh | null = null
   let focusAnimation: FocusAnimation | null = null
+  let lastFocusedTarget: FocusTarget | null = null
   let pointerSelectionState:
     | {
         x: number
@@ -231,6 +232,7 @@ export const createSelectionController = ({
       selectedMesh = null
     }
     selectedModel = null
+    lastFocusedTarget = null
 
     selectionBox?.dispose()
     selectionBox = null
@@ -259,6 +261,10 @@ export const createSelectionController = ({
   const selectMesh = (mesh: AbstractMesh) => {
     if (selectedMesh && selectedMesh !== mesh) {
       selectedMesh.showBoundingBox = false
+      lastFocusedTarget = null
+    }
+    if (selectedMesh === null) {
+      lastFocusedTarget = null
     }
     selectedModel = null
 
@@ -272,14 +278,33 @@ export const createSelectionController = ({
       selectedMesh.showBoundingBox = false
       selectedMesh = null
     }
+    if (selectedModel !== root) {
+      lastFocusedTarget = null
+    }
     selectedModel = root
     updateSelectionBox()
     onSelectDetail(`model:${root.uniqueId}`)
   }
 
+  const getFocusRadius = (bounds: { center: Vector3, radius: number }, forceResetZoom: boolean) => {
+    const currentRadius = camera.radius
+    const idealRadius = Math.max(bounds.radius * 2.5, camera.lowerRadiusLimit ?? 0.1)
+    
+    if (forceResetZoom) {
+      return idealRadius
+    }
+
+    if (selectedMesh) {
+      // Always preserve the current radius when focusing/rotating a single mesh/part
+      return currentRadius
+    }
+    
+    return idealRadius
+  }
+
   const startSelectedFocusAnimation = () => {
     const target = selectedMesh || selectedModel
-    if (!target || focusAnimation?.target === target) {
+    if (!target || lastFocusedTarget === target) {
       return
     }
 
@@ -288,13 +313,14 @@ export const createSelectionController = ({
       return
     }
 
+    lastFocusedTarget = target
     focusAnimation = {
       elapsed: 0,
       duration: 0.55,
       from: camera.target.clone(),
       to: bounds.center,
       fromRadius: camera.radius,
-      toRadius: Math.max(bounds.radius * 2.5, camera.lowerRadiusLimit ?? 0.1),
+      toRadius: getFocusRadius(bounds, false),
       target,
     }
   }
@@ -305,13 +331,14 @@ export const createSelectionController = ({
       return
     }
 
+    lastFocusedTarget = target
     focusAnimation = {
       elapsed: 0,
       duration: 0.55,
       from: camera.target.clone(),
       to: bounds.center,
       fromRadius: camera.radius,
-      toRadius: Math.max(bounds.radius * 2.5, camera.lowerRadiusLimit ?? 0.1),
+      toRadius: getFocusRadius(bounds, true),
       target,
     }
   }

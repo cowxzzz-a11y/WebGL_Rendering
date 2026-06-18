@@ -969,9 +969,13 @@ const createMaterialDetail = (material: Material): DetailDescriptor => {
   }
 }
 
-const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: number) => {
+const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: number, mode?: string) => {
   root.metadata = root.metadata || {}
   root.metadata.explosionIntensity = intensity
+  if (mode !== undefined) {
+    root.metadata.explosionMode = mode
+  }
+  const currentMode = root.metadata.explosionMode || 'radial'
 
   const scaleFactor = root.metadata.modelRadius * 1.5
 
@@ -985,18 +989,87 @@ const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: 
     return depthA - depthB
   })
 
+  // Precompute rank-based ratio map for axis-aligned modes
+  const ratioMap = new Map<string, number>()
+  if (currentMode === 'x' || currentMode === 'y' || currentMode === 'z') {
+    const modelSizeLocal = root.metadata.modelSizeLocal || new Vector3(1, 1, 1)
+    
+    // 1. Gather all meshes with their center coordinates along the selected axis
+    const meshCoords = meshes.map((mesh) => {
+      const originalPosLocal = mesh.metadata.originalPositionRootLocal
+      if (!originalPosLocal) return null
+      const meshCenterLocal = mesh.metadata.meshCenterRootLocal || originalPosLocal
+
+      let coord = 0
+      if (currentMode === 'x') coord = meshCenterLocal.x
+      else if (currentMode === 'y') coord = meshCenterLocal.y
+      else if (currentMode === 'z') coord = meshCenterLocal.z
+
+      return { id: mesh.uniqueId.toString(), coord }
+    }).filter(item => item !== null) as Array<{ id: string, coord: number }>
+
+    // 2. Sort meshes by coordinates along that axis
+    meshCoords.sort((a, b) => a.coord - b.coord)
+
+    // 3. Group coordinates that are very close (tolerance = 1% of axis size) to maintain alignment
+    const axisSize = currentMode === 'x' ? modelSizeLocal.x : (currentMode === 'y' ? modelSizeLocal.y : modelSizeLocal.z)
+    const tolerance = Math.max(axisSize * 0.01, 0.001)
+
+    const groups: Array<Array<{ id: string, coord: number }>> = []
+    meshCoords.forEach((item) => {
+      if (groups.length === 0) {
+        groups.push([item])
+      } else {
+        const lastGroup = groups[groups.length - 1]
+        const lastItem = lastGroup[lastGroup.length - 1]
+        if (Math.abs(item.coord - lastItem.coord) <= tolerance) {
+          lastGroup.push(item)
+        } else {
+          groups.push([item])
+        }
+      }
+    })
+
+    // 4. Assign rank ratio between -1 and 1 based on group index
+    const numGroups = groups.length
+    const maxOffset = (numGroups - 1) / 2
+    groups.forEach((group, groupIndex) => {
+      const rankOffset = groupIndex - maxOffset
+      const ratio = maxOffset > 0 ? rankOffset / maxOffset : 0
+      group.forEach((item) => {
+        ratioMap.set(item.id, ratio)
+      })
+    })
+  }
+
   sortedMeshes.forEach((mesh) => {
     const originalPosLocal = mesh.metadata.originalPositionRootLocal
     if (!originalPosLocal) return
 
-    const dir = mesh.metadata.explosionDirRootLocal
-    const dist = mesh.metadata.originalDistance || 0
+    if (currentMode === 'x' || currentMode === 'y' || currentMode === 'z') {
+      const ratio = ratioMap.get(mesh.uniqueId.toString()) ?? 0
 
-    const targetPosRootLocal = originalPosLocal.add(dir.scale(intensity * scaleFactor * (0.5 + 0.5 * dist)))
-    const targetWorldPos = Vector3.TransformCoordinates(targetPosRootLocal, root.getWorldMatrix())
+      let axisDir = new Vector3(0, 0, 0)
+      if (currentMode === 'x') axisDir = new Vector3(1, 0, 0)
+      else if (currentMode === 'y') axisDir = new Vector3(0, 1, 0)
+      else if (currentMode === 'z') axisDir = new Vector3(0, 0, 1)
 
-    mesh.setAbsolutePosition(targetWorldPos)
-    mesh.computeWorldMatrix(true)
+      const targetPosRootLocal = originalPosLocal.add(axisDir.scale(ratio * intensity * scaleFactor))
+      const targetWorldPos = Vector3.TransformCoordinates(targetPosRootLocal, root.getWorldMatrix())
+
+      mesh.setAbsolutePosition(targetWorldPos)
+      mesh.computeWorldMatrix(true)
+    } else {
+      // Radial mode
+      const dir = mesh.metadata.explosionDirRootLocal || new Vector3(0, 1, 0)
+      const dist = mesh.metadata.originalDistance || 0
+
+      const targetPosRootLocal = originalPosLocal.add(dir.scale(intensity * scaleFactor * (0.5 + 0.5 * dist)))
+      const targetWorldPos = Vector3.TransformCoordinates(targetPosRootLocal, root.getWorldMatrix())
+
+      mesh.setAbsolutePosition(targetWorldPos)
+      mesh.computeWorldMatrix(true)
+    }
   })
 
   updateSelectionBox()
@@ -1007,6 +1080,9 @@ const createModelDetail = (root: TransformNode, meshes: AbstractMesh[]) => creat
   meshes,
   onExplosionChange: (value) => {
     applyExplosion(root, meshes, value)
+  },
+  onExplosionModeChange: (value) => {
+    applyExplosion(root, meshes, root.metadata.explosionIntensity ?? 0, value)
   }
 })
 
@@ -1332,11 +1408,14 @@ const loadModel = async (
   const bounds = root.getHierarchyBoundingVectors(true, (m) => result.meshes.includes(m))
   const modelCenter = bounds.min.add(bounds.max).scale(0.5)
   const modelRadius = Math.max(bounds.max.subtract(bounds.min).length() * 0.5, 0.5)
+  const modelSizeLocal = bounds.max.subtract(bounds.min)
 
   root.metadata = root.metadata || {}
   root.metadata.modelCenter = modelCenter
   root.metadata.modelRadius = modelRadius
+  root.metadata.modelSizeLocal = modelSizeLocal
   root.metadata.explosionIntensity = 0
+  root.metadata.explosionMode = 'radial'
 
   root.computeWorldMatrix(true)
   const invRootMatrix = root.getWorldMatrix().clone().invert()
@@ -1365,6 +1444,7 @@ const loadModel = async (
     const originalDistance = dirRootLocal.length()
     mesh.metadata.explosionDirRootLocal = dirRootLocal.normalize()
     mesh.metadata.originalDistance = originalDistance
+    mesh.metadata.meshCenterRootLocal = meshCenterRootLocal
   })
 
   dynamicDetailsRegistry.registerImportedDetails(result.meshes, new Set<Material>(materials))

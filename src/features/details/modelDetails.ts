@@ -7,6 +7,7 @@ import {
   checkboxItem,
   colorItem,
   numberItem,
+  selectItem,
   textItem,
   vectorItems,
 } from '../../ui/detailPanel'
@@ -156,15 +157,18 @@ type ModelDetailOptions = {
   root: TransformNode
   meshes: AbstractMesh[]
   onExplosionChange: (value: number) => void
+  onExplosionModeChange: (value: string) => void
 }
 
 export const createModelDetail = ({
   root,
   meshes,
   onExplosionChange,
+  onExplosionModeChange,
 }: ModelDetailOptions): DetailDescriptor => {
   root.metadata = root.metadata || {}
   const intensity = root.metadata.explosionIntensity ?? 0
+  const mode = root.metadata.explosionMode ?? 'radial'
 
   return {
     title: root.name.replace(/Root$/i, ''),
@@ -179,6 +183,19 @@ export const createModelDetail = ({
       {
         title: '结构炸开',
         items: [
+          selectItem(
+            '炸开方向',
+            mode,
+            [
+              { label: '径向 (所有方向)', value: 'radial' },
+              { label: 'X 轴方向', value: 'x' },
+              { label: 'Y 轴方向', value: 'y' },
+              { label: 'Z 轴方向', value: 'z' },
+            ],
+            (value) => {
+              onExplosionModeChange(value)
+            },
+          ),
           numberItem('炸开力度', intensity, 0, 1, 0.01, (value) => {
             onExplosionChange(value)
           }),
