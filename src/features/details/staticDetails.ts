@@ -164,7 +164,7 @@ export const registerStaticDetails = ({
       {
         title: '\u5149\u7167',
         items: [
-          numberItem('\u5f3a\u5ea6', sunLight.intensity, 0, 3, 0.01, (value) => {
+          numberItem('\u5f3a\u5ea6', sunLight.intensity, 0, 10, 0.01, (value) => {
             sunLight.intensity = value
           }),
           colorItem('Diffuse', sunLight.diffuse, (value) => {

@@ -1,14 +1,15 @@
 import type { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import type { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
-import type { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline'
-import type { SSRRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssrRenderingPipeline'
 import { createCheckbox, createColorInput, createModule, createSelect, createSlider } from '../../ui/controls'
 
 type RealtimePanelOptions = {
   panel: HTMLElement
   sunLight: DirectionalLight
-  shadowGenerator: ShadowGenerator
+  getShadowGenerator: () => ShadowGenerator | undefined
+  ensureShadowGenerator: () => ShadowGenerator | undefined
+  getRealtimeEffectsEnabled: () => boolean
+  setRealtimeEffectsEnabled: (value: boolean) => void
   getShadowEnabled: () => boolean
   setShadowEnabled: (value: boolean) => void
   getShadowFilterMode: () => number
@@ -23,17 +24,10 @@ type RealtimePanelOptions = {
   setSsaoRadius: (value: number) => void
   getSsaoSamples: () => number
   setSsaoSamples: (value: number) => void
-  getSsrEnabled: () => boolean
-  setSsrEnabled: (value: boolean) => void
-  getSsaoPipeline: () => SSAO2RenderingPipeline | null
-  getSsrPipeline: () => SSRRenderingPipeline | null
-  ensureSsaoPipeline: () => SSAO2RenderingPipeline
-  ensureSsrPipeline: () => SSRRenderingPipeline
-  applyRealtimeShadowState: () => void
   applySsaoSettings: () => void
   flushSceneRenderCaches: () => void
   refreshImportedRenderingState: () => void
-  initShadowGenerator: () => void
+  applyRealtimeEffectsState: () => void
   resetSunLightHelper: () => void
   setSunLightHelperVisible: (value: boolean) => void
   getSunLightHelperVisible: () => boolean
@@ -81,7 +75,10 @@ const createRangeNumberRow = (
 export const renderRealtimePanel = ({
   panel,
   sunLight,
-  shadowGenerator,
+  getShadowGenerator,
+  ensureShadowGenerator,
+  getRealtimeEffectsEnabled,
+  setRealtimeEffectsEnabled,
   getShadowEnabled,
   setShadowEnabled,
   getShadowFilterMode,
@@ -96,27 +93,27 @@ export const renderRealtimePanel = ({
   setSsaoRadius,
   getSsaoSamples,
   setSsaoSamples,
-  getSsrEnabled,
-  setSsrEnabled,
-  getSsaoPipeline,
-  getSsrPipeline,
-  ensureSsaoPipeline,
-  ensureSsrPipeline,
-  applyRealtimeShadowState,
   applySsaoSettings,
   flushSceneRenderCaches,
   refreshImportedRenderingState,
-  initShadowGenerator,
+  applyRealtimeEffectsState,
   resetSunLightHelper,
   setSunLightHelperVisible,
   getSunLightHelperVisible,
   updateLightDirectionHelpers,
 }: RealtimePanelOptions) => {
+  const realtimeBody: HTMLElement[] = []
+  realtimeBody.push(createCheckbox('\u5b9e\u65f6\u6e32\u67d3\u603b\u5f00\u5173', getRealtimeEffectsEnabled(), (value) => {
+    setRealtimeEffectsEnabled(value)
+    applyRealtimeEffectsState()
+  }))
+  panel.append(createModule('\u5b9e\u65f6\u6e32\u67d3', realtimeBody))
+
   const sunBody: HTMLElement[] = []
   resetSunLightHelper()
   sunBody.push(createColorInput('\u5149\u6e90\u989c\u8272', sunLight.diffuse, (color) => { sunLight.diffuse = color }))
   sunBody.push(createColorInput('Specular', sunLight.specular, (color) => { sunLight.specular = color }))
-  sunBody.push(createSlider('\u5149\u6e90\u5f3a\u5ea6', sunLight.intensity, 0, 3, 0.01, (value) => { sunLight.intensity = value }))
+  sunBody.push(createSlider('\u5149\u6e90\u5f3a\u5ea6', sunLight.intensity, 0, 10, 0.01, (value) => { sunLight.intensity = value }))
   sunBody.push(createCheckbox('\u65b9\u5411\u53ef\u89c6\u5316', getSunLightHelperVisible(), (value) => {
     setSunLightHelperVisible(value)
     updateLightDirectionHelpers()
@@ -182,10 +179,8 @@ export const renderRealtimePanel = ({
   panel.append(createModule('\u592a\u9633\u5149', sunBody))
 
   const shadowBody: HTMLElement[] = []
-  applyRealtimeShadowState()
   shadowBody.push(createCheckbox('\u9634\u5f71\u5f00\u5173', getShadowEnabled(), (value) => {
     setShadowEnabled(value)
-    applyRealtimeShadowState()
     flushSceneRenderCaches()
   }))
 
@@ -194,7 +189,11 @@ export const renderRealtimePanel = ({
   const currentFilter = filterNames.find((key) => filterMap[key] === getShadowFilterMode()) || 'PCF'
   shadowBody.push(createSelect('\u9634\u5f71\u7c7b\u578b', filterNames, currentFilter, (value) => {
     const nextMode = filterMap[value]
+    const shadowGenerator = ensureShadowGenerator()
     setShadowFilterMode(nextMode)
+    if (!shadowGenerator) {
+      return
+    }
     if (nextMode === 1) {
       shadowGenerator.useExponentialShadowMap = true
     } else if (nextMode === 6) {
@@ -204,26 +203,27 @@ export const renderRealtimePanel = ({
     }
   }))
 
-  shadowBody.push(createSlider('\u9634\u5f71\u900f\u660e\u5ea6', shadowGenerator.darkness, 0, 1, 0.01, (value) => { shadowGenerator.darkness = value }))
-  shadowBody.push(createSlider('Bias', shadowGenerator.bias, 0, 0.01, 0.0001, (value) => { shadowGenerator.bias = value }))
-  shadowBody.push(createSlider('\u6b63\u5e38\u504f\u7f6e', shadowGenerator.normalBias, 0, 0.1, 0.001, (value) => { shadowGenerator.normalBias = value }))
+  shadowBody.push(createSlider('\u9634\u5f71\u900f\u660e\u5ea6', getShadowGenerator()?.darkness ?? 0, 0, 1, 0.01, (value) => {
+    const shadowGenerator = ensureShadowGenerator()
+    if (shadowGenerator) shadowGenerator.darkness = value
+  }))
+  shadowBody.push(createSlider('Bias', getShadowGenerator()?.bias ?? 0.0001, 0, 0.01, 0.0001, (value) => {
+    const shadowGenerator = ensureShadowGenerator()
+    if (shadowGenerator) shadowGenerator.bias = value
+  }))
+  shadowBody.push(createSlider('\u6b63\u5e38\u504f\u7f6e', getShadowGenerator()?.normalBias ?? 0.01, 0, 0.1, 0.001, (value) => {
+    const shadowGenerator = ensureShadowGenerator()
+    if (shadowGenerator) shadowGenerator.normalBias = value
+  }))
   shadowBody.push(createSlider('\u8d28\u91cf', getShadowMapSize(), 512, 4096, 512, (value) => {
     setShadowMapSize(value)
-    initShadowGenerator()
+    applyRealtimeEffectsState()
   }))
   panel.append(createModule('\u5b9e\u65f6\u9634\u5f71', shadowBody))
 
   const ssaoBody: HTMLElement[] = []
   ssaoBody.push(createCheckbox('SSAO \u5f00\u5173', getSsaoEnabled(), (value) => {
     setSsaoEnabled(value)
-
-    if (value) {
-      ensureSsaoPipeline()
-      applySsaoSettings()
-    } else if (getSsaoPipeline()) {
-      getSsaoPipeline()!.totalStrength = 0
-    }
-
     refreshImportedRenderingState()
   }))
   ssaoBody.push(createSlider('\u906e\u853d\u5f3a\u5ea6', getSsaoStrength(), 0, 3, 0.01, (value) => {
@@ -239,38 +239,4 @@ export const renderRealtimePanel = ({
     applySsaoSettings()
   }))
   panel.append(createModule('SSAO 2', ssaoBody))
-
-  const ssrBody: HTMLElement[] = []
-  ssrBody.push(createCheckbox('SSR \u5f00\u5173', getSsrPipeline()?.isEnabled ?? getSsrEnabled(), (value) => {
-    setSsrEnabled(value)
-
-    if (value) {
-      ensureSsrPipeline().isEnabled = true
-    } else if (getSsrPipeline()) {
-      getSsrPipeline()!.isEnabled = false
-    }
-
-    refreshImportedRenderingState()
-  }))
-  ssrBody.push(createSlider('\u53cd\u5c04\u5f3a\u5ea6', getSsrPipeline()?.strength ?? 1, 0, 2, 0.01, (value) => {
-    const pipeline = getSsrPipeline()
-    if (pipeline) pipeline.strength = value
-  }))
-  ssrBody.push(createRangeNumberRow('\u6700\u5927\u8ddd\u79bb', getSsrPipeline()?.maxDistance ?? 1000, 0, 5000, 1, (value) => {
-    const pipeline = getSsrPipeline()
-    if (pipeline) pipeline.maxDistance = value
-  }))
-  ssrBody.push(createRangeNumberRow('\u6b65\u957f (Step)', getSsrPipeline()?.step ?? 5, 1, 20, 1, (value) => {
-    const pipeline = getSsrPipeline()
-    if (pipeline) pipeline.step = value
-  }))
-  ssrBody.push(createRangeNumberRow('\u539a\u5ea6 (Thickness)', getSsrPipeline()?.thickness ?? 2, 0.1, 20, 0.1, (value) => {
-    const pipeline = getSsrPipeline()
-    if (pipeline) pipeline.thickness = value
-  }))
-  ssrBody.push(createSlider('\u7c97\u7cd9\u5ea6', getSsrPipeline()?.roughnessFactor ?? 0.2, 0, 1, 0.01, (value) => {
-    const pipeline = getSsrPipeline()
-    if (pipeline) pipeline.roughnessFactor = value
-  }))
-  panel.append(createModule('SSR', ssrBody))
 }

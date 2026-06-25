@@ -23,9 +23,16 @@ const enginePreferences: ViewerEnginePreference[] = ['auto', 'webgl2', 'webgpu']
 export const normalizeViewerEnginePreference = (value: string | null | undefined): ViewerEnginePreference =>
   enginePreferences.includes(value as ViewerEnginePreference) ? value as ViewerEnginePreference : 'auto'
 
-export const getStoredViewerEnginePreference = () =>
-  normalizeViewerEnginePreference(new URLSearchParams(window.location.search).get('renderer')
-    ?? window.localStorage.getItem(viewerEnginePreferenceStorageKey))
+export const getStoredViewerEnginePreference = () => {
+  const urlPreference = new URLSearchParams(window.location.search).get('renderer')
+
+  if (urlPreference) {
+    return normalizeViewerEnginePreference(urlPreference)
+  }
+
+  const storedPreference = normalizeViewerEnginePreference(window.localStorage.getItem(viewerEnginePreferenceStorageKey))
+  return storedPreference === 'webgpu' ? 'webgl2' : storedPreference
+}
 
 export const setStoredViewerEnginePreference = (preference: ViewerEnginePreference) => {
   window.localStorage.setItem(viewerEnginePreferenceStorageKey, preference)
@@ -40,8 +47,7 @@ const createWebGlEngine = (canvas: HTMLCanvasElement) =>
     stencil: true,
   })
 
-const shouldUseWebGpuForAuto = (webgpuSupported: boolean, isConstrainedMobileRuntime: boolean) =>
-  webgpuSupported && !isConstrainedMobileRuntime
+const shouldUseWebGpuForAuto = (_webgpuSupported: boolean, _isConstrainedMobileRuntime: boolean) => false
 
 const createEngine = async (
   canvas: HTMLCanvasElement,
@@ -106,7 +112,7 @@ export const createViewerEngineScene = async ({
   const scene = new Scene(engine)
   scene.clearColor = new Color4(0.79, 0.82, 0.84, 1)
   scene.environmentTexture = hasHdrEnvironments ? null : CubeTexture.CreateFromPrefilteredData(legacyEnvironmentUrl, scene)
-  scene.environmentIntensity = 0.55
+  scene.environmentIntensity = 0.35
 
   const imageProcessing = scene.imageProcessingConfiguration
   imageProcessing.isEnabled = true

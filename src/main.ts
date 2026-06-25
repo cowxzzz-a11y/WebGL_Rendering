@@ -2,6 +2,7 @@ import './styles/index.css'
 import '@babylonjs/core/Culling/ray'
 import '@babylonjs/core/Helpers/sceneHelpers'
 import '@babylonjs/core/Materials/Textures/Loaders/envTextureLoader'
+import '@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent'
 import '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
 import '@babylonjs/loaders/glTF'
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
@@ -13,7 +14,6 @@ import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
 import '@babylonjs/core/Rendering/prePassRendererSceneComponent'
-import { BaseTexture } from '@babylonjs/core/Materials/Textures/baseTexture'
 import { Material } from '@babylonjs/core/Materials/material'
 import { ImportMeshAsync } from '@babylonjs/core/Loading/sceneLoader'
 import type { ViewerConfig } from './features/config/viewerConfig'
@@ -93,6 +93,10 @@ const {
   canvas,
   projectManager,
   projectBackButton,
+  loadingScreen,
+  loadingPercent,
+  loadingBarFill,
+  loadingLabel,
   status,
   shareActions,
   contentBrowserButton,
@@ -181,6 +185,17 @@ const setStatus = (message: string | null) => {
   status.hidden = message === null
 }
 
+const setLoadingScreen = (visible: boolean, percent = 0, label = 'Loading model...') => {
+  const clampedPercent = clamp(percent, 0, 100)
+
+  loadingScreen.hidden = !visible
+  loadingPercent.textContent = `${Math.round(clampedPercent)}%`
+  loadingBarFill.style.width = `${clampedPercent}%`
+  loadingLabel.textContent = label
+  const progressBar = loadingScreen.querySelector<HTMLElement>('.loading-bar')
+  progressBar?.setAttribute('aria-valuenow', String(Math.round(clampedPercent)))
+}
+
 const setEnginePreference = (value: ViewerEnginePreference) => {
   setStoredViewerEnginePreference(value)
   const nextUrl = new URL(window.location.href)
@@ -232,9 +247,7 @@ const renderPanelTabs = createPanelTabsRenderer(
   () => setOutline(currentMeshNodes),
 )
 
-let techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
 let viewportActiveSubTab = '\u6444\u50cf\u673a'
-let savedLightmaps = new WeakMap<PBRMaterial, BaseTexture>()
 let realtimeController: RealtimeRenderingController
 
 const hideDetailPanel = () => {
@@ -253,38 +266,11 @@ const applyRealtimeShadowState = () => realtimeController.applyRealtimeShadowSta
 
 const resetRealtimePipelines = () => realtimeController.resetRealtimePipelines()
 
-const disableRealtimeEffects = () => realtimeController.disableRealtimeEffects()
-
-const enableRealtimeEffects = () => realtimeController.enableRealtimeEffects()
-
 const restoreRealtimeLightState = () => realtimeController.restoreRealtimeLightState()
 
 const updateGBufferRenderList = () => realtimeController.updateGBufferRenderList()
 
 const refreshImportedRenderingState = () => realtimeController.refreshImportedRenderingState()
-
-const disableLightmaps = () => {
-  scene.materials.forEach((mat) => {
-    if (mat instanceof PBRMaterial && mat.lightmapTexture) {
-      savedLightmaps.set(mat, mat.lightmapTexture)
-      mat.lightmapTexture = null
-      mat.markAsDirty(Material.TextureDirtyFlag)
-    }
-  })
-}
-
-const enableLightmaps = () => {
-  scene.materials.forEach((mat) => {
-    if (mat instanceof PBRMaterial && savedLightmaps.has(mat)) {
-      const tex = savedLightmaps.get(mat)
-      if (tex) {
-        mat.lightmapTexture = tex
-        mat.useLightmapAsShadowmap = true
-        mat.markAsDirty(Material.TextureDirtyFlag)
-      }
-    }
-  })
-}
 
 const getSelectableMeshes = () =>
   importedMeshes.filter((mesh) => mesh.name !== '_root' && mesh.name !== '__root__')
@@ -371,7 +357,10 @@ const renderRealtimePanel = (panel: HTMLElement) => {
   renderRealtimePanelContent({
     panel,
     sunLight,
-    shadowGenerator,
+    getShadowGenerator: () => shadowGenerator ?? undefined,
+    ensureShadowGenerator,
+    getRealtimeEffectsEnabled: realtimeController.getRealtimeEffectsEnabled,
+    setRealtimeEffectsEnabled: realtimeController.setRealtimeEffectsEnabled,
     getShadowEnabled: realtimeController.getShadowEnabled,
     setShadowEnabled: realtimeController.setShadowEnabled,
     getShadowFilterMode: realtimeController.getShadowFilterMode,
@@ -386,17 +375,10 @@ const renderRealtimePanel = (panel: HTMLElement) => {
     setSsaoRadius: realtimeController.setSsaoRadius,
     getSsaoSamples: realtimeController.getSsaoSamples,
     setSsaoSamples: realtimeController.setSsaoSamples,
-    getSsrEnabled: realtimeController.getSsrEnabled,
-    setSsrEnabled: realtimeController.setSsrEnabled,
-    getSsaoPipeline: realtimeController.getSsaoPipeline,
-    getSsrPipeline: realtimeController.getSsrPipeline,
-    ensureSsaoPipeline: realtimeController.ensureSsaoPipeline,
-    ensureSsrPipeline: realtimeController.ensureSsrPipeline,
-    applyRealtimeShadowState,
     applySsaoSettings: realtimeController.applySsaoSettings,
     flushSceneRenderCaches,
     refreshImportedRenderingState,
-    initShadowGenerator,
+    applyRealtimeEffectsState: realtimeController.applyRealtimeEffectsState,
     resetSunLightHelper: () => {
       lightHelperTouched.sun = false
       lightHelperVisible.sun = false
@@ -415,7 +397,6 @@ const renderBakePanel = (panel: HTMLElement) => {
 
 let techPanelCache: {
   panel: HTMLElement
-  subTabs: HTMLElement
   realtimePanel: HTMLElement
   bakePanel: HTMLElement
   shadowToggle: HTMLInputElement | null
@@ -429,61 +410,18 @@ const renderTechPanel = () => {
     const panel = document.createElement('div')
     panel.className = 'tech-panel'
 
-    const subTabs = document.createElement('div')
-    subTabs.className = 'tech-sub-tabs'
-
     const realtimePanel = document.createElement('div')
     const bakePanel = document.createElement('div')
 
-    const tabs = ['\u5b9e\u65f6\u6e32\u67d3', '\u6a21\u578b\u70d8\u70e4']
-    tabs.forEach((label) => {
-      const btn = document.createElement('button')
-      btn.className = 'tech-sub-tab'
-      btn.textContent = label
-      btn.ariaSelected = String(label === techActiveSubTab)
-      btn.addEventListener('click', () => {
-        if (label === techActiveSubTab) return
-
-        techActiveSubTab = label
-        try {
-          if (label === '\u6a21\u578b\u70d8\u70e4') {
-            disableRealtimeEffects()
-            enableLightmaps()
-          } else {
-            disableLightmaps()
-            enableRealtimeEffects()
-          }
-        } catch (e) {
-          console.error('Tech mode switch error', e)
-        }
-        subTabs.querySelectorAll('.tech-sub-tab').forEach((b) => {
-          ;(b as HTMLElement).ariaSelected = String((b as HTMLElement).textContent === label)
-        })
-        realtimePanel.hidden = label !== '\u5b9e\u65f6\u6e32\u67d3'
-        bakePanel.hidden = label !== '\u6a21\u578b\u70d8\u70e4'
-      })
-      subTabs.append(btn)
-    })
-
-    if (techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3') {
-      enableRealtimeEffects()
-    }
+    realtimeController.applyRealtimeEffectsState()
     renderRealtimePanel(realtimePanel)
     renderBakePanel(bakePanel)
 
-    if (techActiveSubTab !== '\u5b9e\u65f6\u6e32\u67d3') realtimePanel.hidden = true
-    if (techActiveSubTab !== '\u6a21\u578b\u70d8\u70e4') bakePanel.hidden = true
-
-    panel.append(subTabs, realtimePanel, bakePanel)
+    panel.append(realtimePanel, bakePanel)
     sceneOutline.append(panel)
-    const st = realtimePanel.querySelector('.tech-row-checkbox input[type=\'checkbox\']') as HTMLInputElement | null
-    techPanelCache = { panel, subTabs, realtimePanel, bakePanel, shadowToggle: st }
+    const st = realtimePanel.querySelectorAll('.tech-row-checkbox input[type=\'checkbox\']')[1] as HTMLInputElement | null
+    techPanelCache = { panel, realtimePanel, bakePanel, shadowToggle: st }
   } else {
-    techPanelCache.subTabs.querySelectorAll('.tech-sub-tab').forEach((b) => {
-      ;(b as HTMLElement).ariaSelected = String((b as HTMLElement).textContent === techActiveSubTab)
-    })
-    techPanelCache.realtimePanel.hidden = techActiveSubTab !== '\u5b9e\u65f6\u6e32\u67d3'
-    techPanelCache.bakePanel.hidden = techActiveSubTab !== '\u6a21\u578b\u70d8\u70e4'
     if (techPanelCache.shadowToggle) {
       techPanelCache.shadowToggle.checked = realtimeController.getShadowEnabled()
     }
@@ -724,18 +662,33 @@ lightDirectionHelpers = createLightDirectionHelperController({
   getSceneRadius: () => sceneRadius,
 })
 
-let shadowGenerator: ShadowGenerator
+let shadowGenerator: ShadowGenerator | null = null
 let shadowMapSize = 2048
 let shadowBias = 0.0001
 let shadowNormalBias = 0.01
-const initShadowGenerator = () => {
+const disposeShadowGenerator = () => {
   shadowGenerator?.dispose()
-  shadowGenerator = new ShadowGenerator(shadowMapSize, sunLight)
-  shadowGenerator.usePercentageCloserFiltering = true
-  shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH
-  shadowGenerator.bias = shadowBias
-  shadowGenerator.normalBias = shadowNormalBias
-  realtimeController.getRealtimeShadowMeshes().forEach((mesh) => shadowGenerator.addShadowCaster(mesh))
+  shadowGenerator = null
+}
+
+const ensureShadowGenerator = () => {
+  if (shadowGenerator) {
+    return shadowGenerator
+  }
+
+  const nextShadowGenerator = new ShadowGenerator(shadowMapSize, sunLight)
+  nextShadowGenerator.usePercentageCloserFiltering = true
+  nextShadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH
+  nextShadowGenerator.bias = shadowBias
+  nextShadowGenerator.normalBias = shadowNormalBias
+  realtimeController.getRealtimeShadowMeshes().forEach((mesh) => nextShadowGenerator.addShadowCaster(mesh))
+  shadowGenerator = nextShadowGenerator
+  return nextShadowGenerator
+}
+
+const initShadowGenerator = () => {
+  disposeShadowGenerator()
+  ensureShadowGenerator()
   applyRealtimeShadowState()
 }
 
@@ -747,15 +700,15 @@ realtimeController = createRealtimeRenderingController({
   scene,
   camera,
   sunLight,
-  getShadowGenerator: () => shadowGenerator,
+  getShadowGenerator: () => shadowGenerator ?? undefined,
+  ensureShadowGenerator,
+  disposeShadowGenerator,
   getImportedMeshes: () => importedMeshes,
   isBillboardMesh,
-  getRealtimeEnabled: () => techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3',
-  initShadowGenerator,
   flushSceneRenderCaches,
 })
 
-initShadowGenerator()
+realtimeController.applyRealtimeEffectsState()
 setOutline()
 const initialEnvironmentKey = getEnvironmentState().selectedEnvironmentKey
 if (!isConstrainedMobileRuntime && hdrEnvironmentOptions.length > 0 && initialEnvironmentKey) {
@@ -1127,7 +1080,9 @@ registerStaticDetails({
   getShadowBias: () => shadowBias,
   setShadowBias: (value) => {
     shadowBias = value
-    shadowGenerator.bias = value
+    if (shadowGenerator) {
+      shadowGenerator.bias = value
+    }
   },
   scene,
   imageProcessing,
@@ -1269,8 +1224,7 @@ const disposeCurrentModels = () => {
   importedMaterialTotal = 0
   importedFileNames = []
   importedFileName = '\u672a\u5bfc\u5165'
-  savedLightmaps = new WeakMap<PBRMaterial, BaseTexture>()
-  const shadowMap = shadowGenerator.getShadowMap()
+  const shadowMap = shadowGenerator?.getShadowMap()
   if (shadowMap) {
     shadowMap.renderList = []
   }
@@ -1324,7 +1278,7 @@ const deleteSelectedMesh = () => {
 
   const mesh = selectedMesh
   const deletedName = mesh.name || `Mesh ${mesh.uniqueId}`
-  const shadowMap = shadowGenerator.getShadowMap()
+  const shadowMap = shadowGenerator?.getShadowMap()
 
   billboardController.pruneMesh(mesh)
   lightmapController.pruneMesh(mesh)
@@ -1340,13 +1294,14 @@ const deleteSelectedMesh = () => {
   refreshImportedDetails()
   rebuildImportedOutline()
   flushSceneRenderCaches()
-  setStatus(`闂備浇顕уù鐑藉箠閹捐绠熼梽鍥Φ閹版澘绀冩い鏃傚帶閻庮參鎮峰鍛暭閻㈩垱顨婇崺?${deletedName}`)
+  setStatus(`已删除网格：${deletedName}`)
 
   return true
 }
 
 type LoadModelOptions = {
   shouldContinue?: () => boolean
+  onProgress?: (percent: number, label: string) => void
 }
 
 const loadModel = async (
@@ -1356,6 +1311,7 @@ const loadModel = async (
   options: LoadModelOptions = {},
 ) => {
   setStatus(`\u6b63\u5728\u5bfc\u5165 ${fileName}...`)
+  options.onProgress?.(1, fileName)
 
   if (replaceExisting) {
     disposeCurrentModels()
@@ -1372,6 +1328,9 @@ const loadModel = async (
       }
 
       setStatus(getImportProgressMessage(fileName, event))
+      if (event.lengthComputable && event.total > 0) {
+        options.onProgress?.(Math.max(1, (event.loaded / event.total) * 100), fileName)
+      }
     },
   })
 
@@ -1451,11 +1410,12 @@ const loadModel = async (
   rebuildImportedOutline()
   frameHierarchy(root, result.meshes)
 
-  if (replaceExisting && techActiveSubTab === '\u5b9e\u65f6\u6e32\u67d3') {
-    enableRealtimeEffects()
+  if (replaceExisting) {
+    realtimeController.applyRealtimeEffectsState()
   }
 
   flushSceneRenderCaches()
+  options.onProgress?.(100, fileName)
   setStatus(null)
 }
 
@@ -1463,7 +1423,16 @@ setupModelImportControls({
   glbImportInput,
   importButton,
   importModePopup,
-  loadModel: (file, fileName, replaceExisting) => loadModel(file, fileName, replaceExisting),
+  loadModel: async (file, fileName, replaceExisting) => {
+    setLoadingScreen(true, 1, fileName)
+    try {
+      await loadModel(file, fileName, replaceExisting, {
+        onProgress: (percent, label) => setLoadingScreen(true, percent, label),
+      })
+    } finally {
+      setLoadingScreen(false)
+    }
+  },
   showTemporaryStatus,
   setStatus,
 })
@@ -1517,9 +1486,9 @@ let projectLoadSerial = 0
 const showProjectManager = () => {
   projectLoadSerial += 1
   disposeCurrentModels()
-  techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
   restoreRealtimeLightState()
   flushSceneRenderCaches()
+  setLoadingScreen(false)
   projectManager.hidden = false
   projectBackButton.hidden = true
   const nextUrl = new URL(window.location.href)
@@ -1536,10 +1505,12 @@ const loadProject = async (project: ProjectEntry) => {
   const nextUrl = new URL(window.location.href)
   nextUrl.searchParams.set('project', project.routeId)
   window.history.replaceState(null, '', nextUrl)
+  setLoadingScreen(true, 1, project.title)
   setStatus(`正在加载项目 ${project.title}...`)
 
   if (project.models.length === 0) {
     setStatus(`项目 ${project.title} 没有可加载的 GLB`)
+    setLoadingScreen(false)
     projectManager.hidden = false
     projectBackButton.hidden = true
     return
@@ -1549,8 +1520,14 @@ const loadProject = async (project: ProjectEntry) => {
     for (const [index, model] of project.models.entries()) {
       await loadModel(model.url, model.fileName, index === 0, {
         shouldContinue: () => loadSerial === projectLoadSerial,
+        onProgress: (percent, label) => {
+          const modelWeight = 100 / project.models.length
+          const totalPercent = index * modelWeight + (percent / 100) * modelWeight
+          setLoadingScreen(true, Math.max(1, totalPercent), label)
+        },
       })
       if (loadSerial !== projectLoadSerial) {
+        setLoadingScreen(false)
         return
       }
     }
@@ -1562,6 +1539,7 @@ const loadProject = async (project: ProjectEntry) => {
     if (project.lightmaps.length > 0) {
       const result = await lightmapController.applyProjectLightmaps(project.lightmaps)
       if (loadSerial !== projectLoadSerial) {
+        setLoadingScreen(false)
         return
       }
       if (result.missing.length > 0) {
@@ -1584,14 +1562,7 @@ const loadProject = async (project: ProjectEntry) => {
 
     ensureCurrentModelsRenderable()
 
-    if (project.config.mode === 'baked') {
-      techActiveSubTab = '\u6a21\u578b\u70d8\u70e4'
-      disableRealtimeEffects()
-      enableLightmaps()
-    } else {
-      techActiveSubTab = '\u5b9e\u65f6\u6e32\u67d3'
-      enableRealtimeEffects()
-    }
+    realtimeController.applyRealtimeEffectsState()
 
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => resolve())
@@ -1600,6 +1571,7 @@ const loadProject = async (project: ProjectEntry) => {
       requestAnimationFrame(() => resolve())
     })
     if (loadSerial !== projectLoadSerial) {
+      setLoadingScreen(false)
       return
     }
 
@@ -1630,6 +1602,7 @@ const loadProject = async (project: ProjectEntry) => {
     }
 
     flushSceneRenderCaches()
+    setLoadingScreen(false)
 
     setOutline(currentMeshNodes)
     setStatus(null)
@@ -1637,6 +1610,7 @@ const loadProject = async (project: ProjectEntry) => {
     console.error(error)
     const msg = `项目 ${project.title} 加载失败: ${error instanceof Error ? error.message : '未知错误'}`
     setStatus(msg)
+    setLoadingScreen(false)
     projectManager.hidden = false
     projectBackButton.hidden = true
   }

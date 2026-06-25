@@ -2,10 +2,8 @@ import type { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
 import type { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import type { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
-import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline'
-import { SSRRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssrRenderingPipeline'
 import type { GeometryBufferRenderer } from '@babylonjs/core/Rendering/geometryBufferRenderer'
 import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
 import '@babylonjs/core/Rendering/prePassRendererSceneComponent'
@@ -18,10 +16,10 @@ type RealtimeRenderingControllerOptions = {
   camera: ArcRotateCamera
   sunLight: DirectionalLight
   getShadowGenerator: () => ShadowGenerator | undefined
+  ensureShadowGenerator: () => ShadowGenerator | undefined
+  disposeShadowGenerator: () => void
   getImportedMeshes: () => AbstractMesh[]
   isBillboardMesh: (mesh: AbstractMesh) => boolean
-  getRealtimeEnabled: () => boolean
-  initShadowGenerator: () => void
   flushSceneRenderCaches: () => void
 }
 
@@ -32,35 +30,33 @@ export const createRealtimeRenderingController = ({
   camera,
   sunLight,
   getShadowGenerator,
+  ensureShadowGenerator,
+  disposeShadowGenerator,
   getImportedMeshes,
   isBillboardMesh,
-  getRealtimeEnabled,
-  initShadowGenerator,
   flushSceneRenderCaches,
 }: RealtimeRenderingControllerOptions) => {
   let ssao2Pipeline: SSAO2RenderingPipeline | null = null
-  let ssrPipeline: SSRRenderingPipeline | null = null
+  let realtimeEffectsEnabledPreference = true
   let shadowEnabledPreference = true
   let ssaoEnabledPreference = false
   let ssaoStrength = 0.55
   let ssaoRadius = 0.75
   let ssaoSamples = 16
-  let ssrEnabledPreference = true
   let shadowFilterMode = 6
-  let savedSunIntensity = 0.62
-  let realtimeEffectsDisabled = false
+  let savedSunIntensity = 3
   let geometryBufferRenderer: GeometryBufferRenderer | null = null
   const meshFXFlags = new WeakMap<AbstractMesh, { receiveSSAO: boolean }>()
 
-  const ensureGeometryBufferRenderer = (enableReflectivity = false) => {
+  const getShadowActive = () => realtimeEffectsEnabledPreference && shadowEnabledPreference
+
+  const getSsaoActive = () => realtimeEffectsEnabledPreference && ssaoEnabledPreference
+
+  const ensureGeometryBufferRenderer = () => {
     geometryBufferRenderer ??= scene.enableGeometryBufferRenderer()
 
     if (geometryBufferRenderer) {
       geometryBufferRenderer.useSpecificClearForDepthTexture = true
-
-      if (enableReflectivity) {
-        geometryBufferRenderer.enableReflectivity = true
-      }
     }
 
     return geometryBufferRenderer
@@ -70,19 +66,7 @@ export const createRealtimeRenderingController = ({
     pipeline.maxZ = Math.max(camera.maxZ, 120)
     pipeline.radius = ssaoRadius
     pipeline.samples = ssaoSamples
-    pipeline.totalStrength = ssaoEnabledPreference ? ssaoStrength : 0
-  }
-
-  const configureSsrPipelineDefaults = (pipeline: SSRRenderingPipeline) => {
-    pipeline.step = 2
-    pipeline.maxSteps = 512
-    pipeline.thickness = 1
-    pipeline.strength = 1
-    pipeline.roughnessFactor = 0.2
-    pipeline.enableAutomaticThicknessComputation = true
-    pipeline.backfaceForceDepthWriteTransparentMeshes = false
-    pipeline.attenuateBackfaceReflection = true
-    pipeline.environmentTexture = scene.environmentTexture instanceof CubeTexture ? scene.environmentTexture : null
+    pipeline.totalStrength = ssaoStrength
   }
 
   const updateGBufferRenderList = () => {
@@ -120,24 +104,26 @@ export const createRealtimeRenderingController = ({
     configureSsaoPipelineDefaults(ssao2Pipeline)
   }
 
-  const ensureSsrPipeline = () => {
-    ensureGeometryBufferRenderer(true)
-    updateGBufferRenderList()
-
-    if (!ssrPipeline) {
-      ssrPipeline = new SSRRenderingPipeline('SSR', scene, [camera], true)
+  const releaseSharedRenderersIfIdle = () => {
+    if (ssao2Pipeline) {
+      return
     }
 
-    configureSsrPipelineDefaults(ssrPipeline)
-    return ssrPipeline
+    scene.disableGeometryBufferRenderer()
+    scene.disablePrePassRenderer()
+    scene.resetCachedMaterial()
+    geometryBufferRenderer = null
+  }
+
+  const disposeSsaoPipeline = () => {
+    ssao2Pipeline?.dispose()
+    ssao2Pipeline = null
+    releaseSharedRenderersIfIdle()
   }
 
   const resetRealtimePipelines = () => {
     ssao2Pipeline?.dispose()
     ssao2Pipeline = null
-
-    ssrPipeline?.dispose(true)
-    ssrPipeline = null
 
     scene.disableGeometryBufferRenderer()
     scene.disablePrePassRenderer()
@@ -149,17 +135,22 @@ export const createRealtimeRenderingController = ({
     getImportedMeshes().filter((mesh) => !isBillboardMesh(mesh) && !isTransparentMesh(mesh))
 
   const applyRealtimeShadowState = () => {
-    const shadowEnabled = getRealtimeEnabled() && shadowEnabledPreference
+    const shadowEnabled = getShadowActive()
+    const shadowGenerator = shadowEnabled ? ensureShadowGenerator() : getShadowGenerator()
     const shadowMap = getShadowGenerator()?.getShadowMap()
 
     sunLight.shadowEnabled = shadowEnabled
-    if (shadowMap) {
+    if (shadowGenerator && shadowMap) {
       shadowMap.renderList = shadowEnabled ? getRealtimeShadowMeshes() : []
     }
 
     getImportedMeshes().forEach((mesh) => {
       mesh.receiveShadows = shadowEnabled && !isBillboardMesh(mesh) && !isTransparentMesh(mesh)
     })
+
+    if (!shadowEnabled) {
+      disposeShadowGenerator()
+    }
   }
 
   const syncImportedMeshRenderingState = (mesh: AbstractMesh) => {
@@ -171,7 +162,7 @@ export const createRealtimeRenderingController = ({
     })
 
     mesh.renderingGroupId = 0
-    mesh.receiveShadows = !transparent && getRealtimeEnabled() && shadowEnabledPreference
+    mesh.receiveShadows = !transparent && getShadowActive()
   }
 
   const refreshImportedRenderingState = () => {
@@ -183,10 +174,7 @@ export const createRealtimeRenderingController = ({
 
     materials.forEach(syncImportedMaterialRenderingState)
     getImportedMeshes().forEach(syncImportedMeshRenderingState)
-    if (ssrPipeline) {
-      configureSsrPipelineDefaults(ssrPipeline)
-    }
-    initShadowGenerator()
+    applyRealtimeShadowState()
     updateGBufferRenderList()
     flushSceneRenderCaches()
   }
@@ -201,26 +189,26 @@ export const createRealtimeRenderingController = ({
     materials.forEach((material) => {
       syncImportedGlassEnvironmentTexture(material)
     })
-    if (ssrPipeline) {
-      configureSsrPipelineDefaults(ssrPipeline)
-    }
     flushSceneRenderCaches()
   }
 
-  const disableRealtimeEffects = () => {
-    if (!realtimeEffectsDisabled) {
+  const setRealtimeEffectsEnabled = (value: boolean) => {
+    if (realtimeEffectsEnabledPreference === value) {
+      return
+    }
+
+    if (!value) {
       savedSunIntensity = sunLight.intensity
-      realtimeEffectsDisabled = true
+      realtimeEffectsEnabledPreference = false
+      sunLight.intensity = 0
+      applyRealtimeShadowState()
+      resetRealtimePipelines()
+      flushSceneRenderCaches()
+      return
     }
-    sunLight.intensity = 0
-    applyRealtimeShadowState()
-    resetRealtimePipelines()
-    flushSceneRenderCaches()
-  }
 
-  const enableRealtimeEffects = () => {
+    realtimeEffectsEnabledPreference = true
     sunLight.intensity = savedSunIntensity
-    realtimeEffectsDisabled = false
     refreshImportedRenderingState()
     applyRealtimeShadowState()
 
@@ -229,56 +217,97 @@ export const createRealtimeRenderingController = ({
     }
 
     try {
-      if (ssaoEnabledPreference) {
+      if (getSsaoActive()) {
         ensureSsaoPipeline()
         applySsaoSettings()
-      } else if (ssao2Pipeline) {
-        ssao2Pipeline.totalStrength = 0
       }
 
-      if (ssrEnabledPreference) {
-        ensureSsrPipeline().isEnabled = true
-      } else if (ssrPipeline) {
-        ssrPipeline.isEnabled = false
-      }
     } catch (error) {
       console.warn('Realtime post-processing pipeline was not available.', error)
     }
   }
 
   const restoreRealtimeLightState = () => {
+    realtimeEffectsEnabledPreference = true
     sunLight.intensity = savedSunIntensity
-    realtimeEffectsDisabled = false
     applyRealtimeShadowState()
     resetRealtimePipelines()
     flushSceneRenderCaches()
   }
 
+  const applyRealtimeEffectsState = () => {
+    if (!realtimeEffectsEnabledPreference) {
+      sunLight.intensity = 0
+      applyRealtimeShadowState()
+      resetRealtimePipelines()
+      flushSceneRenderCaches()
+      return
+    }
+
+    sunLight.intensity = savedSunIntensity
+    applyRealtimeShadowState()
+
+    if (getImportedMeshes().length > 0) {
+      try {
+        if (getSsaoActive()) {
+          ensureSsaoPipeline()
+          applySsaoSettings()
+        } else {
+          disposeSsaoPipeline()
+        }
+      } catch (error) {
+        console.warn('SSAO pipeline was not available; disabling SSAO.', error)
+        ssaoEnabledPreference = false
+        disposeSsaoPipeline()
+      }
+
+    } else {
+      resetRealtimePipelines()
+    }
+
+    flushSceneRenderCaches()
+  }
+
   return {
+    getRealtimeEffectsEnabled: () => realtimeEffectsEnabledPreference,
+    setRealtimeEffectsEnabled,
     getShadowEnabled: () => shadowEnabledPreference,
-    setShadowEnabled: (value: boolean) => { shadowEnabledPreference = value },
+    setShadowEnabled: (value: boolean) => {
+      shadowEnabledPreference = value
+      applyRealtimeShadowState()
+    },
     getShadowFilterMode: () => shadowFilterMode,
     setShadowFilterMode: (value: number) => { shadowFilterMode = value },
     getSsaoEnabled: () => ssaoEnabledPreference,
-    setSsaoEnabled: (value: boolean) => { ssaoEnabledPreference = value },
+    setSsaoEnabled: (value: boolean) => {
+      ssaoEnabledPreference = value
+      try {
+        if (getSsaoActive()) {
+          ensureSsaoPipeline()
+          applySsaoSettings()
+        } else {
+          disposeSsaoPipeline()
+        }
+      } catch (error) {
+        console.warn('SSAO pipeline was not available; disabling SSAO.', error)
+        ssaoEnabledPreference = false
+        disposeSsaoPipeline()
+      }
+      flushSceneRenderCaches()
+    },
     getSsaoStrength: () => ssaoStrength,
     setSsaoStrength: (value: number) => { ssaoStrength = value },
     getSsaoRadius: () => ssaoRadius,
     setSsaoRadius: (value: number) => { ssaoRadius = value },
     getSsaoSamples: () => ssaoSamples,
     setSsaoSamples: (value: number) => { ssaoSamples = value },
-    getSsrEnabled: () => ssrEnabledPreference,
-    setSsrEnabled: (value: boolean) => { ssrEnabledPreference = value },
     getSsaoPipeline: () => ssao2Pipeline,
-    getSsrPipeline: () => ssrPipeline,
     getRealtimeShadowMeshes,
     ensureSsaoPipeline,
-    ensureSsrPipeline,
     applyRealtimeShadowState,
     applySsaoSettings,
+    applyRealtimeEffectsState,
     resetRealtimePipelines,
-    disableRealtimeEffects,
-    enableRealtimeEffects,
     restoreRealtimeLightState,
     updateGBufferRenderList,
     refreshImportedRenderingState,

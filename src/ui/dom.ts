@@ -4,6 +4,10 @@ export type AppDom = {
   canvas: HTMLCanvasElement
   projectManager: HTMLDivElement
   projectBackButton: HTMLButtonElement
+  loadingScreen: HTMLDivElement
+  loadingPercent: HTMLDivElement
+  loadingBarFill: HTMLDivElement
+  loadingLabel: HTMLDivElement
   status: HTMLDivElement
   shareActions: HTMLElement
   contentBrowserButton: HTMLButtonElement
@@ -38,6 +42,15 @@ export type AppDom = {
 export const renderAppShell = (app: HTMLDivElement) => {
   app.innerHTML = `
   <canvas id="renderCanvas" aria-label="Babylon building render"></canvas>
+  <div id="loadingScreen" class="loading-screen" hidden>
+    <div class="loading-box">
+      <div id="loadingPercent" class="loading-percent">0%</div>
+      <div class="loading-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="loadingBarFill" class="loading-bar-fill"></div>
+      </div>
+      <div id="loadingLabel" class="loading-label">Loading model...</div>
+    </div>
+  </div>
   <div id="projectManager" class="project-manager" aria-label="Project manager"></div>
   <button id="projectBackButton" class="project-back-button" type="button" aria-label="返回项目选择" title="返回项目选择" hidden>
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -140,6 +153,10 @@ export const queryAppDom = (): AppDom => ({
   canvas: requireElement<HTMLCanvasElement>('#renderCanvas', 'Canvas'),
   projectManager: requireElement<HTMLDivElement>('#projectManager', 'Project manager'),
   projectBackButton: requireElement<HTMLButtonElement>('#projectBackButton', 'Project back button'),
+  loadingScreen: requireElement<HTMLDivElement>('#loadingScreen', 'Loading screen'),
+  loadingPercent: requireElement<HTMLDivElement>('#loadingPercent', 'Loading percent'),
+  loadingBarFill: requireElement<HTMLDivElement>('#loadingBarFill', 'Loading bar fill'),
+  loadingLabel: requireElement<HTMLDivElement>('#loadingLabel', 'Loading label'),
   status: requireElement<HTMLDivElement>('#status', 'Status'),
   shareActions: requireElement<HTMLElement>('.share-actions', 'Share actions'),
   contentBrowserButton: requireElement<HTMLButtonElement>('#contentBrowserButton', 'Content browser button'),

@@ -144,8 +144,8 @@ export const tuneImportedMaterial = (material: PBRMaterial) => {
   const transparent = isTransparentPbrMaterial(material)
 
   material.maxSimultaneousLights = 4
-  material.directIntensity = transparent ? Math.max(material.directIntensity, 0.48) : 0.48
-  material.environmentIntensity = Math.max(material.environmentIntensity, 1.5)
+  material.directIntensity = transparent ? Math.max(material.directIntensity, 0.8) : 1
+  material.environmentIntensity = transparent ? Math.max(material.environmentIntensity, 1.1) : 0.55
   material.specularIntensity = transparent ? Math.max(material.specularIntensity, 0.75) : 0.45
   material.backFaceCulling = false
 
