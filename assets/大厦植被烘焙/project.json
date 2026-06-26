@@ -1,7 +1,6 @@
 {
   "title": "大厦植被烘焙",
   "models": ["target.glb"],
-  "mode": "baked",
   "lightmaps": [
     {
       "mesh": "外墙",
@@ -28,5 +27,9 @@
       "texture": "圆树_Light.ktx2",
       "uv": 1
     }
-  ]
+  ],
+    "config": { 
+    "realtimeEffectsEnabled": false,
+    "environmentIntensity": 2
+  }
 }

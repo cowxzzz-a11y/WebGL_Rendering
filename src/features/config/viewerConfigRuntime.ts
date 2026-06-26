@@ -13,7 +13,7 @@ import { viewerConfigVersion } from '../../shared/constants'
 import type { EnvironmentController } from '../environment/environmentController'
 import { getMaterialKey, getMeshKey } from '../model/modelIdentity'
 import { assignColor3, assignVector, colorToConfig, vectorToConfig } from './configMapping'
-import { configStorageKey, type ViewerConfig } from './viewerConfig'
+import { configStorageKey, type ViewerConfig, type ViewerProjectConfigInput } from './viewerConfig'
 
 export type ApplyViewerConfigOptions = {
   includeCamera?: boolean
@@ -36,6 +36,22 @@ type ViewerConfigRuntime = {
   getShadowMapSize: () => number
   getShadowBias: () => number
   applyShadowConfig: (shadowMapSize: number, shadowBias: number) => void
+  getRealtimeEffectsEnabled: () => boolean
+  setRealtimeEffectsEnabled: (value: boolean) => void
+  setSavedSunIntensity: (value: number) => void
+  getShadowEnabled: () => boolean
+  setShadowEnabled: (value: boolean) => void
+  getShadowFilterMode: () => number
+  setShadowFilterMode: (value: number) => void
+  getSsaoEnabled: () => boolean
+  setSsaoEnabled: (value: boolean) => void
+  getSsaoStrength: () => number
+  setSsaoStrength: (value: number) => void
+  getSsaoRadius: () => number
+  setSsaoRadius: (value: number) => void
+  getSsaoSamples: () => number
+  setSsaoSamples: (value: number) => void
+  applyRealtimeEffectsState: () => void
   resetLightHelpers: () => void
   updateSceneBoundsFromCurrentModels: () => void
   updateGBufferRenderList: () => void
@@ -55,6 +71,13 @@ export const createViewerConfigSnapshot = ({
   getCurrentModelSignature,
   getShadowMapSize,
   getShadowBias,
+  getRealtimeEffectsEnabled,
+  getShadowEnabled,
+  getShadowFilterMode,
+  getSsaoEnabled,
+  getSsaoStrength,
+  getSsaoRadius,
+  getSsaoSamples,
 }: ViewerConfigRuntime): ViewerConfig => {
   const importedMeshes = getImportedMeshes()
   const materials: ViewerConfig['materials'] = {}
@@ -144,14 +167,23 @@ export const createViewerConfigSnapshot = ({
       sharpenEnabled: pipeline.sharpenEnabled,
       grainEnabled: pipeline.grainEnabled,
     },
+    rendering: {
+      realtimeEffectsEnabled: getRealtimeEffectsEnabled(),
+      shadowEnabled: getShadowEnabled(),
+      shadowFilterMode: getShadowFilterMode(),
+      ssaoEnabled: getSsaoEnabled(),
+      ssaoStrength: getSsaoStrength(),
+      ssaoRadius: getSsaoRadius(),
+      ssaoSamples: getSsaoSamples(),
+    },
     materials,
     meshes,
   }
 }
 
-export const applyViewerConfigSnapshot = (
+export const applyViewerConfigSnapshot = async (
   runtime: ViewerConfigRuntime,
-  config: ViewerConfig,
+  config: ViewerProjectConfigInput,
   {
     includeCamera = true,
     includeMaterials = true,
@@ -170,6 +202,15 @@ export const applyViewerConfigSnapshot = (
     getSceneCenter,
     getSceneRadius,
     applyShadowConfig,
+    setRealtimeEffectsEnabled,
+    setSavedSunIntensity,
+    setShadowEnabled,
+    setShadowFilterMode,
+    setSsaoEnabled,
+    setSsaoStrength,
+    setSsaoRadius,
+    setSsaoSamples,
+    applyRealtimeEffectsState,
     resetLightHelpers,
     updateSceneBoundsFromCurrentModels,
     updateGBufferRenderList,
@@ -177,62 +218,191 @@ export const applyViewerConfigSnapshot = (
     refreshSelectedDetail,
   } = runtime
   const importedMeshes = getImportedMeshes()
+  let shouldApplyRealtimeEffectsState = false
 
-  if (includeCamera) {
-    camera.fov = config.camera.fov
-    camera.radius = config.camera.radius
-    camera.alpha = config.camera.alpha
-    camera.beta = config.camera.beta
-    assignVector(camera.target, config.camera.target)
-    camera.wheelPrecision = config.camera.wheelPrecision
-    camera.panningSensibility = config.camera.panningSensibility
+  const cameraConfig = config.camera
+  if (includeCamera && cameraConfig) {
+    camera.fov = config.cameraFov ?? cameraConfig.fov ?? camera.fov
+    camera.radius = config.cameraRadius ?? cameraConfig.radius ?? camera.radius
+    camera.alpha = config.cameraAlpha ?? cameraConfig.alpha ?? camera.alpha
+    camera.beta = config.cameraBeta ?? cameraConfig.beta ?? camera.beta
+    const cameraTarget = config.cameraTarget ?? cameraConfig.target
+    if (cameraTarget) {
+      assignVector(camera.target, cameraTarget)
+    }
+    camera.wheelPrecision = config.cameraWheelPrecision ?? cameraConfig.wheelPrecision ?? camera.wheelPrecision
+    camera.panningSensibility = config.cameraPanningSensibility ?? cameraConfig.panningSensibility ?? camera.panningSensibility
     tuneTouchCameraControls({
       camera,
       sceneCenter: getSceneCenter(),
       sceneRadius: getSceneRadius(),
     })
   }
-
-  hemiLight.intensity = config.lights.hemi.intensity
-  assignColor3(hemiLight.diffuse, config.lights.hemi.diffuse)
-  assignColor3(hemiLight.groundColor, config.lights.hemi.groundColor)
-  assignVector(hemiLight.direction, config.lights.hemi.direction)
-
-  sunLight.intensity = config.lights.sun.intensity
-  assignColor3(sunLight.diffuse, config.lights.sun.diffuse)
-  assignColor3(sunLight.specular, config.lights.sun.specular)
-  assignVector(sunLight.direction, config.lights.sun.direction)
-  assignVector(sunLight.position, config.lights.sun.position)
-  resetLightHelpers()
-
-  if ('shadowMapSize' in config.lights.sun) {
-    applyShadowConfig(config.lights.sun.shadowMapSize, config.lights.sun.shadowBias)
+  if (includeCamera && !cameraConfig) {
+    camera.fov = config.cameraFov ?? camera.fov
+    camera.radius = config.cameraRadius ?? camera.radius
+    camera.alpha = config.cameraAlpha ?? camera.alpha
+    camera.beta = config.cameraBeta ?? camera.beta
+    if (config.cameraTarget) {
+      assignVector(camera.target, config.cameraTarget)
+    }
+    camera.wheelPrecision = config.cameraWheelPrecision ?? camera.wheelPrecision
+    camera.panningSensibility = config.cameraPanningSensibility ?? camera.panningSensibility
+    if (
+      config.cameraFov !== undefined
+      || config.cameraRadius !== undefined
+      || config.cameraAlpha !== undefined
+      || config.cameraBeta !== undefined
+      || config.cameraTarget
+      || config.cameraWheelPrecision !== undefined
+      || config.cameraPanningSensibility !== undefined
+    ) {
+      tuneTouchCameraControls({
+        camera,
+        sceneCenter: getSceneCenter(),
+        sceneRadius: getSceneRadius(),
+      })
+    }
   }
 
-  if (config.world.environmentTexture) {
-    void environmentController.setSceneEnvironmentTexture(config.world.environmentTexture)
+  const hemiConfig = config.lights?.hemi
+  if (hemiConfig || config.hemiIntensity !== undefined || config.hemiDiffuse || config.hemiGroundColor || config.hemiDirection) {
+    hemiLight.intensity = config.hemiIntensity ?? hemiConfig?.intensity ?? hemiLight.intensity
+    const hemiDiffuse = config.hemiDiffuse ?? hemiConfig?.diffuse
+    const hemiGroundColor = config.hemiGroundColor ?? hemiConfig?.groundColor
+    const hemiDirection = config.hemiDirection ?? hemiConfig?.direction
+    if (hemiDiffuse) assignColor3(hemiLight.diffuse, hemiDiffuse)
+    if (hemiGroundColor) assignColor3(hemiLight.groundColor, hemiGroundColor)
+    if (hemiDirection) assignVector(hemiLight.direction, hemiDirection)
   }
 
-  environmentController.setEnvironmentBackgroundEnabled(config.world.environmentBackgroundEnabled ?? false)
-  environmentController.setEnvironmentRotationY(config.world.environmentRotationY ?? 0)
-  environmentController.updateEnvironmentBackground()
-  environmentController.applyEnvironmentRotation()
-  environmentController.setGlobalEnvironmentIntensity(config.world.environmentIntensity)
-  scene.clearColor = new Color4(config.world.clearColor[0], config.world.clearColor[1], config.world.clearColor[2], 1)
-  imageProcessing.exposure = config.world.exposure
-  imageProcessing.contrast = config.world.contrast
-  imageProcessing.ditheringEnabled = config.world.ditheringEnabled
-  imageProcessing.toneMappingEnabled = config.world.toneMappingEnabled
-  pipeline.imageProcessing.exposure = config.world.exposure
-  pipeline.imageProcessing.contrast = config.world.contrast
-  pipeline.imageProcessing.ditheringEnabled = config.world.ditheringEnabled
-  pipeline.imageProcessing.toneMappingEnabled = config.world.toneMappingEnabled
+  const sunConfig = config.lights?.sun
+  if (
+    sunConfig
+    || config.sunIntensity !== undefined
+    || config.sunDiffuse
+    || config.sunSpecular
+    || config.sunDirection
+    || config.sunPosition
+    || config.sunShadowMapSize !== undefined
+    || config.sunShadowBias !== undefined
+  ) {
+    sunLight.intensity = config.sunIntensity ?? sunConfig?.intensity ?? sunLight.intensity
+    setSavedSunIntensity(sunLight.intensity)
+    const sunDiffuse = config.sunDiffuse ?? sunConfig?.diffuse
+    const sunSpecular = config.sunSpecular ?? sunConfig?.specular
+    const sunDirection = config.sunDirection ?? sunConfig?.direction
+    const sunPosition = config.sunPosition ?? sunConfig?.position
+    if (sunDiffuse) assignColor3(sunLight.diffuse, sunDiffuse)
+    if (sunSpecular) assignColor3(sunLight.specular, sunSpecular)
+    if (sunDirection) assignVector(sunLight.direction, sunDirection)
+    if (sunPosition) assignVector(sunLight.position, sunPosition)
+    resetLightHelpers()
 
-  pipeline.samples = config.pipeline.samples
-  pipeline.fxaaEnabled = config.pipeline.fxaaEnabled
-  pipeline.bloomEnabled = config.pipeline.bloomEnabled
-  pipeline.sharpenEnabled = config.pipeline.sharpenEnabled
-  pipeline.grainEnabled = config.pipeline.grainEnabled
+    const sunShadowMapSize = config.sunShadowMapSize ?? sunConfig?.shadowMapSize
+    const sunShadowBias = config.sunShadowBias ?? sunConfig?.shadowBias
+    if (sunShadowMapSize !== undefined && sunShadowBias !== undefined) {
+      applyShadowConfig(sunShadowMapSize, sunShadowBias)
+    }
+  }
+
+  const worldConfig = config.world
+  if (
+    worldConfig
+    || config.environmentTexture
+    || config.environmentBackgroundEnabled !== undefined
+    || config.environmentRotationY !== undefined
+    || config.environmentIntensity !== undefined
+    || config.clearColor
+    || config.exposure !== undefined
+    || config.contrast !== undefined
+    || config.ditheringEnabled !== undefined
+    || config.toneMappingEnabled !== undefined
+  ) {
+    const environmentBackgroundEnabled = config.environmentBackgroundEnabled ?? worldConfig?.environmentBackgroundEnabled
+    const environmentRotationY = config.environmentRotationY ?? worldConfig?.environmentRotationY
+    const environmentIntensity = config.environmentIntensity ?? worldConfig?.environmentIntensity
+    const environmentTexture = config.environmentTexture ?? worldConfig?.environmentTexture
+    const clearColor = config.clearColor ?? worldConfig?.clearColor
+    const exposure = config.exposure ?? worldConfig?.exposure
+    const contrast = config.contrast ?? worldConfig?.contrast
+    const ditheringEnabled = config.ditheringEnabled ?? worldConfig?.ditheringEnabled
+    const toneMappingEnabled = config.toneMappingEnabled ?? worldConfig?.toneMappingEnabled
+
+    if (environmentBackgroundEnabled !== undefined) {
+      environmentController.setEnvironmentBackgroundEnabled(environmentBackgroundEnabled)
+    }
+    if (environmentRotationY !== undefined) {
+      environmentController.setEnvironmentRotationY(environmentRotationY)
+    }
+    if (environmentIntensity !== undefined) {
+      environmentController.setGlobalEnvironmentIntensity(environmentIntensity)
+    }
+    if (environmentTexture) {
+      await environmentController.setSceneEnvironmentTexture(environmentTexture)
+    }
+    environmentController.updateEnvironmentBackground()
+    environmentController.applyEnvironmentRotation()
+    if (clearColor) {
+      scene.clearColor = new Color4(clearColor[0], clearColor[1], clearColor[2], 1)
+    }
+    if (exposure !== undefined) {
+      imageProcessing.exposure = exposure
+      pipeline.imageProcessing.exposure = exposure
+    }
+    if (contrast !== undefined) {
+      imageProcessing.contrast = contrast
+      pipeline.imageProcessing.contrast = contrast
+    }
+    if (ditheringEnabled !== undefined) {
+      imageProcessing.ditheringEnabled = ditheringEnabled
+      pipeline.imageProcessing.ditheringEnabled = ditheringEnabled
+    }
+    if (toneMappingEnabled !== undefined) {
+      imageProcessing.toneMappingEnabled = toneMappingEnabled
+      pipeline.imageProcessing.toneMappingEnabled = toneMappingEnabled
+    }
+  }
+
+  const pipelineConfig = config.pipeline
+  if (
+    pipelineConfig
+    || config.samples !== undefined
+    || config.fxaaEnabled !== undefined
+    || config.bloomEnabled !== undefined
+    || config.sharpenEnabled !== undefined
+    || config.grainEnabled !== undefined
+  ) {
+    pipeline.samples = config.samples ?? pipelineConfig?.samples ?? pipeline.samples
+    pipeline.fxaaEnabled = config.fxaaEnabled ?? pipelineConfig?.fxaaEnabled ?? pipeline.fxaaEnabled
+    pipeline.bloomEnabled = config.bloomEnabled ?? pipelineConfig?.bloomEnabled ?? pipeline.bloomEnabled
+    pipeline.sharpenEnabled = config.sharpenEnabled ?? pipelineConfig?.sharpenEnabled ?? pipeline.sharpenEnabled
+    pipeline.grainEnabled = config.grainEnabled ?? pipelineConfig?.grainEnabled ?? pipeline.grainEnabled
+  }
+
+  const renderingConfig = {
+    realtimeEffectsEnabled: config.realtimeEffectsEnabled,
+    shadowEnabled: config.shadowEnabled,
+    shadowFilterMode: config.shadowFilterMode,
+    ssaoEnabled: config.ssaoEnabled,
+    ssaoStrength: config.ssaoStrength,
+    ssaoRadius: config.ssaoRadius,
+    ssaoSamples: config.ssaoSamples,
+    ...config.rendering,
+  }
+
+  if (Object.values(renderingConfig).some((value) => value !== undefined)) {
+    if (renderingConfig.shadowEnabled !== undefined) setShadowEnabled(renderingConfig.shadowEnabled)
+    if (renderingConfig.shadowFilterMode !== undefined) setShadowFilterMode(renderingConfig.shadowFilterMode)
+    if (renderingConfig.ssaoStrength !== undefined) setSsaoStrength(renderingConfig.ssaoStrength)
+    if (renderingConfig.ssaoRadius !== undefined) setSsaoRadius(renderingConfig.ssaoRadius)
+    if (renderingConfig.ssaoSamples !== undefined) setSsaoSamples(renderingConfig.ssaoSamples)
+    if (renderingConfig.ssaoEnabled !== undefined) setSsaoEnabled(renderingConfig.ssaoEnabled)
+    if (renderingConfig.realtimeEffectsEnabled !== undefined) {
+      setRealtimeEffectsEnabled(renderingConfig.realtimeEffectsEnabled)
+    }
+    shouldApplyRealtimeEffectsState = true
+  }
 
   if (includeMaterials) {
     scene.materials.forEach((material) => {
@@ -240,21 +410,21 @@ export const applyViewerConfigSnapshot = (
         return
       }
 
-      const materialConfig = config.materials[getMaterialKey(material, importedMeshes)]
+      const materialConfig = config.materials?.[getMaterialKey(material, importedMeshes)]
 
       if (!materialConfig) {
         return
       }
 
-      material.alpha = materialConfig.alpha
-      material.metallic = materialConfig.metallic
-      material.roughness = materialConfig.roughness
-      assignColor3(material.albedoColor, materialConfig.albedoColor)
-      assignColor3(material.emissiveColor, materialConfig.emissiveColor)
-      material.directIntensity = materialConfig.directIntensity
-      material.environmentIntensity = materialConfig.environmentIntensity
-      material.specularIntensity = materialConfig.specularIntensity
-      material.maxSimultaneousLights = materialConfig.maxSimultaneousLights
+      material.alpha = materialConfig.alpha ?? material.alpha
+      material.metallic = materialConfig.metallic ?? material.metallic
+      material.roughness = materialConfig.roughness ?? material.roughness
+      if (materialConfig.albedoColor) assignColor3(material.albedoColor, materialConfig.albedoColor)
+      if (materialConfig.emissiveColor) assignColor3(material.emissiveColor, materialConfig.emissiveColor)
+      material.directIntensity = materialConfig.directIntensity ?? material.directIntensity
+      material.environmentIntensity = materialConfig.environmentIntensity ?? material.environmentIntensity
+      material.specularIntensity = materialConfig.specularIntensity ?? material.specularIntensity
+      material.maxSimultaneousLights = materialConfig.maxSimultaneousLights ?? material.maxSimultaneousLights
       material.subSurface.isRefractionEnabled = materialConfig.refractionEnabled ?? material.subSurface.isRefractionEnabled
       material.subSurface.refractionIntensity = materialConfig.refractionIntensity ?? material.subSurface.refractionIntensity
       material.subSurface.isTranslucencyEnabled = materialConfig.translucencyEnabled ?? material.subSurface.isTranslucencyEnabled
@@ -266,19 +436,23 @@ export const applyViewerConfigSnapshot = (
 
   if (includeMeshes) {
     importedMeshes.forEach((mesh) => {
-      const meshConfig = config.meshes[getMeshKey(mesh)]
+      const meshConfig = config.meshes?.[getMeshKey(mesh)]
 
       if (!meshConfig) {
         return
       }
 
-      mesh.isVisible = meshConfig.isVisible
-      mesh.visibility = meshConfig.visibility
-      mesh.receiveShadows = meshConfig.receiveShadows
-      assignVector(mesh.position, meshConfig.position)
-      assignVector(mesh.rotation, meshConfig.rotation)
-      assignVector(mesh.scaling, meshConfig.scaling)
+      mesh.isVisible = meshConfig.isVisible ?? mesh.isVisible
+      mesh.visibility = meshConfig.visibility ?? mesh.visibility
+      mesh.receiveShadows = meshConfig.receiveShadows ?? mesh.receiveShadows
+      if (meshConfig.position) assignVector(mesh.position, meshConfig.position)
+      if (meshConfig.rotation) assignVector(mesh.rotation, meshConfig.rotation)
+      if (meshConfig.scaling) assignVector(mesh.scaling, meshConfig.scaling)
     })
+  }
+
+  if (shouldApplyRealtimeEffectsState) {
+    applyRealtimeEffectsState()
   }
 
   updateSceneBoundsFromCurrentModels()

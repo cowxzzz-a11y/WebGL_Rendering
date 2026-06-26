@@ -1,4 +1,4 @@
-import type { ViewerConfig } from '../config/viewerConfig'
+import type { ViewerProjectConfigInput } from '../config/viewerConfig'
 
 export type ProjectLightmapConfig = {
   mesh?: string
@@ -15,8 +15,7 @@ export type ProjectConfig = {
   title?: string
   models?: Array<string | { url: string; name?: string }>
   model?: string
-  mode?: 'baked' | 'realtime'
-  config?: ViewerConfig
+  config?: ViewerProjectConfigInput
   lightmaps?: ProjectLightmapConfig[]
   customMaterials?: Record<string, string>
   camera?: {

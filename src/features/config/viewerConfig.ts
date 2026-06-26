@@ -1,6 +1,14 @@
 export type VectorConfig = [number, number, number]
 export type ColorConfig = [number, number, number]
 
+type DeepPartial<T> = T extends VectorConfig | ColorConfig
+  ? T
+  : T extends Array<infer U>
+  ? Array<DeepPartial<U>>
+  : T extends object
+    ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T
+
 export type ViewerConfig = {
   configVersion?: number
   modelSignature?: string | null
@@ -50,6 +58,15 @@ export type ViewerConfig = {
     sharpenEnabled: boolean
     grainEnabled: boolean
   }
+  rendering?: {
+    realtimeEffectsEnabled: boolean
+    shadowEnabled: boolean
+    shadowFilterMode: number
+    ssaoEnabled: boolean
+    ssaoStrength: number
+    ssaoRadius: number
+    ssaoSamples: number
+  }
   materials: Record<
     string,
     {
@@ -81,6 +98,49 @@ export type ViewerConfig = {
       scaling: VectorConfig
     }
   >
+}
+
+export type ViewerConfigInput = DeepPartial<ViewerConfig>
+export type ViewerProjectConfigInput = ViewerConfigInput & {
+  cameraFov?: number
+  cameraRadius?: number
+  cameraAlpha?: number
+  cameraBeta?: number
+  cameraTarget?: VectorConfig
+  cameraWheelPrecision?: number
+  cameraPanningSensibility?: number
+  hemiIntensity?: number
+  hemiDiffuse?: ColorConfig
+  hemiGroundColor?: ColorConfig
+  hemiDirection?: VectorConfig
+  sunIntensity?: number
+  sunDiffuse?: ColorConfig
+  sunSpecular?: ColorConfig
+  sunDirection?: VectorConfig
+  sunPosition?: VectorConfig
+  sunShadowMapSize?: number
+  sunShadowBias?: number
+  environmentTexture?: string
+  environmentBackgroundEnabled?: boolean
+  environmentRotationY?: number
+  environmentIntensity?: number
+  clearColor?: ColorConfig
+  exposure?: number
+  contrast?: number
+  ditheringEnabled?: boolean
+  toneMappingEnabled?: boolean
+  samples?: number
+  fxaaEnabled?: boolean
+  bloomEnabled?: boolean
+  sharpenEnabled?: boolean
+  grainEnabled?: boolean
+  realtimeEffectsEnabled?: boolean
+  shadowEnabled?: boolean
+  shadowFilterMode?: number
+  ssaoEnabled?: boolean
+  ssaoStrength?: number
+  ssaoRadius?: number
+  ssaoSamples?: number
 }
 
 export const configStorageKey = 'babylon-rendering-viewer-config'

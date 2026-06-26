@@ -1,7 +1,6 @@
 {
   "title": "河流自定材质",
   "models": ["target.glb"],
-  "mode": "realtime",
   "camera": {
     "position": [-40, 60, -60],
     "target": [0, 0, 0]

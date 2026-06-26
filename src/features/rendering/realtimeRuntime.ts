@@ -271,6 +271,7 @@ export const createRealtimeRenderingController = ({
   return {
     getRealtimeEffectsEnabled: () => realtimeEffectsEnabledPreference,
     setRealtimeEffectsEnabled,
+    setSavedSunIntensity: (value: number) => { savedSunIntensity = value },
     getShadowEnabled: () => shadowEnabledPreference,
     setShadowEnabled: (value: boolean) => {
       shadowEnabledPreference = value

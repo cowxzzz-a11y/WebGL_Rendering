@@ -16,7 +16,7 @@ import '@babylonjs/core/Rendering/geometryBufferRendererSceneComponent'
 import '@babylonjs/core/Rendering/prePassRendererSceneComponent'
 import { Material } from '@babylonjs/core/Materials/material'
 import { ImportMeshAsync } from '@babylonjs/core/Loading/sceneLoader'
-import type { ViewerConfig } from './features/config/viewerConfig'
+import type { ViewerProjectConfigInput } from './features/config/viewerConfig'
 import { applyViewerConfigSnapshot } from './features/config/viewerConfigRuntime'
 import type { ApplyViewerConfigOptions } from './features/config/viewerConfigRuntime'
 import { configureLocalKtx2Decoder } from './core/ktx2'
@@ -354,6 +354,7 @@ const renderViewportPanel = () => {
   }))
 }
 const renderRealtimePanel = (panel: HTMLElement) => {
+  panel.textContent = ''
   renderRealtimePanelContent({
     panel,
     sunLight,
@@ -399,8 +400,16 @@ let techPanelCache: {
   panel: HTMLElement
   realtimePanel: HTMLElement
   bakePanel: HTMLElement
-  shadowToggle: HTMLInputElement | null
 } | null = null
+
+const refreshTechRealtimePanel = () => {
+  if (!techPanelCache) {
+    return
+  }
+
+  realtimeController.applyRealtimeEffectsState()
+  renderRealtimePanel(techPanelCache.realtimePanel)
+}
 
 const renderTechPanel = () => {
   hideDetailPanel()
@@ -419,12 +428,9 @@ const renderTechPanel = () => {
 
     panel.append(realtimePanel, bakePanel)
     sceneOutline.append(panel)
-    const st = realtimePanel.querySelectorAll('.tech-row-checkbox input[type=\'checkbox\']')[1] as HTMLInputElement | null
-    techPanelCache = { panel, realtimePanel, bakePanel, shadowToggle: st }
+    techPanelCache = { panel, realtimePanel, bakePanel }
   } else {
-    if (techPanelCache.shadowToggle) {
-      techPanelCache.shadowToggle.checked = realtimeController.getShadowEnabled()
-    }
+    refreshTechRealtimePanel()
     renderBakePanel(techPanelCache.bakePanel)
     sceneOutline.append(techPanelCache.panel)
   }
@@ -692,6 +698,19 @@ const initShadowGenerator = () => {
   applyRealtimeShadowState()
 }
 
+const applyShadowFilterMode = (value: number) => {
+  realtimeController.setShadowFilterMode(value)
+  const activeShadowGenerator = ensureShadowGenerator()
+
+  if (!activeShadowGenerator) {
+    return
+  }
+
+  activeShadowGenerator.useExponentialShadowMap = value === 1
+  activeShadowGenerator.usePercentageCloserFiltering = value === 6
+  activeShadowGenerator.useContactHardeningShadow = value === 7
+}
+
 const pipeline = createClassicPipeline(scene, camera)
 
 const setSceneEnvironmentTexture = environmentController.setSceneEnvironmentTexture
@@ -813,6 +832,22 @@ const getViewerConfigRuntime = () => ({
     shadowBias = nextShadowBias
     initShadowGenerator()
   },
+  getRealtimeEffectsEnabled: realtimeController.getRealtimeEffectsEnabled,
+  setRealtimeEffectsEnabled: realtimeController.setRealtimeEffectsEnabled,
+  setSavedSunIntensity: realtimeController.setSavedSunIntensity,
+  getShadowEnabled: realtimeController.getShadowEnabled,
+  setShadowEnabled: realtimeController.setShadowEnabled,
+  getShadowFilterMode: realtimeController.getShadowFilterMode,
+  setShadowFilterMode: applyShadowFilterMode,
+  getSsaoEnabled: realtimeController.getSsaoEnabled,
+  setSsaoEnabled: realtimeController.setSsaoEnabled,
+  getSsaoStrength: realtimeController.getSsaoStrength,
+  setSsaoStrength: realtimeController.setSsaoStrength,
+  getSsaoRadius: realtimeController.getSsaoRadius,
+  setSsaoRadius: realtimeController.setSsaoRadius,
+  getSsaoSamples: realtimeController.getSsaoSamples,
+  setSsaoSamples: realtimeController.setSsaoSamples,
+  applyRealtimeEffectsState: realtimeController.applyRealtimeEffectsState,
   resetLightHelpers: () => {
     lightHelperVisible.hemi = false
     lightHelperTouched.hemi = false
@@ -834,9 +869,10 @@ const getViewerConfigRuntime = () => ({
   },
 })
 
-const applyViewerConfig = (config: ViewerConfig, options: ApplyViewerConfigOptions = {}) => {
-  applyViewerConfigSnapshot(getViewerConfigRuntime(), config, options)
-}
+const applyViewerConfig = (config: ViewerProjectConfigInput, options: ApplyViewerConfigOptions = {}) =>
+  applyViewerConfigSnapshot(getViewerConfigRuntime(), config, options).then(() => {
+    refreshTechRealtimePanel()
+  })
 
 const showTemporaryStatus = (message: string) => {
   setStatus(message)
@@ -1532,10 +1568,6 @@ const loadProject = async (project: ProjectEntry) => {
       }
     }
 
-    if (project.config.config) {
-      applyViewerConfig(project.config.config)
-    }
-
     if (project.lightmaps.length > 0) {
       const result = await lightmapController.applyProjectLightmaps(project.lightmaps)
       if (loadSerial !== projectLoadSerial) {
@@ -1562,8 +1594,6 @@ const loadProject = async (project: ProjectEntry) => {
 
     ensureCurrentModelsRenderable()
 
-    realtimeController.applyRealtimeEffectsState()
-
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => resolve())
     })
@@ -1577,7 +1607,13 @@ const loadProject = async (project: ProjectEntry) => {
 
     frameCurrentModels()
 
-    if (project.config.camera) {
+    if (project.config.config) {
+      await applyViewerConfig(project.config.config)
+    } else {
+      realtimeController.applyRealtimeEffectsState()
+    }
+
+    if (project.config.camera && !project.config.config?.camera) {
       const cc = project.config.camera
       if (cc.target) {
         camera.target.x = cc.target[0]
