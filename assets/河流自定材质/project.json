@@ -1,11 +1,18 @@
 {
   "title": "河流自定材质",
-  "models": ["target.glb"],
+  "models": [
+    "target.glb"
+  ],
   "camera": {
-    "position": [-40, 60, -60],
-    "target": [0, 0, 0]
-  },
-  "customMaterials": {
-    "Terrain": "material.riverWater"
+    "position": [
+      -40,
+      60,
+      -60
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ]
   }
 }

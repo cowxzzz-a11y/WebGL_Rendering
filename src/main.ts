@@ -1579,19 +1579,6 @@ const loadProject = async (project: ProjectEntry) => {
       }
     }
 
-    if (project.config.customMaterials) {
-      for (const [meshName, materialKind] of Object.entries(project.config.customMaterials)) {
-        const targetMesh = importedMeshes.find((m) => m.name === meshName)
-        if (!targetMesh || targetMesh.isDisposed()) {
-          console.warn(`Custom material target mesh not found: ${meshName}`)
-          continue
-        }
-        if (materialKind === 'material.riverWater') {
-          applyRiverWaterMaterial({ scene, camera, sunLight, mesh: targetMesh })
-        }
-      }
-    }
-
     ensureCurrentModelsRenderable()
 
     await new Promise<void>((resolve) => {

@@ -135,20 +135,35 @@ void main(void) {
   vec3 halfDir = normalize(viewDir + u_LightDir);
   float tightSpec = pow(max(dot(reflect(-u_LightDir, normal), viewDir), 0.0), 64.0);
   float broadSpec = pow(max(dot(normal, halfDir), 0.0), 9.0) * 0.22;
-  float sideReflectionA = pow(max(dot(viewDir, normalize(vec3(0.84, 0.42, 0.34))), 0.0), 3.0);
-  float sideReflectionB = pow(max(dot(viewDir, normalize(vec3(-0.72, 0.5, 0.48))), 0.0), 3.4);
-  float horizonSheen = pow(1.0 - abs(dot(viewDir, meshNormal)), 2.1);
+  float sideReflectionA = pow(abs(dot(viewDir, normalize(vec3(0.84, 0.42, 0.34)))), 2.2);
+  float sideReflectionB = pow(abs(dot(viewDir, normalize(vec3(-0.72, 0.5, 0.48)))), 2.4);
+  float sideReflectionC = pow(abs(dot(viewDir, normalize(vec3(0.22, 0.64, -0.74)))), 2.0);
+  float sideReflectionD = pow(abs(dot(viewDir, normalize(vec3(-0.38, 0.58, -0.72)))), 2.1);
+  float horizonSheen = pow(1.0 - abs(dot(viewDir, meshNormal)), 1.35);
 
   float streamLines = fbm(vec2(waterPos.x * 1.8 + time * u_FlowSpeed * 2.0, waterPos.y * 9.0));
   float foamBands = smoothstep(0.72, 0.95, streamLines);
   float foamEdges = smoothstep(0.54, 0.72, fbm(waterPos * vec2(0.42, 2.6) + vec2(time * 0.6, 0.0)));
   float foam = clamp((foamBands * 0.7 + foamEdges * 0.3) * u_FoamAmount, 0.0, 1.0);
-  float microSparkle = smoothstep(0.72, 1.0, fbm(waterPos * 4.8 + vec2(time * 1.2, time * 0.35)));
-  float angleSparkle = pow(max(dot(viewDir, normalize(vec3(0.2, 0.92, 0.18))), 0.0), 2.2);
-  float multiAngleSheen = (sideReflectionA + sideReflectionB + horizonSheen * 0.35) * u_MultiAngleReflection;
-  float sparkle = (tightSpec + broadSpec + microSparkle * angleSparkle * 0.16 + multiAngleSheen * 0.24) * u_GlintStrength * (0.35 + envFactor);
 
-  vec3 reflection = u_SkyColor * envFactor * (0.22 + fresnel * 0.7 + multiAngleSheen * 0.18);
+  float microSparkle = smoothstep(0.62, 1.0, fbm(waterPos * 4.8 + vec2(time * 1.2, time * 0.35)));
+  float fineSparkle = smoothstep(0.74, 0.99, fbm(waterPos * 7.0 + vec2(time * 1.35, -time * 0.45)));
+  vec2 elongatedA = vec2(waterPos.x * 0.36 + waterPos.y * 0.08, waterPos.y * 2.4 - time * 0.55);
+  vec2 elongatedB = vec2(waterPos.x * -0.24 + waterPos.y * 0.14, waterPos.y * 1.8 + time * 0.38);
+  float longHighlightA = smoothstep(0.68, 0.94, fbm(elongatedA * 1.6));
+  float longHighlightB = smoothstep(0.74, 0.97, fbm(elongatedB * 2.1));
+  float brokenHighlights = (longHighlightA * 0.56 + longHighlightB * 0.34 + fineSparkle * 0.18)
+    * (0.38 + fbm(waterPos * 3.2 + vec2(time * 0.35, -time * 0.22)) * 0.72);
+  float waveRidges = smoothstep(0.66, 0.92, abs(riverWaveHeight(waterPos * 0.56, time) - riverWaveHeight(waterPos * 0.56 + vec2(0.28, -0.19), time)) * 2.8);
+  float angleSparkle = 0.42 + 0.58 * pow(abs(dot(viewDir, normalize(vec3(0.2, 0.92, 0.18)))), 1.35);
+  float omniSparkle = (microSparkle * 0.32 + fineSparkle * 0.28 + waveRidges * 0.4) * (0.55 + horizonSheen * 0.45);
+  float multiAngleSheen = (sideReflectionA + sideReflectionB + sideReflectionC + sideReflectionD + horizonSheen * 0.62) * 0.42 * u_MultiAngleReflection;
+  float alwaysOnReflection = clamp((brokenHighlights * 0.5 + omniSparkle * 0.28 + waveRidges * 0.18) * u_MultiAngleReflection, 0.0, 0.9);
+  float sparkle = (tightSpec * 0.42 + broadSpec * 0.75 + omniSparkle * angleSparkle * 0.34 + multiAngleSheen * 0.22 + alwaysOnReflection * 0.78) * u_GlintStrength * (0.55 + envFactor);
+
+  vec3 reflectionTint = mix(u_SkyColor, vec3(1.0, 1.0, 0.96), 0.58);
+  vec3 reflection = u_SkyColor * envFactor * (0.46 + fresnel * 0.42 + multiAngleSheen * 0.14 + omniSparkle * 0.12)
+    + reflectionTint * alwaysOnReflection * (0.38 + envFactor * 0.34);
   float diffuse = max(dot(normal, u_LightDir), 0.0);
   vec3 lighting = waterColor * (u_AmbientStrength * modeEnvMask + envFactor * 0.18 + diffuse * 0.22 * (0.28 + modeEnvMask * 0.72));
   vec3 color = lighting + reflection + u_LightColor * sparkle * 0.75 * (0.18 + modeEnvMask * 0.82);

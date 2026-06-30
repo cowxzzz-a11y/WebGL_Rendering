@@ -321,7 +321,7 @@ def _place_image_node(mat, img, loc):
     return tex
 
 
-def _place_images_on_materials(obj, images):
+def _place_images_on_materials(obj, images, saved_nodes):
     handled = set()
     for slot in obj.material_slots:
         mat = slot.material
@@ -331,7 +331,28 @@ def _place_images_on_materials(obj, images):
             continue
         handled.add(mat.as_pointer())
         for img in images:
-            if img:
+            if not img:
+                continue
+            
+            matched_base = None
+            import re
+            for base in saved_nodes.keys():
+                pat = re.compile(rf"^{re.escape(base)}(?:_(\d{{3}}))?$")
+                if pat.match(img.name):
+                    matched_base = base
+                    break
+                    
+            node_updated = False
+            if matched_base:
+                for saved_mat_name, saved_node_name in saved_nodes[matched_base]:
+                    if saved_mat_name == mat.name:
+                        node = mat.node_tree.nodes.get(saved_node_name)
+                        if node and node.type == 'TEX_IMAGE':
+                            node.image = img
+                            node_updated = True
+                            break
+                            
+            if not node_updated:
                 _place_image_node(mat, img, (-600, 0))
 
 
@@ -368,6 +389,65 @@ class COWX_OT_SmartIsolate(bpy.types.Operator):
             return {"FINISHED"}
         self.report({"INFO"}, "没有选中物体用于隔离")
         return {"CANCELLED"}
+def _clear_existing_images(obj_name, passes, obj):
+    import re
+    deleted_any = False
+    target_bases = []
+    for cfg in passes:
+        target_bases.append(f"{obj_name}_{cfg['suffix']}")
+        
+    base_configs = [c for c in passes if _is_base_pass(c)]
+    if len(base_configs) >= 2:
+        labels = [c["label"] for c in base_configs]
+        target_bases.append(f"{obj_name}_{'_'.join(labels)}")
+        
+    # Walk through materials of the object to find existing texture nodes using these images
+    saved_nodes = {}
+    for base in target_bases:
+        saved_nodes[base] = []
+        
+    handled_mats = set()
+    for slot in obj.material_slots:
+        mat = slot.material
+        if mat is None or not mat.use_nodes or mat.node_tree is None:
+            continue
+        if mat.name in handled_mats:
+            continue
+        handled_mats.add(mat.name)
+        
+        for node in mat.node_tree.nodes:
+            if node.type == 'TEX_IMAGE' and node.image:
+                for base in target_bases:
+                    pat = re.compile(rf"^{re.escape(base)}(?:_(\d{{3}}))?$")
+                    if pat.match(node.image.name):
+                        saved_nodes[base].append((mat.name, node.name))
+                        break
+                        
+    to_delete = []
+    for base in target_bases:
+        pat = re.compile(rf"^{re.escape(base)}(?:_(\d{{3}}))?$")
+        for img in bpy.data.images:
+            if pat.match(img.name):
+                to_delete.append(img)
+                
+    for img in to_delete:
+        try:
+            if img.name in bpy.data.images:
+                bpy.data.images.remove(img)
+                deleted_any = True
+        except Exception as e:
+            print(f"Error removing image {img.name}: {e}")
+            
+    if deleted_any:
+        try:
+            bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+        except Exception as e:
+            try:
+                bpy.ops.outliner.orphans_purge()
+            except Exception as e2:
+                print(f"Failed to purge orphans: {e2}")
+                
+    return saved_nodes
 
 
 class COWX_OT_Bake(bpy.types.Operator):
@@ -399,6 +479,8 @@ class COWX_OT_Bake(bpy.types.Operator):
         if not passes:
             self.report({"WARNING"}, "请至少选择一个烘焙通道")
             return {"CANCELLED"}
+
+        saved_nodes = _clear_existing_images(obj.name, passes, obj)
 
         uv = _get_uv_layer(obj, scene)
         if uv is None:
@@ -452,18 +534,18 @@ class COWX_OT_Bake(bpy.types.Operator):
             comp_img, msg = _composite_passes(scene, obj, base_configs)
             if comp_img:
                 self.report({"INFO"}, f"融合完成: {msg}")
-                _place_images_on_materials(obj, [comp_img])
+                _place_images_on_materials(obj, [comp_img], saved_nodes)
                 final_images.append(comp_img)
             else:
                 self.report({"WARNING"}, msg)
                 imgs = [_find_image(obj.name, cfg["suffix"]) for cfg in base_configs]
                 imgs = [im for im in imgs if im]
-                _place_images_on_materials(obj, imgs)
+                _place_images_on_materials(obj, imgs, saved_nodes)
                 final_images.extend(imgs)
         elif len(base_configs) == 1:
             img = _find_image(obj.name, base_configs[0]["suffix"])
             if img:
-                _place_images_on_materials(obj, [img])
+                _place_images_on_materials(obj, [img], saved_nodes)
                 final_images.append(img)
 
         other_imgs = []
@@ -472,7 +554,7 @@ class COWX_OT_Bake(bpy.types.Operator):
             if img:
                 other_imgs.append(img)
         if other_imgs:
-            _place_images_on_materials(obj, other_imgs)
+            _place_images_on_materials(obj, other_imgs, saved_nodes)
             final_images.extend(other_imgs)
 
         # Pack final images immediately to save in blend file memory

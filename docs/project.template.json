@@ -183,9 +183,5 @@
       "_level说明": "贴图强度倍率。"
     }
   ],
-  "_lightmaps说明": "烘焙光照贴图列表。实时渲染总开关不会影响这些已经烘焙到贴图里的明暗。",
-  "customMaterials": {
-    "示例河流网格名": "material.riverWater"
-  },
-  "_customMaterials说明": "可选。给指定网格套特殊材质，例如 material.riverWater。key 是网格名。"
+  "_lightmaps说明": "烘焙光照贴图列表。实时渲染总开关不会影响这些已经烘焙到贴图里的明暗。"
 }

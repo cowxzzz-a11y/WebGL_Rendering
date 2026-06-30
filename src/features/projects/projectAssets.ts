@@ -17,7 +17,6 @@ export type ProjectConfig = {
   model?: string
   config?: ViewerProjectConfigInput
   lightmaps?: ProjectLightmapConfig[]
-  customMaterials?: Record<string, string>
   camera?: {
     alpha?: number
     beta?: number
