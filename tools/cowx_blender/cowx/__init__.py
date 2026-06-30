@@ -466,9 +466,13 @@ class COWX_OT_Bake(bpy.types.Operator):
                 pass
 
         scene = context.scene
-        obj = _active_mesh(context)
-        if obj is None:
-            self.report({"WARNING"}, "请选择一个网格物体")
+        orig_active = context.view_layer.objects.active
+        orig_selected = list(context.selected_objects)
+
+        # Get all selected mesh objects
+        selected_meshes = [o for o in orig_selected if o.type == 'MESH']
+        if not selected_meshes:
+            self.report({"WARNING"}, "请选择至少一个网格物体")
             return {"CANCELLED"}
 
         if not bpy.app.build_options.cycles:
@@ -480,20 +484,11 @@ class COWX_OT_Bake(bpy.types.Operator):
             self.report({"WARNING"}, "请至少选择一个烘焙通道")
             return {"CANCELLED"}
 
-        saved_nodes = _clear_existing_images(obj.name, passes, obj)
-
-        uv = _get_uv_layer(obj, scene)
-        if uv is None:
-            self.report({"WARNING"}, "物体没有 UV 层")
-            return {"CANCELLED"}
-
-        restore = {
+        restore_global = {
             "engine": scene.render.engine,
             "samples": scene.cycles.samples if hasattr(scene, "cycles") else 0,
             "device": scene.cycles.device if hasattr(scene, "cycles") else None,
             "margin": scene.render.bake.margin,
-            "uv": obj.data.uv_layers.active.name if obj.data.uv_layers.active else "",
-            "mode": obj.mode,
         }
 
         scene.render.engine = "CYCLES"
@@ -506,88 +501,320 @@ class COWX_OT_Bake(bpy.types.Operator):
         if hasattr(scene.render.bake, "use_selected_to_active"):
             scene.render.bake.use_selected_to_active = False
 
-        obj.data.uv_layers.active = uv
-        context.view_layer.objects.active = obj
-        if obj.mode != "OBJECT":
-            bpy.ops.object.mode_set(mode="OBJECT")
+        total_count = len(selected_meshes)
+        self.report({"INFO"}, f"开始批量烘焙，共 {total_count} 个物体...")
 
-        res = int(scene.cowx_bake_resolution)
+        for idx, obj in enumerate(selected_meshes):
+            self.report({"INFO"}, f"正在烘焙 ({idx + 1}/{total_count}): {obj.name}")
 
-        for i, cfg in enumerate(passes):
-            self.report({"INFO"}, f"烘焙 ({i + 1}/{len(passes)}): {cfg['label']}")
-            img = _make_image(obj.name, cfg, res)
-            _assign_to_materials(obj, img)
-            bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
-            try:
-                bpy.ops.object.bake(type=cfg["bake_type"], **cfg["bake_kwargs"])
-            except Exception as e:
-                self.report({"ERROR"}, f"{cfg['label']} 烘焙失败: {e}")
-                break
+            uv = _get_uv_layer(obj, scene)
+            if uv is None:
+                self.report({"WARNING"}, f"物体 {obj.name} 没有 UV 层，已跳过")
+                continue
 
-        _clean_bake_nodes(obj)
+            restore_obj = {
+                "uv": obj.data.uv_layers.active.name if obj.data.uv_layers.active else "",
+                "mode": obj.mode,
+            }
 
-        base_configs = [c for c in passes if _is_base_pass(c)]
-        other_configs = [c for c in passes if not _is_base_pass(c)]
-
-        final_images = []
-        if len(base_configs) >= 2:
-            comp_img, msg = _composite_passes(scene, obj, base_configs)
-            if comp_img:
-                self.report({"INFO"}, f"融合完成: {msg}")
-                _place_images_on_materials(obj, [comp_img], saved_nodes)
-                final_images.append(comp_img)
-            else:
-                self.report({"WARNING"}, msg)
-                imgs = [_find_image(obj.name, cfg["suffix"]) for cfg in base_configs]
-                imgs = [im for im in imgs if im]
-                _place_images_on_materials(obj, imgs, saved_nodes)
-                final_images.extend(imgs)
-        elif len(base_configs) == 1:
-            img = _find_image(obj.name, base_configs[0]["suffix"])
-            if img:
-                _place_images_on_materials(obj, [img], saved_nodes)
-                final_images.append(img)
-
-        other_imgs = []
-        for cfg in other_configs:
-            img = _find_image(obj.name, cfg["suffix"])
-            if img:
-                other_imgs.append(img)
-        if other_imgs:
-            _place_images_on_materials(obj, other_imgs, saved_nodes)
-            final_images.extend(other_imgs)
-
-        # Pack final images immediately to save in blend file memory
-        for img in final_images:
-            if img:
+            # Select ONLY this object
+            for o in context.view_layer.objects:
                 try:
-                    img.update()
-                    if img.packed_file:
-                        img.unpack(method='REMOVE')
-                    img.pack()
-                except Exception as e:
-                    self.report({"WARNING"}, f"打包图像 {img.name} 失败: {e}")
+                    o.select_set(False)
+                except:
+                    pass
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
 
-        scene.render.engine = restore["engine"]
-        scene.render.bake.margin = restore["margin"]
+            if obj.mode != "OBJECT":
+                try:
+                    bpy.ops.object.mode_set(mode="OBJECT")
+                except:
+                    pass
+
+            obj.data.uv_layers.active = uv
+
+            saved_nodes = _clear_existing_images(obj.name, passes, obj)
+
+            res = int(scene.cowx_bake_resolution)
+
+            bake_success = True
+            for i, cfg in enumerate(passes):
+                self.report({"INFO"}, f"物体 {obj.name} 烘焙 ({i + 1}/{len(passes)}): {cfg['label']}")
+                img = _make_image(obj.name, cfg, res)
+                _assign_to_materials(obj, img)
+                bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+                try:
+                    bpy.ops.object.bake(type=cfg["bake_type"], **cfg["bake_kwargs"])
+                except Exception as e:
+                    self.report({"ERROR"}, f"{obj.name} 的 {cfg['label']} 烘焙失败: {e}")
+                    bake_success = False
+                    break
+
+            _clean_bake_nodes(obj)
+
+            if not bake_success:
+                # Restore UV and mode
+                old_uv = obj.data.uv_layers.get(restore_obj["uv"])
+                if old_uv:
+                    obj.data.uv_layers.active = old_uv
+                if obj.mode != restore_obj["mode"]:
+                    try:
+                        bpy.ops.object.mode_set(mode=restore_obj["mode"])
+                    except:
+                        pass
+                continue
+
+            base_configs = [c for c in passes if _is_base_pass(c)]
+            other_configs = [c for c in passes if not _is_base_pass(c)]
+
+            final_images = []
+            if len(base_configs) >= 2:
+                comp_img, msg = _composite_passes(scene, obj, base_configs)
+                if comp_img:
+                    self.report({"INFO"}, f"融合完成: {msg}")
+                    _place_images_on_materials(obj, [comp_img], saved_nodes)
+                    final_images.append(comp_img)
+                else:
+                    self.report({"WARNING"}, msg)
+                    imgs = [_find_image(obj.name, cfg["suffix"]) for cfg in base_configs]
+                    imgs = [im for im in imgs if im]
+                    _place_images_on_materials(obj, imgs, saved_nodes)
+                    final_images.extend(imgs)
+            elif len(base_configs) == 1:
+                img = _find_image(obj.name, base_configs[0]["suffix"])
+                if img:
+                    _place_images_on_materials(obj, [img], saved_nodes)
+                    final_images.append(img)
+
+            other_imgs = []
+            for cfg in other_configs:
+                img = _find_image(obj.name, cfg["suffix"])
+                if img:
+                    other_imgs.append(img)
+            if other_imgs:
+                _place_images_on_materials(obj, other_imgs, saved_nodes)
+                final_images.extend(other_imgs)
+
+            # Pack final images immediately to save in blend file memory
+            for img in final_images:
+                if img:
+                    try:
+                        img.update()
+                        if img.packed_file:
+                            img.unpack(method='REMOVE')
+                        img.pack()
+                    except Exception as e:
+                        self.report({"WARNING"}, f"打包图像 {img.name} 失败: {e}")
+
+            # Restore UV and mode
+            old_uv = obj.data.uv_layers.get(restore_obj["uv"])
+            if old_uv:
+                obj.data.uv_layers.active = old_uv
+            if obj.mode != restore_obj["mode"]:
+                try:
+                    bpy.ops.object.mode_set(mode=restore_obj["mode"])
+                except:
+                    pass
+
+        # Restore global settings
+        scene.render.engine = restore_global["engine"]
+        scene.render.bake.margin = restore_global["margin"]
         if hasattr(scene, "cycles"):
-            scene.cycles.samples = restore["samples"]
-            if restore["device"]:
-                scene.cycles.device = restore["device"]
-        old_uv = obj.data.uv_layers.get(restore["uv"])
-        if old_uv:
-            obj.data.uv_layers.active = old_uv
-        if obj.mode != restore["mode"]:
+            scene.cycles.samples = restore_global["samples"]
+            if restore_global["device"]:
+                scene.cycles.device = restore_global["device"]
+
+        # Restore selection
+        for o in context.view_layer.objects:
             try:
-                bpy.ops.object.mode_set(mode=restore["mode"])
+                o.select_set(False)
+            except:
+                pass
+        for o in orig_selected:
+            try:
+                o.select_set(True)
+            except:
+                pass
+        if orig_active:
+            try:
+                context.view_layer.objects.active = orig_active
             except:
                 pass
 
-        self.report({"INFO"}, "烘焙全部完成")
+        self.report({"INFO"}, "所有选择的物体烘焙完成")
         return {"FINISHED"}
 
 
+class COWX_OT_ConnectAO(bpy.types.Operator):
+    bl_idname = "cowx.connect_ao"
+    bl_label = "连接AO"
+    bl_description = "自动连接选中的图像纹理节点至 glTF AO (遮挡) 输出，同时自动应用到模型的所有材质上"
+    bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj and obj.type == "MESH" and obj.active_material and obj.active_material.use_nodes
+
+    def execute(self, context):
+        obj = context.active_object
+        mat = obj.active_material
+        if not mat or not mat.use_nodes or not mat.node_tree:
+            self.report({"WARNING"}, "当前材质未启用节点")
+            return {"CANCELLED"}
+
+        nodes = mat.node_tree.nodes
+        img_node = nodes.active
+
+        # If active node is not image texture, try to find a selected one
+        if not img_node or img_node.type != 'TEX_IMAGE':
+            img_nodes = [n for n in nodes if n.select and n.type == 'TEX_IMAGE']
+            if img_nodes:
+                img_node = img_nodes[0]
+            else:
+                self.report({"WARNING"}, "请在材质中先选中要连接的图像纹理节点")
+                return {"CANCELLED"}
+
+        # Ensure image is loaded in the node
+        img = img_node.image
+        if not img:
+            self.report({"WARNING"}, "选中的图像纹理节点中没有加载图像")
+            return {"CANCELLED"}
+
+        # Determine UV Map name
+        uv_name = ""
+        if obj and obj.type == "MESH" and obj.data.uv_layers:
+            if len(obj.data.uv_layers) >= 2:
+                uv_name = obj.data.uv_layers[1].name
+            else:
+                uv_name = obj.data.uv_layers[0].name
+        if not uv_name:
+            uv_name = context.scene.cowx_bake_uv_layer
+
+        # Walk through all materials of the object
+        handled_mats = set()
+        connected_count = 0
+        for slot in obj.material_slots:
+            target_mat = slot.material
+            if target_mat is None or not target_mat.use_nodes or target_mat.node_tree is None:
+                continue
+            if target_mat.name in handled_mats:
+                continue
+            handled_mats.add(target_mat.name)
+
+            # Search if target_mat already has a ShaderNodeTexImage referencing `img`
+            target_img_node = None
+            for node in target_mat.node_tree.nodes:
+                if node.type == 'TEX_IMAGE' and node.image == img:
+                    target_img_node = node
+                    break
+
+            # If not found, create a new Image Texture node and assign `img`
+            if target_img_node is None:
+                target_img_node = target_mat.node_tree.nodes.new(type="ShaderNodeTexImage")
+                target_img_node.image = img
+                target_img_node.location = (img_node.location.x, img_node.location.y)
+
+            # Perform connection
+            try:
+                self._connect_nodes(target_mat, target_img_node, uv_name)
+                connected_count += 1
+            except Exception as e:
+                self.report({"WARNING"}, f"材质 {target_mat.name} 连接失败: {e}")
+
+        self.report({"INFO"}, f"AO节点已在 {connected_count} 个材质中自动连接完成")
+        return {"FINISHED"}
+
+    def _connect_nodes(self, mat, img_node, uv_name):
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+
+        # 1. UV Map node
+        uv_node = None
+        if img_node.inputs['Vector'].is_linked:
+            linked_node = img_node.inputs['Vector'].links[0].from_node
+            if linked_node.type == 'UV_MAP':
+                uv_node = linked_node
+                
+        if uv_node is None:
+            uv_node = nodes.new(type="ShaderNodeUVMap")
+            uv_node.location = (img_node.location.x - 280, img_node.location.y)
+        
+        uv_node.uv_map = uv_name
+        
+        try:
+            links.new(uv_node.outputs['UV'], img_node.inputs['Vector'])
+        except Exception as e:
+            print(f"Error linking UV Map: {e}")
+
+        # 2. Separate Color node
+        sep_node = None
+        if img_node.outputs['Color'].is_linked:
+            for link in img_node.outputs['Color'].links:
+                if link.to_node.type == 'SEPARATE_COLOR':
+                    sep_node = link.to_node
+                    break
+                    
+        if sep_node is None:
+            sep_node = nodes.new(type="ShaderNodeSeparateColor")
+            sep_node.location = (img_node.location.x + 280, img_node.location.y)
+            
+        try:
+            links.new(img_node.outputs['Color'], sep_node.inputs['Color'])
+        except Exception as e:
+            print(f"Error linking Separate Color: {e}")
+
+        # 3. glTF Material Output node
+        gltf_node = None
+        for n in nodes:
+            if n.type == 'GROUP' and n.node_tree and n.node_tree.name == 'glTF Material Output':
+                gltf_node = n
+                break
+
+        if gltf_node is None:
+            import bpy
+            group = bpy.data.node_groups.get('glTF Material Output')
+            if group is None:
+                group = bpy.data.node_groups.new('glTF Material Output', 'ShaderNodeTree')
+                if hasattr(group, "interface"):
+                    group.interface.new_socket(name="Occlusion", socket_type="NodeSocketColor", in_out="INPUT")
+                    group.interface.new_socket(name="Thickness", socket_type="NodeSocketFloat", in_out="INPUT")
+                else:
+                    group.inputs.new('NodeSocketColor', "Occlusion")
+                    group.inputs.new('NodeSocketFloat', "Thickness")
+            gltf_node = nodes.new('ShaderNodeGroup')
+            gltf_node.node_tree = group
+            gltf_node.name = "glTF Material Output"
+            gltf_node.label = "glTF Material Output"
+            gltf_node.location = (img_node.location.x + 560, img_node.location.y)
+
+        try:
+            red_output = sep_node.outputs.get("Red") or sep_node.outputs.get("R") or sep_node.outputs[0]
+            occlusion_input = gltf_node.inputs.get("Occlusion") or gltf_node.inputs[0]
+            links.new(red_output, occlusion_input)
+        except Exception as e:
+            print(f"Error linking glTF: {e}")
+
+
+class COWX_OT_PurgeUnused(bpy.types.Operator):
+    bl_idname = "cowx.purge_unused"
+    bl_label = "清理"
+    bl_description = "清除所有孤立的数据块（如未使用的材质、贴图等）"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        try:
+            bpy.ops.outliner.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+            self.report({"INFO"}, "清理未使用数据完成")
+        except Exception as e:
+            try:
+                bpy.ops.outliner.orphans_purge()
+                self.report({"INFO"}, "清理未使用数据完成")
+            except Exception as e2:
+                self.report({"ERROR"}, f"清理失败: {e2}")
+                return {"CANCELLED"}
+        return {"FINISHED"}
 
 
 class COWX_PT_BakePanel(bpy.types.Panel):
@@ -600,12 +827,20 @@ class COWX_PT_BakePanel(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj and obj.type == "MESH"
+        if obj and obj.type == "MESH":
+            return True
+        return any(o.type == "MESH" for o in context.selected_objects)
 
     def draw(self, context):
         layout = self.layout
         scene = context.scene
+        
+        # Get active mesh or first selected mesh
         obj = context.active_object
+        if not (obj and obj.type == "MESH"):
+            mesh_objs = [o for o in context.selected_objects if o.type == "MESH"]
+            if mesh_objs:
+                obj = mesh_objs[0]
 
         box = layout.box()
         box.label(text="UV 通道", icon="UV")
@@ -633,16 +868,29 @@ class COWX_PT_BakePanel(bpy.types.Panel):
         col_right.prop(scene, "cowx_bake_pass_ao", text="AO")
         col_right.prop(scene, "cowx_bake_pass_light", text="Light")
 
+        # Get count of selected mesh objects
+        selected_meshes = [o for o in context.selected_objects if o.type == 'MESH']
+        count = len(selected_meshes)
+
         layout.separator()
-        layout.operator("cowx.bake", icon="RENDER_STILL", text="开始烘焙")
+        if count > 1:
+            layout.operator("cowx.bake", icon="RENDER_STILL", text=f"开始批量烘焙 (共 {count} 个物体)")
+        else:
+            layout.operator("cowx.bake", icon="RENDER_STILL", text="开始烘焙")
 
-
-
+        # Spacing
+        layout.separator(factor=2.0)
+        
+        # Helper buttons
+        layout.operator("cowx.connect_ao", icon="LINKED", text="连接AO")
+        layout.operator("cowx.purge_unused", icon="TRASH", text="清理")
 
 
 classes = (
     COWX_OT_SmartIsolate,
     COWX_OT_Bake,
+    COWX_OT_ConnectAO,
+    COWX_OT_PurgeUnused,
     COWX_PT_BakePanel,
 )
 
