@@ -4,5 +4,7 @@ export const shareUrl = 'https://3d.puffina.xyz/'
 
 export const viewerConfigVersion = 2
 
-export const legacyEnvironmentUrl = '/environment.env'
+// @ts-ignore - environment.env is a binary asset
+import legacyEnvUrl from '../assets/environment.env?url'
+export const legacyEnvironmentUrl = legacyEnvUrl
 export const preferredDefaultEnvironmentKey = 'studio_small_09_4k.hdr'

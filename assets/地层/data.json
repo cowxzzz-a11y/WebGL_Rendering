@@ -1,0 +1,462 @@
+{
+  "world_Center": [
+    0,
+    0,
+    0
+  ],
+  "text": "整体工程区",
+  "objectId": "12d6babe-afb2-4f91-ab55-f462334073f9",
+  "parentId": null,
+  "isHidden": false,
+  "nodeTypesText": [
+    "Ply"
+  ],
+  "isFolder": false,
+  "groundTypeText": "Both",
+  "description": null,
+  "image": null,
+  "children": [
+    {
+      "text": "地层岩性",
+      "objectId": "899599a6-39cb-448c-b3f9-93f6692fc085",
+      "parentId": "12d6babe-afb2-4f91-ab55-f462334073f9",
+      "isHidden": false,
+      "nodeTypesText": [
+        "Ply"
+      ],
+      "isFolder": true,
+      "groundTypeText": "UnGround",
+      "description": null,
+      "image": null,
+      "children": [
+        {
+          "text": "岩性实体",
+          "objectId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+          "parentId": "899599a6-39cb-448c-b3f9-93f6692fc085",
+          "isHidden": false,
+          "nodeTypesText": [
+            "Ply"
+          ],
+          "isFolder": true,
+          "groundTypeText": "UnGround",
+          "description": null,
+          "image": null,
+          "children": [
+            {
+              "text": "张夏组∈2z7",
+              "objectId": "7509611b-3f5b-411c-9d53-c25b44ddde1c",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "4df7fcec-3e52-4811-9e1f-a29fc111f7f4",
+              "objectData": {
+                "textureId": "32a47947-5ced-4017-d3ff-08db46fa4863",
+                "地层名称": "中寒武统张夏组∈2z7",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "弱风化",
+                "岩性特征": "极薄层泥质条带灰岩夹中厚层豹皮灰岩、竹叶状灰岩及鲕状灰岩",
+                "厚度（米）": "80",
+                "fileKey": "LithologyEntity\\张夏组∈2z7.ply"
+              }
+            },
+            {
+              "text": "张夏组∈2z6-2",
+              "objectId": "1906bba1-dd47-4616-bfda-f14a42fc4ce6",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "0eb254db-f3c3-484d-98ca-c29993484134",
+              "objectData": {
+                "textureId": "e7285306-731a-41c0-d400-08db46fa4863",
+                "地层名称": "中寒武统张夏组∈2z6-2",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "岩性特征": "中厚层豹皮灰岩、竹叶状灰岩、鲕状灰岩夹极薄层泥质条带灰岩",
+                "厚度（米）": "56",
+                "fileKey": "LithologyEntity\\张夏组∈2z6-2.ply"
+              }
+            },
+            {
+              "text": "张夏组∈2z6-1",
+              "objectId": "416c7fb2-fcf9-431d-94e8-94883de101ae",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "c7cbf164-aa8a-4d38-a6e4-1de71869edbb",
+              "objectData": {
+                "textureId": "7d0a43f0-1ac8-4a3b-d401-08db46fa4863",
+                "地层名称": "中寒武统张夏组∈2z6-1",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "岩性特征": "极薄层泥质条带灰岩夹中厚层竹叶状灰岩",
+                "厚度（米）": "26",
+                "fileKey": "LithologyEntity\\张夏组∈2z6-1.ply"
+              }
+            },
+            {
+              "text": "张夏组∈2z5",
+              "objectId": "9743a445-a3e8-43da-9efd-7a18a4290d5f",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "bb9b8aee-089a-4512-aa8d-3948ea026568",
+              "objectData": {
+                "textureId": "f1ba1bf3-9551-45e0-d402-08db46fa4863",
+                "地层名称": "中寒武统张夏组∈2z5",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "岩性特征": "灰绿色页岩与极薄层泥质条带灰岩互层，并夹中厚层竹叶状灰岩",
+                "厚度（米）": "27",
+                "fileKey": "LithologyEntity\\张夏组∈2z5.ply"
+              }
+            },
+            {
+              "text": "张夏组∈2z4",
+              "objectId": "6ae58bc9-af28-4827-9fb3-d6e9c7856abd",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "20e0ca14-cc89-4005-9430-e030cdcb3c2b",
+              "objectData": {
+                "textureId": "0763cf7c-ba65-4090-d403-08db46fa4863",
+                "地层名称": "中寒武统张夏组∈2z4",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "岩性特征": "极薄层泥质条带灰岩与中厚层豹皮灰岩、竹叶状灰岩、鲕状灰岩互层",
+                "厚度（米）": "36",
+                "fileKey": "LithologyEntity\\张夏组∈2z4.ply"
+              }
+            },
+            {
+              "text": "张夏组∈2z3",
+              "objectId": "561372f3-ec4d-449b-82aa-e59b50225929",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "a87369a2-523b-4ea0-a9ef-f32636b6adde",
+              "objectData": {
+                "textureId": "d6ce821a-e65b-419e-d404-08db46fa4863",
+                "地层名称": "中寒武统张夏组∈2z3",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "岩性特征": "灰色中厚层~厚层豹皮灰岩、竹叶状灰岩夹极薄层泥质条带灰岩",
+                "厚度（米）": "31",
+                "fileKey": "LithologyEntity\\张夏组∈2z3.ply"
+              }
+            },
+            {
+              "text": "张夏组∈2z2",
+              "objectId": "c3f9f30f-3ec0-40bb-92b2-dd05669b2c31",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "12f7d9ff-81ba-40c9-9db5-afc9f7452388",
+              "objectData": {
+                "textureId": "6191c36e-1611-4458-d405-08db46fa4863",
+                "地层名称": "中寒武统张夏组∈2z2",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "岩性特征": "极薄层泥质条带灰岩夹薄层~中厚层竹叶状灰岩",
+                "厚度（米）": "14",
+                "fileKey": "LithologyEntity\\张夏组∈2z2.ply"
+              }
+            },
+            {
+              "text": "张夏组∈2z1",
+              "objectId": "73364730-dbcc-410d-84e3-a40c413330aa",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "27e93d78-6f3b-4aa6-ac2d-9a3841cd4994",
+              "objectData": {
+                "textureId": "76ee0144-1531-4036-d406-08db46fa4863",
+                "地层名称": "中寒武统张夏组∈2z1",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "岩性特征": "灰绿色页岩、泥岩夹紫红色泥岩",
+                "厚度（米）": "10",
+                "fileKey": "LithologyEntity\\张夏组∈2z1.ply"
+              }
+            },
+            {
+              "text": "徐庄组∈2x5",
+              "objectId": "eba591ad-aeec-4945-bcb8-45e4b2808cbc",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "4aa2284d-44f2-4d0c-b86f-0a2c48548942",
+              "objectData": {
+                "textureId": "e8bbd8e3-f8cf-403f-d407-08db46fa4863",
+                "地层名称": "中寒武统徐庄组∈2x5",
+                "地层年代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "岩性特征": "极薄层泥质条带灰岩夹薄层~中厚层竹叶状灰岩、中厚层豹皮灰岩",
+                "厚度（米）": "35",
+                "fileKey": "LithologyEntity\\徐庄组∈2x5.ply"
+              }
+            },
+            {
+              "text": "徐庄组∈2x4",
+              "objectId": "119c4165-2724-4e1a-8e08-44b66f2edf30",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "d7f7fb26-9c65-44f1-9473-9584e0089b8d",
+              "objectData": {
+                "textureId": "a2b6ab82-127d-490f-d408-08db46fa4863",
+                "地层名称": "中寒武统徐庄组∈2x4",
+                "地层时代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "岩性特征": "中厚层~厚层豹皮灰岩夹中厚层鲕状灰岩、竹叶状灰岩、极薄层泥质条带灰岩",
+                "厚度（米）": "35",
+                "fileKey": "LithologyEntity\\徐庄组∈2x4.ply"
+              }
+            },
+            {
+              "text": "徐庄组∈2x3",
+              "objectId": "291f8926-22a6-480b-b1c1-0142ba22e10f",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "39bd422a-f852-41f0-8231-5f64bd0d87be",
+              "objectData": {
+                "textureId": "005b4c23-eca4-424e-d409-08db46fa4863",
+                "地层名称": "中寒武统徐庄组∈2x3",
+                "地层时代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "fileKey": "LithologyEntity\\徐庄组∈2x3.ply"
+              }
+            },
+            {
+              "text": "徐庄组∈2x2",
+              "objectId": "03b82a0e-089a-4c92-a1bb-e21f62813663",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "b1403c2a-c2dc-400d-80b4-e76a7416a601",
+              "objectData": {
+                "textureId": "803931c3-ba8e-4d41-d40a-08db46fa4863",
+                "地层名称": "中寒武统徐庄组∈2x2",
+                "地层时代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "fileKey": "LithologyEntity\\徐庄组∈2x2.ply"
+              }
+            },
+            {
+              "text": "徐庄组∈2x1",
+              "objectId": "dae1d7d8-8a33-4d8f-93b4-488b31d65937",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "48ab3b0f-1e2f-4788-8d3f-b0b80e384f2c",
+              "objectData": {
+                "textureId": "0a5d079a-e1be-45a4-d40b-08db46fa4863",
+                "地层名称": "中寒武统徐庄组∈2x1",
+                "地层时代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "fileKey": "LithologyEntity\\徐庄组∈2x1.ply"
+              }
+            },
+            {
+              "text": "徐庄组∈2x0",
+              "objectId": "dae1d7d8-8a33-4d8f-93b4-488b31d65935",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "48ab3b0f-1e2f-4788-8d3f-b0b80e384f2ff",
+              "objectData": {
+                "textureId": "803931c3-ba8e-4d41-d40a-08db46fa4863",
+                "地层名称": "中寒武统徐庄组∈2x0",
+                "地层时代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "fileKey": "LithologyEntity\\徐庄组∈2x0.ply"
+              }
+            },
+            {
+              "text": "徐庄组∈2x_1",
+              "objectId": "dae1d7d8-8a33-4d8f-93b4-488b31d65936",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "48ab3b0f-1e2f-4788-8d3f-b0b80e384f2fc",
+              "objectData": {
+                "textureId": "803931c3-ba8e-4d41-d40a-08db46fa4863",
+                "地层名称": "中寒武统徐庄组∈2x_1",
+                "地层时代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "fileKey": "LithologyEntity\\徐庄组∈2x_1.ply"
+              }
+            },
+            {
+              "text": "徐庄组∈2x_2",
+              "objectId": "dae1d7d8-8a33-4d8f-93b4-488b31d65938",
+              "parentId": "180ec894-82f3-4416-8131-e018c7e3b84c",
+              "isHidden": false,
+              "nodeTypesText": [
+                "Ply"
+              ],
+              "isFolder": false,
+              "groundTypeText": "UnGround",
+              "description": "岩性实体",
+              "image": null,
+              "children": [],
+              "objectType": "StrataSolid",
+              "dataId": "48ab3b0f-1e2f-4788-8d3f-b0b80e384f2e",
+              "objectData": {
+                "textureId": "803931c3-ba8e-4d41-d40a-08db46fa4863",
+                "地层名称": "中寒武统徐庄组∈2x_2",
+                "地层时代": "古生界寒武系中统",
+                "成因类型": "沉积岩",
+                "风化类型": "微风化-新鲜",
+                "fileKey": "LithologyEntity\\徐庄组∈2x_2.ply"
+              }
+            }
+          ],
+          "objectType": "StrataSolidFolder",
+          "dataId": "8ed6ba7c-61c1-4943-9cb5-59738eb4b038",
+          "objectData": {}
+        }
+      ],
+      "objectType": "StrataLithoFolder",
+      "dataId": "24a5f70d-054c-4166-bbb9-e2ec50f8fa90",
+      "objectData": {}
+    }
+  ],
+  "objectType": null,
+  "dataId": "a48818b0-8696-4017-b732-461daf6a74d9",
+  "objectData": {}
+}

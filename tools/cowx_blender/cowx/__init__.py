@@ -357,16 +357,82 @@ def _place_images_on_materials(obj, images, saved_nodes):
 
 
 _last_active_obj = None
+_outliner_sync_pending = False
+_active_object_poll_running = False
+
+
+def _show_active_object_in_outliners():
+    global _outliner_sync_pending
+    _outliner_sync_pending = False
+
+    context = bpy.context
+    obj = getattr(context, "active_object", None)
+    wm = getattr(context, "window_manager", None)
+    if obj is None or wm is None:
+        return None
+
+    for window in wm.windows:
+        screen = window.screen
+        if screen is None:
+            continue
+        for area in screen.areas:
+            if area.type != "OUTLINER":
+                continue
+
+            region = next((r for r in area.regions if r.type == "WINDOW"), None)
+            if region is None:
+                continue
+
+            try:
+                with context.temp_override(
+                    window=window,
+                    screen=screen,
+                    area=area,
+                    region=region,
+                    space_data=area.spaces.active,
+                ):
+                    bpy.ops.outliner.show_active()
+                area.tag_redraw()
+            except Exception as exc:
+                print(f"Cowx: failed to sync Outliner to active object: {exc}")
+
+    return None
+
+
+def _schedule_outliner_sync():
+    global _outliner_sync_pending
+    if _outliner_sync_pending:
+        return
+    _outliner_sync_pending = True
+    bpy.app.timers.register(_show_active_object_in_outliners, first_interval=0.05)
+
+
+def _handle_active_object_change():
+    global _last_active_obj
+    context = bpy.context
+    obj = getattr(context, "active_object", None)
+    if obj == _last_active_obj:
+        return
+
+    if obj and obj.type == "MESH":
+        _auto_set_uv(context.scene, obj)
+
+    _last_active_obj = obj
+    if obj:
+        _schedule_outliner_sync()
+
+
+def _active_object_poll_timer():
+    if not _active_object_poll_running:
+        return None
+
+    _handle_active_object_change()
+    return 0.25
 
 
 @persistent
 def _on_depsgraph_update(scene):
-    global _last_active_obj
-    context = bpy.context
-    obj = getattr(context, "active_object", None)
-    if obj and obj.type == "MESH" and obj != _last_active_obj:
-        _auto_set_uv(context.scene, obj)
-        _last_active_obj = obj
+    _handle_active_object_change()
 
 
 class COWX_OT_SmartIsolate(bpy.types.Operator):
@@ -649,81 +715,120 @@ class COWX_OT_Bake(bpy.types.Operator):
 class COWX_OT_ConnectAO(bpy.types.Operator):
     bl_idname = "cowx.connect_ao"
     bl_label = "连接AO"
-    bl_description = "自动连接选中的图像纹理节点至 glTF AO (遮挡) 输出，同时自动应用到模型的所有材质上"
+    bl_description = "自动连接选中的图像纹理节点（或名称含AO的节点）至 glTF AO (遮挡) 输出，支持多物体批量"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return obj and obj.type == "MESH" and obj.active_material and obj.active_material.use_nodes
+        return any(o.type == "MESH" for o in context.selected_objects)
 
     def execute(self, context):
-        obj = context.active_object
-        mat = obj.active_material
-        if not mat or not mat.use_nodes or not mat.node_tree:
-            self.report({"WARNING"}, "当前材质未启用节点")
+        selected_meshes = [o for o in context.selected_objects if o.type == 'MESH']
+        if not selected_meshes:
+            self.report({"WARNING"}, "请选择至少一个网格物体")
             return {"CANCELLED"}
 
-        nodes = mat.node_tree.nodes
-        img_node = nodes.active
-
-        # If active node is not image texture, try to find a selected one
-        if not img_node or img_node.type != 'TEX_IMAGE':
-            img_nodes = [n for n in nodes if n.select and n.type == 'TEX_IMAGE']
-            if img_nodes:
-                img_node = img_nodes[0]
-            else:
-                self.report({"WARNING"}, "请在材质中先选中要连接的图像纹理节点")
-                return {"CANCELLED"}
-
-        # Ensure image is loaded in the node
-        img = img_node.image
-        if not img:
-            self.report({"WARNING"}, "选中的图像纹理节点中没有加载图像")
-            return {"CANCELLED"}
-
-        # Determine UV Map name
-        uv_name = ""
-        if obj and obj.type == "MESH" and obj.data.uv_layers:
-            if len(obj.data.uv_layers) >= 2:
-                uv_name = obj.data.uv_layers[1].name
-            else:
-                uv_name = obj.data.uv_layers[0].name
-        if not uv_name:
-            uv_name = context.scene.cowx_bake_uv_layer
-
-        # Walk through all materials of the object
-        handled_mats = set()
         connected_count = 0
-        for slot in obj.material_slots:
-            target_mat = slot.material
-            if target_mat is None or not target_mat.use_nodes or target_mat.node_tree is None:
-                continue
-            if target_mat.name in handled_mats:
-                continue
-            handled_mats.add(target_mat.name)
+        skipped_count = 0
 
-            # Search if target_mat already has a ShaderNodeTexImage referencing `img`
-            target_img_node = None
-            for node in target_mat.node_tree.nodes:
-                if node.type == 'TEX_IMAGE' and node.image == img:
-                    target_img_node = node
+        for obj in selected_meshes:
+            # 1. Determine UV Map name
+            uv_name = ""
+            if obj.data.uv_layers:
+                if len(obj.data.uv_layers) >= 2:
+                    uv_name = obj.data.uv_layers[1].name
+                else:
+                    uv_name = obj.data.uv_layers[0].name
+            if not uv_name:
+                uv_name = context.scene.cowx_bake_uv_layer
+
+            # 2. Find the AO image on this object's materials
+            ao_image = None
+            
+            # Check slots
+            for slot in obj.material_slots:
+                mat = slot.material
+                if not mat or not mat.use_nodes or not mat.node_tree:
+                    continue
+                
+                nodes = mat.node_tree.nodes
+                
+                # Priority 1: active node if it's image and has image
+                active_node = nodes.active
+                if active_node and active_node.type == 'TEX_IMAGE' and active_node.image:
+                    ao_image = active_node.image
                     break
+                    
+                # Priority 2: selected image node
+                for n in nodes:
+                    if n.type == 'TEX_IMAGE' and n.select and n.image:
+                        ao_image = n.image
+                        break
+                if ao_image:
+                    break
+                    
+                # Priority 3: any node with AO in image name or node name
+                for n in nodes:
+                    if n.type == 'TEX_IMAGE' and n.image:
+                        img_name = n.image.name.upper()
+                        node_name = n.name.upper()
+                        if 'AO' in img_name or 'AO' in node_name:
+                            ao_image = n.image
+                            break
+                if ao_image:
+                    break
+            
+            if not ao_image:
+                skipped_count += 1
+                continue
 
-            # If not found, create a new Image Texture node and assign `img`
-            if target_img_node is None:
-                target_img_node = target_mat.node_tree.nodes.new(type="ShaderNodeTexImage")
-                target_img_node.image = img
-                target_img_node.location = (img_node.location.x, img_node.location.y)
+            # 3. For all materials of this object, find/create the image node and connect it
+            handled_mats = set()
+            for slot in obj.material_slots:
+                target_mat = slot.material
+                if target_mat is None or not target_mat.use_nodes or target_mat.node_tree is None:
+                    continue
+                if target_mat.name in handled_mats:
+                    continue
+                handled_mats.add(target_mat.name)
 
-            # Perform connection
-            try:
-                self._connect_nodes(target_mat, target_img_node, uv_name)
-                connected_count += 1
-            except Exception as e:
-                self.report({"WARNING"}, f"材质 {target_mat.name} 连接失败: {e}")
+                # Search if target_mat already has a ShaderNodeTexImage referencing `ao_image`
+                target_img_node = None
+                for node in target_mat.node_tree.nodes:
+                    if node.type == 'TEX_IMAGE' and node.image == ao_image:
+                        target_img_node = node
+                        break
 
-        self.report({"INFO"}, f"AO节点已在 {connected_count} 个材质中自动连接完成")
+                # If not found, try to find any image node with "AO" in name/image name to reuse
+                if target_img_node is None:
+                    for node in target_mat.node_tree.nodes:
+                        if node.type == 'TEX_IMAGE' and node.image:
+                            img_name = node.image.name.upper()
+                            node_name = node.name.upper()
+                            if 'AO' in img_name or 'AO' in node_name:
+                                target_img_node = node
+                                target_img_node.image = ao_image
+                                break
+
+                # If still not found, create a new Image Texture node and assign `ao_image`
+                if target_img_node is None:
+                    target_img_node = target_mat.node_tree.nodes.new(type="ShaderNodeTexImage")
+                    target_img_node.image = ao_image
+                    target_img_node.location = (-300, 0)
+
+                # Perform connection
+                try:
+                    self._connect_nodes(target_mat, target_img_node, uv_name)
+                    connected_count += 1
+                except Exception as e:
+                    self.report({"WARNING"}, f"物体 {obj.name} 材质 {target_mat.name} 连接失败: {e}")
+
+        # Summary reports
+        if connected_count > 0:
+            self.report({"INFO"}, f"AO节点已在 {connected_count} 个材质中自动连接完成")
+        if skipped_count > 0:
+            self.report({"WARNING"}, f"有 {skipped_count} 个物体未找到AO贴图，已跳过")
+            
         return {"FINISHED"}
 
     def _connect_nodes(self, mat, img_node, uv_name):
@@ -796,6 +901,186 @@ class COWX_OT_ConnectAO(bpy.types.Operator):
         except Exception as e:
             print(f"Error linking glTF: {e}")
 
+class COWX_OT_FixNormals(bpy.types.Operator):
+    bl_idname = "cowx.fix_normals"
+    bl_label = "修复法线"
+    bl_description = "通过极简几何启发式规则，自动修复选中模型的所有反转（红色）面法线"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return any(o.type == "MESH" for o in context.selected_objects)
+
+    def execute(self, context):
+        selected_meshes = [o for o in context.selected_objects if o.type == 'MESH']
+        if not selected_meshes:
+            self.report({"WARNING"}, "请选择至少一个网格物体")
+            return {"CANCELLED"}
+
+        import bmesh
+        from mathutils import Vector
+        from mathutils.bvhtree import BVHTree
+
+        orig_active = context.view_layer.objects.active
+        orig_mode = orig_active.mode if orig_active else 'OBJECT'
+
+        total_flipped = 0
+
+        for obj in selected_meshes:
+            if obj.mode != 'OBJECT':
+                bpy.ops.object.mode_set(mode='OBJECT')
+
+            mesh = obj.data
+
+            # Create bmesh and BVH tree
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bm.faces.ensure_lookup_table()
+            bvh = BVHTree.FromBMesh(bm, epsilon=0.0001)
+
+            # Calculate local geometric center of the mesh
+            if bm.verts:
+                local_center = sum((v.co for v in bm.verts), Vector()) / len(bm.verts)
+            else:
+                local_center = Vector((0, 0, 0))
+
+            faces_to_flip = set()
+
+            for face in bm.faces:
+                N = face.normal
+                center = face.calc_center_median()
+
+                # Check if face is mostly horizontal
+                is_horizontal = abs(N.z) > 0.5
+
+                if is_horizontal:
+                    # Cast ray straight UP (+Z) in local space
+                    start_up = center + 0.001 * Vector((0, 0, 1))
+                    _, _, _, dist_up = bvh.ray_cast(start_up, Vector((0, 0, 1)))
+                    d_up = dist_up if dist_up is not None else float('inf')
+
+                    # Cast ray straight DOWN (-Z) in local space
+                    start_down = center - 0.001 * Vector((0, 0, 1))
+                    _, _, _, dist_down = bvh.ray_cast(start_down, Vector((0, 0, -1)))
+                    d_down = dist_down if dist_down is not None else float('inf')
+
+                    # Ceiling判定：上方极近距离有顶挡住（< 0.4m）且下方空旷（> 1.0m），法线应朝下 (z < 0)
+                    is_ceiling = (d_up < 0.4) and (d_down > 1.0)
+
+                    if is_ceiling:
+                        if N.z > 0.0:
+                            faces_to_flip.add(face.index)
+                    else:
+                        # 地板、窗台板、屋顶：法线一律朝上 (z > 0)
+                        if N.z < 0.0:
+                            faces_to_flip.add(face.index)
+                else:
+                    # Vertical face (walls, side panels)
+                    # Cast ray along normal (Side A)
+                    start_A = center + 0.001 * N
+                    _, _, _, dist_A = bvh.ray_cast(start_A, N)
+                    d_A = dist_A if dist_A is not None else float('inf')
+
+                    # Cast ray opposite to normal (Side B)
+                    start_B = center - 0.001 * N
+                    _, _, _, dist_B = bvh.ray_cast(start_B, -N)
+                    d_B = dist_B if dist_B is not None else float('inf')
+
+                    if d_A != d_B:
+                        # One side hits something closer, indicating it points inwards
+                        if d_A < d_B:
+                            faces_to_flip.add(face.index)
+                    else:
+                        # Both sides go to infinity (e.g., floating vertical plate)
+                        # We point the normal outwards from the geometric center of the object
+                        vector_from_center = center - local_center
+                        # Project onto XY plane for vertical faces comparison
+                        vector_from_center.z = 0.0
+                        N_xy = Vector((N.x, N.y, 0.0))
+                        
+                        if N_xy.length > 0.001 and vector_from_center.length > 0.001:
+                            if N_xy.dot(vector_from_center) < -0.01:
+                                faces_to_flip.add(face.index)
+
+            flipped_count = len(faces_to_flip)
+            if flipped_count > 0:
+                for idx in faces_to_flip:
+                    bm.faces[idx].normal_flip()
+                bm.to_mesh(mesh)
+                total_flipped += flipped_count
+            
+            bm.free()
+            mesh.update()
+
+        # Restore original active object and mode
+        if orig_active:
+            context.view_layer.objects.active = orig_active
+            try:
+                bpy.ops.object.mode_set(mode=orig_mode)
+            except:
+                pass
+
+        if total_flipped > 0:
+            self.report({"INFO"}, f"法线修复完成！共反转了 {total_flipped} 个红色面")
+        else:
+            self.report({"INFO"}, "未检测到需要修复的红色面")
+
+        return {"FINISHED"}
+
+
+class COWX_OT_FlipNormals(bpy.types.Operator):
+    bl_idname = "cowx.flip_normals"
+    bl_label = "法线反转"
+    bl_description = "反转选中的面法线（编辑模式下反转选区，物体模式下反转整个网格）"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return any(o.type == "MESH" for o in context.selected_objects)
+
+    def execute(self, context):
+        selected_meshes = [o for o in context.selected_objects if o.type == 'MESH']
+        if not selected_meshes:
+            self.report({"WARNING"}, "请选择至少一个网格物体")
+            return {"CANCELLED"}
+
+        active_obj = context.active_object
+        
+        # If in Edit Mode, run the flip operator on the active mesh
+        if active_obj and active_obj.mode == 'EDIT':
+            try:
+                bpy.ops.mesh.flip_normals()
+                self.report({"INFO"}, "已反转选中面的法线朝向")
+            except Exception as e:
+                self.report({"ERROR"}, f"法线反转失败: {e}")
+                return {"CANCELLED"}
+        else:
+            # If in Object Mode, flip all normals of selected meshes
+            orig_active = context.view_layer.objects.active
+            total_flipped = 0
+            
+            for o in selected_meshes:
+                context.view_layer.objects.active = o
+                try:
+                    bpy.ops.object.mode_set(mode='EDIT')
+                    bpy.ops.mesh.select_all(action='SELECT')
+                    bpy.ops.mesh.flip_normals()
+                    bpy.ops.object.mode_set(mode='OBJECT')
+                    total_flipped += 1
+                except Exception as e:
+                    self.report({"WARNING"}, f"物体 {o.name} 反转失败: {e}")
+                    try:
+                        bpy.ops.object.mode_set(mode='OBJECT')
+                    except:
+                        pass
+            
+            if orig_active:
+                context.view_layer.objects.active = orig_active
+            
+            self.report({"INFO"}, f"已反转 {total_flipped} 个物体的全部法线")
+
+        return {"FINISHED"}
+
 
 class COWX_OT_PurgeUnused(bpy.types.Operator):
     bl_idname = "cowx.purge_unused"
@@ -817,6 +1102,110 @@ class COWX_OT_PurgeUnused(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class COWX_OT_GroupObjects(bpy.types.Operator):
+    bl_idname = "cowx.group_objects"
+    bl_label = "快速打组"
+    bl_description = "将选中的物体打组（创建空物体作为父级并居于中心）"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return len(context.selected_objects) > 0
+
+    def execute(self, context):
+        import bpy
+        from mathutils import Vector, Matrix
+
+        selected_objs = list(context.selected_objects)
+        if not selected_objs:
+            self.report({"WARNING"}, "请选择至少一个物体")
+            return {"CANCELLED"}
+
+        def collection_in_view_layer(layer_collection, collection):
+            if layer_collection.collection == collection:
+                return True
+            return any(
+                collection_in_view_layer(child, collection)
+                for child in layer_collection.children
+            )
+
+        active_obj = context.view_layer.objects.active
+        collection_owner = active_obj if active_obj in selected_objs else selected_objs[0]
+        target_collection = None
+        for coll in collection_owner.users_collection:
+            if collection_in_view_layer(context.view_layer.layer_collection, coll):
+                target_collection = coll
+                break
+        if (
+            target_collection is None
+            and context.collection
+            and collection_in_view_layer(context.view_layer.layer_collection, context.collection)
+        ):
+            target_collection = context.collection
+        if target_collection is None:
+            target_collection = context.scene.collection
+
+        # 1. 计算世界空间下所有选中物体的包围盒中心点
+        world_corners = []
+        world_matrices = {}
+        for obj in selected_objs:
+            world_matrices[obj] = obj.matrix_world.copy()
+            try:
+                if obj.bound_box:
+                    for corner in obj.bound_box:
+                        world_corners.append(obj.matrix_world @ Vector(corner))
+                else:
+                    world_corners.append(obj.matrix_world.translation)
+            except AttributeError:
+                world_corners.append(obj.matrix_world.translation)
+        
+        if not world_corners:
+            self.report({"WARNING"}, "未找到有效的物体来计算中心点")
+            return {"CANCELLED"}
+            
+        min_coords = Vector((min(c.x for c in world_corners), min(c.y for c in world_corners), min(c.z for c in world_corners)))
+        max_coords = Vector((max(c.x for c in world_corners), max(c.y for c in world_corners), max(c.z for c in world_corners)))
+        center = (min_coords + max_coords) / 2
+
+        # 2. 创建 Empty 物体 (Plain Axes)
+        empty_obj = bpy.data.objects.new("Group", None)
+        empty_obj.empty_display_type = 'PLAIN_AXES'
+
+        target_collection.objects.link(empty_obj)
+
+        # 设置位置与世界矩阵
+        empty_obj.location = center
+        empty_obj.matrix_world = Matrix.Translation(center)
+
+        # Keep grouped objects in the same collection as the group Empty.
+        # This avoids duplicated-looking entries in the Outliner root.
+        for obj in selected_objs:
+            if target_collection.objects.get(obj.name) is None:
+                target_collection.objects.link(obj)
+            for coll in list(obj.users_collection):
+                if coll != target_collection:
+                    coll.objects.unlink(obj)
+
+        # 3. 建立父子绑定并保持变换
+        for obj in selected_objs:
+            obj.parent = empty_obj
+            obj.matrix_parent_inverse = empty_obj.matrix_world.inverted()
+            obj.matrix_world = world_matrices[obj]
+
+        # 4. 更新选择：取消选中子物体，激活并选中空物体
+        for obj in selected_objs:
+            obj.select_set(False)
+
+        # 使用 context.view_layer.objects.active 设置活动对象
+        # select_set 在对象链接到根集合后可安全调用
+        context.view_layer.update()
+        context.view_layer.objects.active = empty_obj
+        empty_obj.select_set(True)
+
+        self.report({"INFO"}, f"成功打组 {len(selected_objs)} 个物体")
+        return {"FINISHED"}
+
+
 class COWX_PT_BakePanel(bpy.types.Panel):
     bl_label = "Cowx 烘焙工具"
     bl_idname = "COWX_PT_BakePanel"
@@ -826,10 +1215,8 @@ class COWX_PT_BakePanel(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        if obj and obj.type == "MESH":
-            return True
-        return any(o.type == "MESH" for o in context.selected_objects)
+        # 允许任何选中的/活动的对象显示侧边栏，避免在打组为空物体后侧边栏消失
+        return context.active_object is not None
 
     def draw(self, context):
         layout = self.layout
@@ -879,18 +1266,34 @@ class COWX_PT_BakePanel(bpy.types.Panel):
             layout.operator("cowx.bake", icon="RENDER_STILL", text="开始烘焙")
 
         # Spacing
-        layout.separator(factor=2.0)
+        layout.separator(factor=1.5)
         
-        # Helper buttons
-        layout.operator("cowx.connect_ao", icon="LINKED", text="连接AO")
-        layout.operator("cowx.purge_unused", icon="TRASH", text="清理")
+        # AO Group
+        box_ao = layout.box()
+        box_ao.label(text="AO 辅助工具", icon="NODE_MATERIAL")
+        box_ao.operator("cowx.connect_ao", icon="LINKED", text="连接AO")
+        
+        # Normals Group
+        box_normals = layout.box()
+        box_normals.label(text="法线工具", icon="MOD_NORMALEDIT")
+        box_normals.operator("cowx.fix_normals", icon="AUTO", text="自动修复法线")
+        box_normals.operator("cowx.flip_normals", icon="TRACKING_BACKWARDS", text="法线反转 (Flip)")
+
+        # System Group
+        box_sys = layout.box()
+        box_sys.label(text="系统工具", icon="SYSTEM")
+        box_sys.operator("cowx.group_objects", icon="EMPTY_AXIS", text="快速打组")
+        box_sys.operator("cowx.purge_unused", icon="TRASH", text="清理")
 
 
 classes = (
     COWX_OT_SmartIsolate,
     COWX_OT_Bake,
     COWX_OT_ConnectAO,
+    COWX_OT_FixNormals,
+    COWX_OT_FlipNormals,
     COWX_OT_PurgeUnused,
+    COWX_OT_GroupObjects,
     COWX_PT_BakePanel,
 )
 
@@ -898,6 +1301,8 @@ _addon_keymaps = []
 
 
 def register():
+    global _active_object_poll_running
+
     bpy.types.Scene.cowx_bake_uv_layer = bpy.props.StringProperty(
         name="UV 通道", default="",
     )
@@ -935,6 +1340,13 @@ def register():
 
     bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update)
 
+    _active_object_poll_running = True
+    try:
+        if not bpy.app.timers.is_registered(_active_object_poll_timer):
+            bpy.app.timers.register(_active_object_poll_timer, first_interval=0.25, persistent=True)
+    except Exception as exc:
+        print(f"Cowx: failed to start active object polling: {exc}")
+
     try:
         kc = bpy.context.window_manager.keyconfigs.addon
         if kc:
@@ -946,6 +1358,22 @@ def register():
 
 
 def unregister():
+    global _active_object_poll_running, _outliner_sync_pending
+
+    _active_object_poll_running = False
+    _outliner_sync_pending = False
+    try:
+        if bpy.app.timers.is_registered(_active_object_poll_timer):
+            bpy.app.timers.unregister(_active_object_poll_timer)
+    except Exception as exc:
+        print(f"Cowx: failed to stop active object polling: {exc}")
+
+    try:
+        if bpy.app.timers.is_registered(_show_active_object_in_outliners):
+            bpy.app.timers.unregister(_show_active_object_in_outliners)
+    except Exception:
+        pass
+
     for km, kmi in _addon_keymaps:
         km.keymap_items.remove(kmi)
     _addon_keymaps.clear()

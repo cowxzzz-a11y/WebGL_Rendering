@@ -1,0 +1,9 @@
+{
+  "name": "portable-glb-optimizer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@gltf-transform/cli": "4.4.1"
+  }
+}
