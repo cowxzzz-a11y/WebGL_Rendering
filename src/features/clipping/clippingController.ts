@@ -366,6 +366,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
   let frameRadius = 8
   let hasCustomTransform = false
   let activePanel: HTMLElement | null = null
+  let scheduledCapSyncId: number | undefined
 
   const helperMaterial = new StandardMaterial('__clipping_plane_helper_material', scene)
   helperMaterial.diffuseColor = new Color3(0.2, 0.68, 0.92)
@@ -472,6 +473,18 @@ export const createClippingController = (scene: Scene): ClippingController => {
   const disposeAllCapBindings = () => {
     capBindings.forEach(disposeCapBinding)
     capBindings.clear()
+  }
+
+  const cancelScheduledCapSync = () => {
+    if (scheduledCapSyncId === undefined) {
+      return
+    }
+    window.clearTimeout(scheduledCapSyncId)
+    scheduledCapSyncId = undefined
+  }
+
+  const hideCapBindings = () => {
+    capBindings.forEach((binding) => binding.capMesh.setEnabled(false))
   }
 
   const getTargetMeshes = () => {
@@ -704,10 +717,11 @@ export const createClippingController = (scene: Scene): ClippingController => {
   }
 
   const syncCapBindings = () => {
+    cancelScheduledCapSync()
     const targetMeshes = getTargetMeshes()
 
     if (!state.enabled || !state.capEnabled) {
-      capBindings.forEach((binding) => binding.capMesh.setEnabled(false))
+      hideCapBindings()
       return
     }
 
@@ -729,6 +743,20 @@ export const createClippingController = (scene: Scene): ClippingController => {
       const geometry = buildCapGeometry(mesh, basis, capNormal, clipNormal)
       applyCapGeometry(binding, geometry)
     })
+  }
+
+  const scheduleCapBindingsSync = () => {
+    cancelScheduledCapSync()
+    hideCapBindings()
+
+    if (!state.enabled || !state.capEnabled) {
+      return
+    }
+
+    scheduledCapSyncId = window.setTimeout(() => {
+      scheduledCapSyncId = undefined
+      syncCapBindings()
+    }, 70)
   }
 
   const markClipDefinesDirty = () => {
@@ -770,14 +798,18 @@ export const createClippingController = (scene: Scene): ClippingController => {
     helperPlane.rotation.z = planeFacesNormal ? state.rotation.z : state.rotation.z + Math.PI
   }
 
-  const applyClipPlane = (definesMayChange = false) => {
+  const applyClipPlane = (definesMayChange = false, capSync: 'immediate' | 'deferred' = 'immediate') => {
     const hadClipPlane = scene.clipPlane !== null
     const displayNormal = getDisplayNormal()
     const clipNormal = getClipNormal()
     scene.clipPlane = state.enabled ? Plane.FromPositionAndNormal(state.position, clipNormal) : null
 
     syncHelperPlane(displayNormal, clipNormal)
-    syncCapBindings()
+    if (capSync === 'deferred') {
+      scheduleCapBindingsSync()
+    } else {
+      syncCapBindings()
+    }
 
     if (definesMayChange || hadClipPlane !== (scene.clipPlane !== null)) {
       markClipDefinesDirty()
@@ -859,18 +891,42 @@ export const createClippingController = (scene: Scene): ClippingController => {
 
     const transformBody: HTMLElement[] = []
     ;(['x', 'y', 'z'] as const).forEach((axis) => {
-      transformBody.push(createSlider(axis.toUpperCase(), state.position[axis], min[axis], max[axis], step, (value) => {
-        state.position[axis] = value
-        hasCustomTransform = true
-        applyClipPlane()
-      }))
+      transformBody.push(createSlider(
+        axis.toUpperCase(),
+        state.position[axis],
+        min[axis],
+        max[axis],
+        step,
+        (value) => {
+          state.position[axis] = value
+          hasCustomTransform = true
+          applyClipPlane(false, 'deferred')
+        },
+        (value) => {
+          state.position[axis] = value
+          hasCustomTransform = true
+          applyClipPlane()
+        },
+      ))
     })
     ;(['x', 'y', 'z'] as const).forEach((axis) => {
-      transformBody.push(createSlider(`R${axis.toUpperCase()}`, toDegrees(state.rotation[axis]), -180, 180, 1, (value) => {
-        state.rotation[axis] = toRadians(value)
-        hasCustomTransform = true
-        applyClipPlane()
-      }))
+      transformBody.push(createSlider(
+        `R${axis.toUpperCase()}`,
+        toDegrees(state.rotation[axis]),
+        -180,
+        180,
+        1,
+        (value) => {
+          state.rotation[axis] = toRadians(value)
+          hasCustomTransform = true
+          applyClipPlane(false, 'deferred')
+        },
+        (value) => {
+          state.rotation[axis] = toRadians(value)
+          hasCustomTransform = true
+          applyClipPlane()
+        },
+      ))
     })
 
     const resetRow = document.createElement('div')
@@ -893,6 +949,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
     resetForSceneFrame,
     clear: () => {
       state.enabled = false
+      cancelScheduledCapSync()
       applyClipPlane(true)
       disposeAllCapBindings()
     },

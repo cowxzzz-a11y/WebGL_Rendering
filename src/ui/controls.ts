@@ -9,6 +9,7 @@ export const createSlider = (
   max: number,
   step: number,
   onChange: (v: number) => void,
+  onCommit?: (v: number) => void,
 ) => {
   const row = document.createElement('div')
   row.className = 'tech-row'
@@ -28,6 +29,11 @@ export const createSlider = (
     const v = parseFloat(input.value)
     val.textContent = String(v)
     onChange(v)
+  })
+  input.addEventListener('change', () => {
+    const v = parseFloat(input.value)
+    val.textContent = String(v)
+    onCommit?.(v)
   })
   row.append(lbl, input, val)
   return row
@@ -136,4 +142,3 @@ export const createModule = (title: string, bodyContent: HTMLElement[], open = t
   mod.append(header, body)
   return mod
 }
-
