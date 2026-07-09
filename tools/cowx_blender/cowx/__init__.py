@@ -1145,18 +1145,84 @@ class COWX_OT_GroupObjects(bpy.types.Operator):
         if target_collection is None:
             target_collection = context.scene.collection
 
-        # 1. 计算世界空间下所有选中物体的包围盒中心点
+        geometry_types = {"MESH", "CURVE", "SURFACE", "FONT", "META"}
+
+        def iter_object_tree(obj):
+            yield obj
+            for child in obj.children:
+                yield from iter_object_tree(child)
+
+        def iter_geometry_objects(objects):
+            seen = set()
+            for root in objects:
+                for obj in iter_object_tree(root):
+                    ptr = obj.as_pointer()
+                    if ptr in seen:
+                        continue
+                    seen.add(ptr)
+                    if obj.type in geometry_types and getattr(obj, "bound_box", None):
+                        yield obj
+
+        def normalize_mesh_origin(obj):
+            if obj.type != "MESH" or obj.data is None or not obj.bound_box:
+                return
+
+            world_matrix = obj.matrix_world.copy()
+            corners = [world_matrix @ Vector(corner) for corner in obj.bound_box]
+            min_coords = Vector((
+                min(c.x for c in corners),
+                min(c.y for c in corners),
+                min(c.z for c in corners),
+            ))
+            max_coords = Vector((
+                max(c.x for c in corners),
+                max(c.y for c in corners),
+                max(c.z for c in corners),
+            ))
+            world_center = (min_coords + max_coords) / 2
+            local_center = world_matrix.inverted() @ world_center
+
+            if local_center.length < 0.000001:
+                return
+
+            if obj.data.users > 1:
+                obj.data = obj.data.copy()
+            obj.data.transform(Matrix.Translation(-local_center))
+            obj.data.update()
+            obj.matrix_world = world_matrix @ Matrix.Translation(local_center)
+
+        def move_empty_origin(obj, world_location):
+            if obj.type != "EMPTY":
+                return
+
+            children_world = {
+                child: child.matrix_world.copy()
+                for child in iter_object_tree(obj)
+                if child != obj
+            }
+            matrix = obj.matrix_world.copy()
+            if (matrix.translation - world_location).length < 0.000001:
+                return
+
+            matrix.translation = world_location
+            obj.matrix_world = matrix
+            context.view_layer.update()
+            for child, child_world in children_world.items():
+                child.matrix_world = child_world
+
+        geometry_objs = list(iter_geometry_objects(selected_objs))
+
+        # 1. 计算真实模型几何中心，忽略 Empty 的原点位置
         world_corners = []
-        world_matrices = {}
-        for obj in selected_objs:
-            world_matrices[obj] = obj.matrix_world.copy()
+        for obj in geometry_objs:
             try:
-                if obj.bound_box:
-                    for corner in obj.bound_box:
-                        world_corners.append(obj.matrix_world @ Vector(corner))
-                else:
-                    world_corners.append(obj.matrix_world.translation)
+                for corner in obj.bound_box:
+                    world_corners.append(obj.matrix_world @ Vector(corner))
             except AttributeError:
+                pass
+
+        if not world_corners:
+            for obj in selected_objs:
                 world_corners.append(obj.matrix_world.translation)
         
         if not world_corners:
@@ -1176,6 +1242,13 @@ class COWX_OT_GroupObjects(bpy.types.Operator):
         # 设置位置与世界矩阵
         empty_obj.location = center
         empty_obj.matrix_world = Matrix.Translation(center)
+
+        for obj in selected_objs:
+            move_empty_origin(obj, center)
+        for obj in geometry_objs:
+            normalize_mesh_origin(obj)
+        context.view_layer.update()
+        world_matrices = {obj: obj.matrix_world.copy() for obj in selected_objs}
 
         # Keep grouped objects in the same collection as the group Empty.
         # This avoids duplicated-looking entries in the Outliner root.
@@ -1202,6 +1275,15 @@ class COWX_OT_GroupObjects(bpy.types.Operator):
         context.view_layer.objects.active = empty_obj
         empty_obj.select_set(True)
 
+        screen = getattr(context, "screen", None)
+        if screen:
+            for area in screen.areas:
+                if area.type != "VIEW_3D":
+                    continue
+                for space in area.spaces:
+                    if space.type == "VIEW_3D" and hasattr(space.overlay, "show_relationship_lines"):
+                        space.overlay.show_relationship_lines = False
+
         self.report({"INFO"}, f"成功打组 {len(selected_objs)} 个物体")
         return {"FINISHED"}
 
@@ -1215,8 +1297,7 @@ class COWX_PT_BakePanel(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        # 允许任何选中的/活动的对象显示侧边栏，避免在打组为空物体后侧边栏消失
-        return context.active_object is not None
+        return True
 
     def draw(self, context):
         layout = self.layout

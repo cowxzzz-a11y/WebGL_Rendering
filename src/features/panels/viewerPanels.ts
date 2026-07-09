@@ -356,6 +356,7 @@ type ViewportPanelOptions = {
   setActiveSubTab: (value: string) => void
   camera: ArcRotateCamera
   renderBillboardPanel: (panel: HTMLElement) => void
+  renderClippingPanel: (panel: HTMLElement) => void
 }
 
 export const renderViewportPanelContent = ({
@@ -363,6 +364,7 @@ export const renderViewportPanelContent = ({
   setActiveSubTab,
   camera,
   renderBillboardPanel,
+  renderClippingPanel,
 }: ViewportPanelOptions) => {
   const panel = document.createElement('div')
   panel.className = 'tech-panel'
@@ -370,8 +372,9 @@ export const renderViewportPanelContent = ({
   subTabs.className = 'tech-sub-tabs'
   const cameraPanel = document.createElement('div')
   const billboardPanel = document.createElement('div')
+  const clippingPanel = document.createElement('div')
 
-  ;['\u6444\u50cf\u673a', '\u5e7f\u544a\u724c'].forEach((label) => {
+  ;['\u6444\u50cf\u673a', '\u5e7f\u544a\u724c', '\u5256\u5207'].forEach((label) => {
     const button = document.createElement('button')
     button.className = 'tech-sub-tab'
     button.textContent = label
@@ -383,8 +386,12 @@ export const renderViewportPanelContent = ({
       })
       cameraPanel.hidden = label !== '\u6444\u50cf\u673a'
       billboardPanel.hidden = label !== '\u5e7f\u544a\u724c'
+      clippingPanel.hidden = label !== '\u5256\u5207'
       if (label === '\u5e7f\u544a\u724c') {
         renderBillboardPanel(billboardPanel)
+      }
+      if (label === '\u5256\u5207') {
+        renderClippingPanel(clippingPanel)
       }
     })
     subTabs.append(button)
@@ -392,8 +399,10 @@ export const renderViewportPanelContent = ({
 
   cameraPanel.append(buildCameraPanelContent(camera))
   renderBillboardPanel(billboardPanel)
+  renderClippingPanel(clippingPanel)
   cameraPanel.hidden = activeSubTab !== '\u6444\u50cf\u673a'
   billboardPanel.hidden = activeSubTab !== '\u5e7f\u544a\u724c'
-  panel.append(subTabs, cameraPanel, billboardPanel)
+  clippingPanel.hidden = activeSubTab !== '\u5256\u5207'
+  panel.append(subTabs, cameraPanel, billboardPanel, clippingPanel)
   return panel
 }

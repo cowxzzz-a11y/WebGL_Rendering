@@ -47,8 +47,9 @@ const getPinchDeltaPercentage = (controlRadius: number) => {
   return 0.014
 }
 
-const getScaledPanSpeed = (controlRadius: number) => {
-  return clamp(controlRadius / 180, 0.06, 1)
+const getPanWorldUnitsPerPixel = (camera: ArcRotateCamera, controlRadius: number) => {
+  const viewportHeight = Math.max(camera.getEngine().getRenderHeight(), 1)
+  return clamp((controlRadius * 0.34) / viewportHeight, 0.00002, 32)
 }
 
 export const createViewerCamera = ({ canvas, scene }: CreateViewerCameraOptions) => {
@@ -97,6 +98,7 @@ export const tuneTouchCameraControls = ({
   const pointersInput = camera.inputs.attached.pointers as Partial<ArcRotateTouchInput> | undefined
 
   const panningSens = clamp(defaultPanningSensibility * (8 / controlRadius), 2, 2000)
+  const panWorldUnitsPerPixel = getPanWorldUnitsPerPixel(camera, controlRadius)
 
   camera.lowerRadiusLimit = Math.max(controlRadius * 0.02, 0.03)
   camera.upperRadiusLimit = Math.max(controlRadius * 12, 8)
@@ -106,7 +108,7 @@ export const tuneTouchCameraControls = ({
   camera.panningInertia = 0.35
   camera.panningDistanceLimit = Math.max(controlRadius * 1.25, 1.5)
   camera.panningOriginTarget.copyFrom(sceneCenter ?? camera.target)
-  camera.movement.panSpeed = getScaledPanSpeed(controlRadius)
+  camera.movement.panSpeed = panWorldUnitsPerPixel * panningSens
   camera.movement.resetPanVelocity()
 
   if (!pointersInput) {

@@ -47,6 +47,8 @@ import { createEnvironmentController } from './features/environment/environmentC
 import type { EnvironmentController } from './features/environment/environmentController'
 import { createLightmapController } from './features/lightmap/lightmapController'
 import type { LightmapController } from './features/lightmap/lightmapController'
+import { createClippingController } from './features/clipping/clippingController'
+import type { ClippingController } from './features/clipping/clippingController'
 import { getProjectById, getProjectEntries } from './features/projects/projectAssets'
 import type { ProjectEntry } from './features/projects/projectAssets'
 import { renderProjectManager } from './features/projects/projectManager'
@@ -155,6 +157,7 @@ let selectionController: SelectionController
 let lightDirectionHelpers: LightDirectionHelperController
 let billboardController: BillboardController
 let lightmapController: LightmapController
+let clippingController: ClippingController
 
 const getEnvironmentState = () => environmentController.getState()
 
@@ -342,6 +345,10 @@ const renderBillboardPanel = (panel: HTMLElement) => {
   billboardController.renderPanel(panel)
 }
 
+const renderClippingPanel = (panel: HTMLElement) => {
+  clippingController.renderPanel(panel)
+}
+
 const renderViewportPanel = () => {
   selectedDetailId = null
   hideDetailPanel()
@@ -351,6 +358,7 @@ const renderViewportPanel = () => {
     setActiveSubTab: (value) => { viewportActiveSubTab = value },
     camera,
     renderBillboardPanel,
+    renderClippingPanel,
   }))
 }
 const renderRealtimePanel = (panel: HTMLElement) => {
@@ -657,6 +665,9 @@ lightmapController = createLightmapController({
   getSelectableMeshes,
 })
 
+clippingController = createClippingController(scene)
+clippingController.setSceneFrame(sceneCenter, sceneRadius)
+
 canvas.addEventListener('contextmenu', (event) => {
   event.preventDefault()
 })
@@ -755,6 +766,7 @@ const updateSceneBoundsFromCurrentModels = () => {
   if (currentModelRoots.length === 0) {
     sceneCenter = Vector3.Zero()
     sceneRadius = 8
+    clippingController.resetForSceneFrame(sceneCenter, sceneRadius)
     tuneCameraControlsForCurrentScene()
     clearCameraInertia(camera)
     updateCameraDepthRange()
@@ -793,6 +805,7 @@ const updateSceneBoundsFromCurrentModels = () => {
   const size = aggregateMax.subtract(aggregateMin)
   sceneCenter = aggregateMin.add(aggregateMax).scale(0.5)
   sceneRadius = getSceneFrameRadius(size)
+  clippingController.setSceneFrame(sceneCenter, sceneRadius)
   tuneCameraControlsForCurrentScene()
   clearCameraInertia(camera)
   updateCameraDepthRange()
@@ -1140,6 +1153,7 @@ const frameHierarchy = (root: TransformNode, meshes: AbstractMesh[]) => {
 
   sceneCenter = frame.center
   sceneRadius = frame.radius
+  clippingController.setSceneFrame(sceneCenter, sceneRadius)
   tuneCameraControlsForCurrentScene()
   clearCameraInertia(camera)
   camera.setTarget(frame.target)
@@ -1202,6 +1216,7 @@ const frameCurrentModels = () => {
 
   sceneCenter = center
   sceneRadius = radius
+  clippingController.setSceneFrame(sceneCenter, sceneRadius)
   tuneCameraControlsForCurrentScene()
   clearCameraInertia(camera)
   camera.setTarget(center.add(new Vector3(0, size.y * 0.02, 0)))
@@ -1260,6 +1275,7 @@ const disposeCurrentModels = () => {
   importedMaterialTotal = 0
   importedFileNames = []
   importedFileName = '\u672a\u5bfc\u5165'
+  clippingController.resetForSceneFrame(Vector3.Zero(), 8)
   const shadowMap = shadowGenerator?.getShadowMap()
   if (shadowMap) {
     shadowMap.renderList = []
@@ -1504,6 +1520,7 @@ resetCameraButton.addEventListener('click', () => {
     camera.radius = 8
     camera.alpha = -Math.PI / 2.15
     camera.beta = Math.PI / 2.62
+    clippingController.resetForSceneFrame(sceneCenter, sceneRadius)
     updateCameraDepthRange()
     updateLightDirectionHelpers()
   }
