@@ -8,6 +8,10 @@ $script:NodePath = Join-Path $script:ToolDir "node.exe"
 $script:CliPath = Join-Path $script:ToolDir "app\node_modules\@gltf-transform\cli\bin\cli.js"
 $script:BinDir = Join-Path $script:ToolDir "bin"
 $script:CurrentProcess = $null
+$script:StdoutTask = $null
+$script:StderrTask = $null
+$script:RunInputPath = ""
+$script:RunOutputPath = ""
 
 function Test-ToolFiles {
     $missing = @()
@@ -71,6 +75,53 @@ function Get-DefaultOutputPath([string]$inputPath) {
     return [System.IO.Path]::Combine($dir, "$name.optimized.glb")
 }
 
+function Test-SupportedInputPath([string]$path) {
+    if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $false
+    }
+
+    $extension = [System.IO.Path]::GetExtension($path)
+    return $extension -ieq ".glb" -or $extension -ieq ".gltf"
+}
+
+function Set-InputPath([string]$path) {
+    if (-not (Test-SupportedInputPath $path)) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "请拖入有效的 .glb 或 .gltf 文件。",
+            "GLB 优化工具",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        ) | Out-Null
+        return
+    }
+
+    $fullPath = [System.IO.Path]::GetFullPath($path)
+    $previousInput = $inputText.Text.Trim()
+    $previousDefaultOutput = Get-DefaultOutputPath $previousInput
+    $shouldUpdateOutput = [string]::IsNullOrWhiteSpace($outputText.Text) -or
+        (-not [string]::IsNullOrWhiteSpace($previousDefaultOutput) -and $outputText.Text.Trim() -ieq $previousDefaultOutput)
+
+    $inputText.Text = $fullPath
+    if ($shouldUpdateOutput) {
+        $outputText.Text = Get-DefaultOutputPath $fullPath
+    }
+    $statusLabel.Text = "已加载：$([System.IO.Path]::GetFileName($fullPath))"
+}
+
+function Get-DroppedModelPath([System.Windows.Forms.DragEventArgs]$eventArgs) {
+    if (-not $eventArgs.Data.GetDataPresent([System.Windows.Forms.DataFormats]::FileDrop)) {
+        return $null
+    }
+
+    $paths = [string[]]$eventArgs.Data.GetData([System.Windows.Forms.DataFormats]::FileDrop)
+    foreach ($path in $paths) {
+        if (Test-SupportedInputPath $path) {
+            return $path
+        }
+    }
+    return $null
+}
+
 function Append-Log([System.Windows.Forms.TextBox]$box, [string]$text) {
     if ($box.InvokeRequired) {
         $box.BeginInvoke([Action[System.Windows.Forms.TextBox,string]]{ param($b, $t) Append-Log $b $t }, $box, $text) | Out-Null
@@ -84,6 +135,71 @@ function Set-RunState([bool]$running) {
     $inspectButton.Enabled = -not $running
     $cancelButton.Enabled = $running
     $statusLabel.Text = if ($running) { "正在处理..." } else { "就绪" }
+}
+
+function Read-AvailableProcessOutput($reader, $readTask) {
+    $linesRead = 0
+    while ($null -ne $readTask -and $readTask.IsCompleted -and $linesRead -lt 200) {
+        try {
+            $line = $readTask.GetAwaiter().GetResult()
+        } catch {
+            Append-Log $logText ("读取进程输出失败：" + $_.Exception.Message)
+            return $null
+        }
+
+        if ($null -eq $line) {
+            return $null
+        }
+
+        Append-Log $logText $line
+        $readTask = $reader.ReadLineAsync()
+        $linesRead += 1
+    }
+    return $readTask
+}
+
+function Complete-NodeCommand {
+    $process = $script:CurrentProcess
+    if ($null -eq $process) { return }
+
+    $exitCode = $process.ExitCode
+    Append-Log $logText ""
+    Append-Log $logText ("退出代码：" + $exitCode)
+
+    $outputPath = $script:RunOutputPath
+    $inputPath = $script:RunInputPath
+    if ($exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($outputPath) -and (Test-Path -LiteralPath $outputPath)) {
+        if (-not [string]::IsNullOrWhiteSpace($inputPath) -and (Test-Path -LiteralPath $inputPath)) {
+            $before = (Get-Item -LiteralPath $inputPath).Length
+            $after = (Get-Item -LiteralPath $outputPath).Length
+            $saved = $before - $after
+            Append-Log $logText ("输入大小：" + (Format-Bytes $before))
+            Append-Log $logText ("输出大小：" + (Format-Bytes $after))
+            Append-Log $logText ("节省空间：" + (Format-Bytes $saved))
+        }
+    }
+
+    $completedSuccessfully = $exitCode -eq 0
+    $process.Dispose()
+    $script:CurrentProcess = $null
+    $script:StdoutTask = $null
+    $script:StderrTask = $null
+    $script:RunInputPath = ""
+    $script:RunOutputPath = ""
+    Set-RunState $false
+    $statusLabel.Text = if ($completedSuccessfully) { "优化完成" } else { "处理失败（退出代码 $exitCode）" }
+}
+
+function Update-NodeCommand {
+    $process = $script:CurrentProcess
+    if ($null -eq $process) { return }
+
+    $script:StdoutTask = Read-AvailableProcessOutput $process.StandardOutput $script:StdoutTask
+    $script:StderrTask = Read-AvailableProcessOutput $process.StandardError $script:StderrTask
+
+    if ($process.HasExited -and $null -eq $script:StdoutTask -and $null -eq $script:StderrTask) {
+        Complete-NodeCommand
+    }
 }
 
 function New-Label($text, $x, $y, $w, $h) {
@@ -140,58 +256,58 @@ function Get-TextureValue([string]$label) {
 }
 
 function Build-OptimizeArgs {
-    $args = New-Object System.Collections.Generic.List[string]
-    $args.Add($script:CliPath)
-    $args.Add("optimize")
-    $args.Add($inputText.Text.Trim())
-    $args.Add($outputText.Text.Trim())
+    $commandArgs = New-Object System.Collections.Generic.List[string]
+    $commandArgs.Add($script:CliPath)
+    $commandArgs.Add("optimize")
+    $commandArgs.Add($inputText.Text.Trim())
+    $commandArgs.Add($outputText.Text.Trim())
 
     $compress = Get-CompressionValue ([string]$compressCombo.SelectedItem)
-    $args.Add("--compress")
-    $args.Add($compress)
+    $commandArgs.Add("--compress")
+    $commandArgs.Add($compress)
 
     $texture = Get-TextureValue ([string]$textureCombo.SelectedItem)
-    $args.Add("--texture-compress")
-    $args.Add($texture)
-    $args.Add("--texture-size")
-    $args.Add([string][int]$textureSizeNumeric.Value)
+    $commandArgs.Add("--texture-compress")
+    $commandArgs.Add($texture)
+    $commandArgs.Add("--texture-size")
+    $commandArgs.Add([string][int]$textureSizeNumeric.Value)
 
-    $args.Add("--simplify")
-    $args.Add($(if ($simplifyCheck.Checked) { "true" } else { "false" }))
-    $args.Add("--simplify-ratio")
-    $args.Add(([double]$simplifyRatioNumeric.Value).ToString([System.Globalization.CultureInfo]::InvariantCulture))
-    $args.Add("--simplify-error")
-    $args.Add(([double]$simplifyErrorNumeric.Value).ToString([System.Globalization.CultureInfo]::InvariantCulture))
-    $args.Add("--simplify-lock-border")
-    $args.Add($(if ($lockBorderCheck.Checked) { "true" } else { "false" }))
+    $commandArgs.Add("--simplify")
+    $commandArgs.Add($(if ($simplifyCheck.Checked) { "true" } else { "false" }))
+    $commandArgs.Add("--simplify-ratio")
+    $commandArgs.Add(([double]$simplifyRatioNumeric.Value).ToString([System.Globalization.CultureInfo]::InvariantCulture))
+    $commandArgs.Add("--simplify-error")
+    $commandArgs.Add(([double]$simplifyErrorNumeric.Value).ToString([System.Globalization.CultureInfo]::InvariantCulture))
+    $commandArgs.Add("--simplify-lock-border")
+    $commandArgs.Add($(if ($lockBorderCheck.Checked) { "true" } else { "false" }))
 
-    $args.Add("--flatten")
-    $args.Add($(if ($flattenCheck.Checked) { "true" } else { "false" }))
-    $args.Add("--join")
-    $args.Add($(if ($joinCheck.Checked) { "true" } else { "false" }))
-    $args.Add("--weld")
-    $args.Add($(if ($weldCheck.Checked) { "true" } else { "false" }))
-    $args.Add("--palette")
-    $args.Add($(if ($paletteCheck.Checked) { "true" } else { "false" }))
-    $args.Add("--prune")
-    $args.Add($(if ($pruneCheck.Checked) { "true" } else { "false" }))
-    $args.Add("--resample")
-    $args.Add($(if ($resampleCheck.Checked) { "true" } else { "false" }))
+    $commandArgs.Add("--flatten")
+    $commandArgs.Add($(if ($flattenCheck.Checked) { "true" } else { "false" }))
+    $commandArgs.Add("--join")
+    $commandArgs.Add($(if ($joinCheck.Checked) { "true" } else { "false" }))
+    $commandArgs.Add("--weld")
+    $commandArgs.Add($(if ($weldCheck.Checked) { "true" } else { "false" }))
+    $commandArgs.Add("--palette")
+    $commandArgs.Add($(if ($paletteCheck.Checked) { "true" } else { "false" }))
+    $commandArgs.Add("--prune")
+    $commandArgs.Add($(if ($pruneCheck.Checked) { "true" } else { "false" }))
+    $commandArgs.Add("--resample")
+    $commandArgs.Add($(if ($resampleCheck.Checked) { "true" } else { "false" }))
 
-    return $args
+    return $commandArgs
 }
 
-function Start-NodeCommand([string[]]$args, [string]$title, [string]$outputPath) {
+function Start-NodeCommand([string[]]$commandArgs, [string]$title, [string]$outputPath) {
     $logText.Clear()
     Append-Log $logText $title
     Append-Log $logText ("工具目录：" + $script:ToolDir)
-    Append-Log $logText ("执行命令：node " + (($args | ForEach-Object { Quote-Arg $_ }) -join " "))
+    Append-Log $logText ("执行命令：node " + (($commandArgs | ForEach-Object { Quote-Arg $_ }) -join " "))
     Append-Log $logText ""
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $script:NodePath
     $psi.WorkingDirectory = $script:ToolDir
-    $psi.Arguments = (($args | ForEach-Object { Quote-Arg $_ }) -join " ")
+    $psi.Arguments = (($commandArgs | ForEach-Object { Quote-Arg $_ }) -join " ")
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -203,36 +319,25 @@ function Start-NodeCommand([string[]]$args, [string]$title, [string]$outputPath)
     $process.EnableRaisingEvents = $true
     $script:CurrentProcess = $process
 
-    Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action {
-        if ($EventArgs.Data) { Append-Log $Event.MessageData $EventArgs.Data }
-    } -MessageData $logText | Out-Null
-    Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action {
-        if ($EventArgs.Data) { Append-Log $Event.MessageData $EventArgs.Data }
-    } -MessageData $logText | Out-Null
-    Register-ObjectEvent -InputObject $process -EventName Exited -Action {
-        $p = $Event.Sender
-        $box = $Event.MessageData.Log
-        $outPath = $Event.MessageData.OutputPath
-        Append-Log $box ""
-        Append-Log $box ("退出代码：" + $p.ExitCode)
-        if ($p.ExitCode -eq 0 -and $outPath -and (Test-Path -LiteralPath $outPath)) {
-            $inPath = $Event.MessageData.InputPath
-            if ($inPath -and (Test-Path -LiteralPath $inPath)) {
-                $before = (Get-Item -LiteralPath $inPath).Length
-                $after = (Get-Item -LiteralPath $outPath).Length
-                $saved = $before - $after
-                Append-Log $box ("输入大小：" + (Format-Bytes $before))
-                Append-Log $box ("输出大小：" + (Format-Bytes $after))
-                Append-Log $box ("节省空间：" + (Format-Bytes $saved))
-            }
-        }
-        $Event.MessageData.Form.BeginInvoke([Action[bool]]{ param($r) Set-RunState $r }, $false) | Out-Null
-    } -MessageData @{ Log = $logText; Form = $form; OutputPath = $outputPath; InputPath = $inputText.Text.Trim() } | Out-Null
-
     Set-RunState $true
-    [void]$process.Start()
-    $process.BeginOutputReadLine()
-    $process.BeginErrorReadLine()
+    try {
+        [void]$process.Start()
+        $script:RunInputPath = $inputText.Text.Trim()
+        $script:RunOutputPath = $outputPath
+        $script:StdoutTask = $process.StandardOutput.ReadLineAsync()
+        $script:StderrTask = $process.StandardError.ReadLineAsync()
+    } catch {
+        $script:CurrentProcess = $null
+        Set-RunState $false
+        $statusLabel.Text = "启动失败"
+        Append-Log $logText ("启动失败：" + $_.Exception.Message)
+        [System.Windows.Forms.MessageBox]::Show(
+            "无法启动优化进程：`r`n$($_.Exception.Message)",
+            "GLB 优化工具",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+    }
 }
 
 Test-ToolFiles
@@ -242,10 +347,12 @@ $form.Text = "便携 GLB 优化工具"
 $form.Size = New-Object System.Drawing.Size(900, 700)
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 $form.MinimumSize = New-Object System.Drawing.Size(820, 620)
+$form.AllowDrop = $true
 
 $inputText = New-Object System.Windows.Forms.TextBox
 $inputText.Location = New-Object System.Drawing.Point(92, 18)
 $inputText.Size = New-Object System.Drawing.Size(650, 24)
+$inputText.AllowDrop = $true
 $inputButton = New-Button "浏览..." 754 16 100 28
 
 $outputText = New-Object System.Windows.Forms.TextBox
@@ -339,16 +446,51 @@ $form.Controls.AddRange(@(
     $logText
 ))
 
+$processTimer = New-Object System.Windows.Forms.Timer
+$processTimer.Interval = 100
+$processTimer.Add_Tick({
+    try {
+        Update-NodeCommand
+    } catch {
+        $processTimer.Stop()
+        Append-Log $logText ("更新进程状态失败：" + $_.Exception.Message)
+        Set-RunState $false
+        $statusLabel.Text = "状态更新失败"
+    }
+})
+$processTimer.Start()
+
 $inputButton.Add_Click({
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
     $dialog.Filter = "glTF 文件 (*.glb;*.gltf)|*.glb;*.gltf|所有文件 (*.*)|*.*"
     if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $inputText.Text = $dialog.FileName
-        if ([string]::IsNullOrWhiteSpace($outputText.Text)) {
-            $outputText.Text = Get-DefaultOutputPath $dialog.FileName
-        }
+        Set-InputPath $dialog.FileName
     }
 })
+
+$dragEnterHandler = {
+    param($sender, [System.Windows.Forms.DragEventArgs]$eventArgs)
+    if ($null -ne (Get-DroppedModelPath $eventArgs)) {
+        $eventArgs.Effect = [System.Windows.Forms.DragDropEffects]::Copy
+    } else {
+        $eventArgs.Effect = [System.Windows.Forms.DragDropEffects]::None
+    }
+}
+
+$dragDropHandler = {
+    param($sender, [System.Windows.Forms.DragEventArgs]$eventArgs)
+    $path = Get-DroppedModelPath $eventArgs
+    if ($null -ne $path) {
+        Set-InputPath $path
+    } else {
+        [System.Windows.Forms.MessageBox]::Show("请拖入 .glb 或 .gltf 文件。", "GLB 优化工具") | Out-Null
+    }
+}
+
+$inputText.Add_DragEnter($dragEnterHandler)
+$inputText.Add_DragDrop($dragDropHandler)
+$form.Add_DragEnter($dragEnterHandler)
+$form.Add_DragDrop($dragDropHandler)
 
 $outputButton.Add_Click({
     $dialog = New-Object System.Windows.Forms.SaveFileDialog
@@ -386,8 +528,8 @@ $inspectButton.Add_Click({
         [System.Windows.Forms.MessageBox]::Show("请选择有效的 .glb 或 .gltf 输入文件。", "GLB 优化工具") | Out-Null
         return
     }
-    $args = @($script:CliPath, "inspect", $inputPath)
-    Start-NodeCommand $args "开始读取模型信息。" $null
+    $inspectArgs = @($script:CliPath, "inspect", $inputPath)
+    Start-NodeCommand $inspectArgs "开始读取模型信息。" $null
 })
 
 $cancelButton.Add_Click({
@@ -413,9 +555,14 @@ $inputText.Add_TextChanged({
 })
 
 $form.Add_FormClosing({
+    $processTimer.Stop()
     if ($script:CurrentProcess -and -not $script:CurrentProcess.HasExited) {
         $script:CurrentProcess.Kill()
     }
 })
+
+if ($args.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$args[0])) {
+    Set-InputPath ([string]$args[0])
+}
 
 [void]$form.ShowDialog()

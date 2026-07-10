@@ -2,6 +2,8 @@
 
 双击 `Start-GLB-Optimizer.vbs` 打开界面。VBS 会隐藏 PowerShell 控制台，只显示工具窗口。
 
+可以把 `.glb` / `.gltf` 拖到界面的“输入文件”框或窗口空白处，也可以直接把模型拖到 `Start-GLB-Optimizer.vbs` 图标上启动并加载。
+
 这个文件夹是 Windows 便携版。把整个 `glb-optimizer-portable` 文件夹复制到任意 Windows 电脑、任意路径后运行即可。
 
 已包含：
