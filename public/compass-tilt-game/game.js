@@ -12,6 +12,7 @@
   const againButton = document.getElementById('againButton');
   const recenterButton = document.getElementById('recenterButton');
   const touchHint = document.getElementById('touchHint');
+  const renderError = document.getElementById('renderError');
 
   const BOARD_RADIUS = 5.65;
   const BALL_RADIUS = 0.32;
@@ -389,5 +390,8 @@
   recenterButton.addEventListener('click', requestCalibration);
   window.addEventListener('resize', () => engine.resize());
   resetGame();
-  engine.runRenderLoop(() => scene.render());
+  engine.runRenderLoop(() => {
+    scene.render();
+    if (renderError) renderError.hidden = true;
+  });
 })();

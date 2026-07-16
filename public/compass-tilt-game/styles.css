@@ -68,6 +68,11 @@ button { font: inherit; cursor: pointer; }
 
 .touch-hint { position: absolute; z-index: 2; bottom: 83px; left: 50%; transform: translateX(-50%); padding: 6px 10px; border-radius: 20px; color: #c4b69e; background: rgba(16, 13, 10, .55); font-size: 11px; white-space: nowrap; pointer-events: none; }
 
+.render-error { position: absolute; z-index: 20; left: 50%; top: 50%; width: min(320px, calc(100vw - 40px)); transform: translate(-50%, -50%); padding: 18px 20px; border: 1px solid rgba(234, 177, 91, .75); border-radius: 7px; color: #f7e7c1; background: rgba(33, 22, 15, .96); box-shadow: 0 12px 38px rgba(0,0,0,.58); text-align: center; }
+.render-error strong, .render-error span { display: block; }
+.render-error strong { color: #f0c461; font-size: 17px; letter-spacing: .08em; }
+.render-error span { margin-top: 8px; color: #c8b79a; font-size: 12px; line-height: 1.6; }
+
 @media (min-width: 720px) {
   .hud-top { top: 16px; left: 22px; right: 22px; }
   .hud-bottom { bottom: 16px; left: 22px; right: 22px; }

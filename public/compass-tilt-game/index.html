@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>五曜罗盘</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260716-4" />
   </head>
   <body>
     <main class="game-shell">
@@ -46,6 +46,10 @@
       </section>
 
       <div id="touchHint" class="touch-hint" hidden>拖动屏幕即可引导灵珠</div>
+      <div id="renderError" class="render-error" role="alert" hidden>
+        <strong>罗盘未能启动</strong>
+        <span>请刷新页面后重试；若仍出现，请截屏发我。</span>
+      </div>
 
       <div class="hud hud-bottom">
         <div class="utility-actions">
@@ -75,7 +79,13 @@
       <section id="landscapeNotice" class="landscape-notice" aria-live="polite"><span>↻</span><strong>请将手机横向握持</strong><small>横屏后即可使用重力感应操控罗盘</small></section>
     </main>
 
-    <script src="./vendor/babylon.js"></script>
-    <script src="./game.js"></script>
+    <script>
+      window.addEventListener('error', () => {
+        const message = document.getElementById('renderError');
+        if (message) message.hidden = false;
+      }, true);
+    </script>
+    <script src="./vendor/babylon.js?v=20260716-4"></script>
+    <script src="./game.js?v=20260716-4"></script>
   </body>
 </html>
