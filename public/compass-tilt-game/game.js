@@ -73,7 +73,6 @@
   const brass = createPbr('aged brass', new BABYLON.Color3(0.24, 0.18, 0.11), 0.76, 0.44);
   const brassLight = createPbr('edge brass', new BABYLON.Color3(0.47, 0.33, 0.17), 0.79, 0.33);
   const ink = createPbr('ink', new BABYLON.Color3(0.09, 0.067, 0.052), 0.25, 0.64);
-  const gold = createPbr('sleeping star', new BABYLON.Color3(0.64, 0.4, 0.075), 0.79, 0.28);
   const playerMaterial = createPbr('silver spirit', new BABYLON.Color3(0.49, 0.52, 0.52), 0.76, 0.2);
   playerMaterial.clearCoat.isEnabled = true;
   playerMaterial.clearCoat.intensity = 0.55;
@@ -212,7 +211,8 @@
   function createTarget(index, position) {
     const orb = BABYLON.MeshBuilder.CreateSphere(`star ${index}`, { diameter: TARGET_RADIUS * 2, segments: 28 }, scene);
     orb.position.set(position.x, TARGET_RADIUS + 0.075, position.z);
-    orb.material = gold;
+    // Each target owns its material so waking one target cannot light all four.
+    orb.material = createPbr(`sleeping star material ${index}`, new BABYLON.Color3(0.64, 0.4, 0.075), 0.79, 0.28);
     shadowGenerator.addShadowCaster(orb);
     const ring = BABYLON.MeshBuilder.CreateTorus(`star ring ${index}`, { diameter: .86, thickness: .025, tessellation: 40 }, scene);
     ring.position.set(position.x, .095, position.z);
@@ -296,7 +296,7 @@
     // Cyber Orb's proven mobile-game mapping: gamma is side-to-side and beta is
     // front-to-back.  Do not rotate these values with screen.orientation: iOS
     // reports that value inconsistently while orientation lock is enabled.
-    return new BABYLON.Vector2(gamma, beta);
+    return new BABYLON.Vector2(gamma, -beta);
   }
 
   window.addEventListener('deviceorientation', (event) => {
