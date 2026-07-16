@@ -18,8 +18,8 @@
   const BALL_RADIUS = 0.32;
   const TARGET_RADIUS = 0.31;
   const physics = {
-    acceleration: 5.4,
-    damping: 2.1,
+    acceleration: 7.2,
+    damping: 1.7,
     maxSpeed: 5.2,
     edgeRestitution: 0.58,
     targetRestitution: 0.42,
@@ -29,13 +29,26 @@
   scene.clearColor = new BABYLON.Color4(0.035, 0.027, 0.022, 1);
   scene.ambientColor = new BABYLON.Color3(0.28, 0.22, 0.16);
 
-  const camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 0.25, 20.6, new BABYLON.Vector3(0, 0, 0), scene);
-  camera.fov = 0.73;
+  // A top-down orthographic view keeps the compass perfectly circular on every screen ratio.
+  const camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 0.001, 20.6, new BABYLON.Vector3(0, 0, 0), scene);
+  camera.mode = BABYLON.Camera.ORTHOGRAPHIC_CAMERA;
   camera.lowerRadiusLimit = camera.upperRadiusLimit = 20.6;
-  camera.lowerBetaLimit = camera.upperBetaLimit = 0.25;
+  camera.lowerBetaLimit = camera.upperBetaLimit = 0.001;
   camera.lowerAlphaLimit = camera.upperAlphaLimit = -Math.PI / 2;
   camera.inputs.clear();
   camera.attachControl(canvas, false);
+
+  function fitCameraToViewport() {
+    const aspect = Math.max(engine.getRenderWidth() / Math.max(engine.getRenderHeight(), 1), .1);
+    // Landscape reserves room for both control rails; portrait still remains playable.
+    const verticalSize = aspect >= 1 ? 15.4 : 13.2 / aspect;
+    const horizontalSize = verticalSize * aspect;
+    camera.orthoLeft = -horizontalSize / 2;
+    camera.orthoRight = horizontalSize / 2;
+    camera.orthoTop = verticalSize / 2;
+    camera.orthoBottom = -verticalSize / 2;
+  }
+  fitCameraToViewport();
 
   const shadowGenerator = new BABYLON.ShadowGenerator(1024, new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.25, -1, 0.32), scene));
   shadowGenerator.getLight().position = new BABYLON.Vector3(3, 8, -4);
@@ -253,7 +266,7 @@
     if (motion) {
       motionCalibrated = false;
       calibrationPending = true;
-      document.getElementById('sensorHint').textContent = '请保持手机横放，正在校准重力感应…';
+      document.getElementById('sensorHint').textContent = '正在校准重力感应；保持当前自然手持姿势即可。';
     }
   }
 
@@ -279,14 +292,13 @@
     calibrationPending = true;
   };
 
-  function orientationAngle() {
-    return screen.orientation?.angle ?? window.orientation ?? 0;
-  }
-
   function screenTilt(beta, gamma) {
-    const angle = ((Number(orientationAngle()) % 360) + 360) % 360;
-    if (angle === 90) return new BABYLON.Vector2(beta, -gamma);
-    if (angle === 270) return new BABYLON.Vector2(-beta, gamma);
+    // iOS reports a stale screen.orientation when rotation is locked. The viewport
+    // is what defines the player's visible up/down direction, so use it first.
+    const isLandscapeViewport = window.innerWidth > window.innerHeight;
+    const angle = ((Number(screen.orientation?.angle ?? window.orientation ?? 0) % 360) + 360) % 360;
+    if (isLandscapeViewport && angle === 270) return new BABYLON.Vector2(-beta, gamma);
+    if (isLandscapeViewport) return new BABYLON.Vector2(beta, -gamma);
     if (angle === 180) return new BABYLON.Vector2(-gamma, -beta);
     return new BABYLON.Vector2(gamma, beta);
   }
@@ -294,8 +306,8 @@
   window.addEventListener('deviceorientation', (event) => {
     if (event.beta == null || event.gamma == null) return;
     const transformed = screenTilt(event.beta, event.gamma);
-    tilt.x = BABYLON.Scalar.Clamp(transformed.x / 30, -1, 1);
-    tilt.y = BABYLON.Scalar.Clamp(transformed.y / 30, -1, 1);
+    tilt.x = transformed.x;
+    tilt.y = transformed.y;
     if (calibrationPending) {
       tiltBaseline = tilt.clone();
       calibrationPending = false;
@@ -333,7 +345,7 @@
     if (!started) return;
     let force = BABYLON.Vector2.Zero();
     if (usingMotion && motionCalibrated) {
-      force = tilt.subtract(tiltBaseline);
+      force = tilt.subtract(tiltBaseline).scale(1 / 18);
     } else if (touchActive && touchTarget) {
       force = new BABYLON.Vector2(touchTarget.x - player.position.x, touchTarget.z - player.position.z).scale(.72);
     }
@@ -388,8 +400,10 @@
   restartButton.addEventListener('click', () => { resetGame(); if (!started) activateGame(false); });
   againButton.addEventListener('click', () => resetGame());
   recenterButton.addEventListener('click', requestCalibration);
-  window.addEventListener('resize', () => engine.resize());
+  window.addEventListener('resize', () => { engine.resize(); fitCameraToViewport(); });
   resetGame();
+  engine.resize();
+  fitCameraToViewport();
   engine.runRenderLoop(() => {
     scene.render();
     if (renderError) renderError.hidden = true;

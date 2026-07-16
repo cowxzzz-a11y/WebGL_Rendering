@@ -82,11 +82,12 @@ button { font: inherit; cursor: pointer; }
 .landscape-notice { display: none; }
 
 @media (orientation: portrait) {
-  #gameCanvas, .hud, .physics-rails, .panel, .touch-hint { visibility: hidden; }
-  .landscape-notice { position: absolute; z-index: 10; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; color: #e8d5aa; background: radial-gradient(circle at center, #2d241c, #100d0b 72%); text-align: center; }
-  .landscape-notice span { color: #e2b65d; font-size: 48px; line-height: 1; }
-  .landscape-notice strong { font-size: 20px; letter-spacing: .12em; }
-  .landscape-notice small { color: #a99a81; font-size: 12px; }
+  .physics-rail { top: auto; bottom: max(70px, env(safe-area-inset-bottom)); width: calc(50vw - 20px); padding: 7px 8px 8px; }
+  .physics-rail-left { left: 10px; }
+  .physics-rail-right { right: 10px; }
+  .physics-rail .eyebrow { display: none; }
+  .range-control { margin-top: 5px; font-size: 9px; }
+  .range-control input { margin-top: 2px; }
 }
 
 @media (orientation: landscape) and (max-height: 460px) {
