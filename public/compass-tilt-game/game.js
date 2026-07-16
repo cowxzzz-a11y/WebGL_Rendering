@@ -11,6 +11,7 @@
   const restartButton = document.getElementById('restartButton');
   const againButton = document.getElementById('againButton');
   const recenterButton = document.getElementById('recenterButton');
+  const autoPlayButton = document.getElementById('autoPlayButton');
   const touchHint = document.getElementById('touchHint');
   const renderError = document.getElementById('renderError');
 
@@ -19,8 +20,8 @@
   const TARGET_RADIUS = 0.31;
   const physics = {
     acceleration: 8.0,
-    damping: 1.5,
-    maxSpeed: 5.2,
+    damping: 0.3,
+    maxSpeed: 7.0,
     edgeRestitution: 0.58,
     targetRestitution: 0.42,
   };
@@ -131,6 +132,7 @@
   let calibrationPending = false;
   let touchActive = false;
   let touchTarget = null;
+  let autoPlaying = new URLSearchParams(window.location.search).get('autoplay') === '1';
   let started = false;
   let wakeCount = 0;
   let lastTime = performance.now();
@@ -255,7 +257,51 @@
     target.ring.material.emissiveColor = new BABYLON.Color3(.92, .5, .06);
     target.ring.scaling.setAll(1.2);
     BABYLON.Animation.CreateAndStartAnimation('ring settle', target.ring, 'scaling', 60, 22, BABYLON.Vector3.One().scale(1.75), BABYLON.Vector3.One(), BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT);
-    if (wakeCount === 4) setTimeout(() => { complete.hidden = false; }, 550);
+    if (wakeCount === 4) {
+      autoPlaying = false;
+      updateAutoPlayButton();
+      setTimeout(() => { complete.hidden = false; }, 550);
+    }
+  }
+
+  function updateAutoPlayButton() {
+    autoPlayButton.classList.toggle('is-active', autoPlaying);
+    autoPlayButton.setAttribute('aria-pressed', String(autoPlaying));
+    autoPlayButton.title = autoPlaying ? '停止自动演示' : '自动演示';
+  }
+
+  function setAutoPlay(enabled) {
+    autoPlaying = enabled;
+    if (enabled) {
+      if (!started) activateGame(false);
+      usingMotion = false;
+      touchActive = false;
+      touchTarget = null;
+      touchHint.hidden = true;
+    }
+    updateAutoPlayButton();
+  }
+
+  function autoPilotForce() {
+    const target = targets
+      .filter((item) => !item.active)
+      .sort((a, b) => {
+        const aDistance = BABYLON.Vector3.DistanceSquared(a.orb.position, player.position);
+        const bDistance = BABYLON.Vector3.DistanceSquared(b.orb.position, player.position);
+        return aDistance - bDistance;
+      })[0];
+    if (!target) return BABYLON.Vector2.Zero();
+
+    const offset = new BABYLON.Vector2(target.orb.position.x - player.position.x, target.orb.position.z - player.position.z);
+    const distance = offset.length();
+    if (distance < .001) return BABYLON.Vector2.Zero();
+
+    const direction = offset.scale(1 / distance);
+    const desiredSpeed = Math.min(physics.maxSpeed * .65, Math.max(.5, distance * 2.35));
+    const desiredVelocity = direction.scale(desiredSpeed);
+    // A proportional velocity controller acts like a person tilting toward the
+    // target, then leaning back early enough to brake before contact.
+    return desiredVelocity.subtract(velocity).scale(2.6 / Math.max(physics.acceleration, .1));
   }
 
   function activateGame(motion) {
@@ -340,7 +386,9 @@
     lastTime = now;
     if (!started) return;
     let force = BABYLON.Vector2.Zero();
-    if (usingMotion && motionCalibrated) {
+    if (autoPlaying) {
+      force = autoPilotForce();
+    } else if (usingMotion && motionCalibrated) {
       force = tilt.subtract(tiltBaseline).scale(1 / 18);
     } else if (touchActive && touchTarget) {
       force = new BABYLON.Vector2(touchTarget.x - player.position.x, touchTarget.z - player.position.z).scale(.72);
@@ -395,9 +443,11 @@
   startButton.addEventListener('click', () => activateGame(false));
   restartButton.addEventListener('click', () => { resetGame(); if (!started) activateGame(false); });
   againButton.addEventListener('click', () => resetGame());
+  autoPlayButton.addEventListener('click', () => setAutoPlay(!autoPlaying));
   recenterButton.addEventListener('click', requestCalibration);
   window.addEventListener('resize', () => { engine.resize(); fitCameraToViewport(); });
   resetGame();
+  setAutoPlay(autoPlaying);
   engine.resize();
   fitCameraToViewport();
   engine.runRenderLoop(() => {

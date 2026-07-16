@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>五曜罗盘</title>
-    <link rel="stylesheet" href="./styles.css?v=20260716-7" />
+    <link rel="stylesheet" href="./styles.css?v=20260716-8" />
   </head>
   <body>
     <main class="game-shell">
@@ -53,6 +53,9 @@
 
       <div class="hud hud-bottom">
         <div class="utility-actions">
+          <button id="autoPlayButton" class="round-button auto-play-button" type="button" aria-label="自动演示" title="自动演示" aria-pressed="false">
+            <span>▶</span>
+          </button>
           <button id="recenterButton" class="round-button" type="button" aria-label="重新校准重力感应" title="重新校准">
             <span>⊙</span>
           </button>
@@ -67,11 +70,11 @@
         <aside class="physics-rail physics-rail-left">
           <p class="eyebrow">MOTION</p>
           <label class="range-control" for="tiltForce"><span>倾斜力 <output id="tiltForceValue">8.0</output></span><input id="tiltForce" type="range" min="2" max="12" step="0.2" value="8.0" /></label>
-          <label class="range-control" for="rollingDamping"><span>滚动阻尼 <output id="rollingDampingValue">1.5</output></span><input id="rollingDamping" type="range" min="0.2" max="5" step="0.1" value="1.5" /></label>
+          <label class="range-control" for="rollingDamping"><span>滚动阻尼 <output id="rollingDampingValue">0.3</output></span><input id="rollingDamping" type="range" min="0.1" max="5" step="0.1" value="0.3" /></label>
         </aside>
         <aside class="physics-rail physics-rail-right">
           <p class="eyebrow">COLLISION</p>
-          <label class="range-control" for="maxSpeed"><span>最高速度 <output id="maxSpeedValue">5.2</output></span><input id="maxSpeed" type="range" min="2" max="10" step="0.2" value="5.2" /></label>
+          <label class="range-control" for="maxSpeed"><span>最高速度 <output id="maxSpeedValue">7.0</output></span><input id="maxSpeed" type="range" min="2" max="10" step="0.2" value="7.0" /></label>
           <label class="range-control" for="edgeBounce"><span>边界弹性 <output id="edgeBounceValue">0.58</output></span><input id="edgeBounce" type="range" min="0" max="1" step="0.02" value="0.58" /></label>
           <label class="range-control" for="targetBounce"><span>撞击弹性 <output id="targetBounceValue">0.42</output></span><input id="targetBounce" type="range" min="0" max="1" step="0.02" value="0.42" /></label>
         </aside>
@@ -85,7 +88,7 @@
         if (message) message.hidden = false;
       }, true);
     </script>
-    <script src="./vendor/babylon.js?v=20260716-7"></script>
-    <script src="./game.js?v=20260716-7"></script>
+    <script src="./vendor/babylon.js?v=20260716-8"></script>
+    <script src="./game.js?v=20260716-8"></script>
   </body>
 </html>

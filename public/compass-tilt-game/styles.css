@@ -52,6 +52,8 @@ button { font: inherit; cursor: pointer; }
 .utility-actions { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
 .round-button, .restart-button { border: 1px solid rgba(235, 193, 101, .65); color: #ffe2a3; background: rgba(31, 24, 18, .84); box-shadow: 0 4px 15px rgba(0,0,0,.35), inset 0 0 13px rgba(222, 166, 59, .07); backdrop-filter: blur(6px); }
 .round-button { width: 43px; height: 43px; border-radius: 50%; font-size: 22px; }
+.auto-play-button { font-size: 15px; }
+.auto-play-button.is-active { color: #241706; border-color: #f1cc70; background: linear-gradient(130deg, #d59e38, #f4cd70); box-shadow: 0 0 22px rgba(232, 176, 62, .5); }
 .restart-button { display: flex; align-items: center; gap: 7px; min-height: 43px; padding: 0 15px; border-radius: 5px; font-size: 13px; letter-spacing: .08em; }
 .restart-icon { color: #f5c65f; font-family: Arial, sans-serif; font-size: 22px; line-height: 1; }
 .round-button:active, .restart-button:active { transform: scale(.96); }
