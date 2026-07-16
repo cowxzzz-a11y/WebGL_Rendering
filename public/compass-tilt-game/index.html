@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#15110e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>五曜罗盘</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <canvas id="gameCanvas" aria-label="五曜罗盘游戏画面"></canvas>
+
+      <header class="hud hud-top">
+        <div class="brand">
+          <span class="brand-mark">◉</span>
+          <div>
+            <p class="eyebrow">TILT · AWAKEN</p>
+            <h1>五曜罗盘</h1>
+          </div>
+        </div>
+        <div class="progress" aria-live="polite">
+          <span class="progress-label">已唤醒</span>
+          <strong id="score">0 / 4</strong>
+        </div>
+      </header>
+
+      <section id="intro" class="panel intro-panel">
+        <span class="panel-ornament">✦</span>
+        <p class="eyebrow">MOBILE MOTION GAME</p>
+        <h2>倾斜手机，唤醒四曜</h2>
+        <p>操控中央的银灰灵珠，撞击固定在罗盘上的四颗金色曜珠。</p>
+        <button id="motionButton" class="primary-button" type="button">开启重力感应</button>
+        <button id="startButton" class="text-button" type="button">先用触控体验</button>
+        <small id="sensorHint">首次点击后，iPhone 会请求「动作与方向」权限。</small>
+      </section>
+
+      <section id="complete" class="panel complete-panel" aria-live="polite" hidden>
+        <span class="panel-ornament">✦</span>
+        <p class="eyebrow">ALL AWAKENED</p>
+        <h2>四曜已苏醒</h2>
+        <p>这一局罗盘已被点亮。</p>
+        <button id="againButton" class="primary-button" type="button">再开一局</button>
+      </section>
+
+      <div id="touchHint" class="touch-hint" hidden>拖动屏幕即可引导灵珠</div>
+
+      <div class="hud hud-bottom">
+        <div class="utility-actions">
+          <button id="recenterButton" class="round-button" type="button" aria-label="重新校准重力感应" title="重新校准">
+            <span>⊙</span>
+          </button>
+          <button id="tuneButton" class="tune-button" type="button" aria-expanded="false" aria-controls="physicsPanel">
+            <span>调节</span>
+          </button>
+        </div>
+        <button id="restartButton" class="restart-button" type="button">
+          <span class="restart-icon">↻</span>
+          <span>重开</span>
+        </button>
+      </div>
+
+      <aside id="physicsPanel" class="physics-panel" aria-label="物理参数调节" hidden>
+        <div class="physics-heading">
+          <div>
+            <p class="eyebrow">PHYSICS TUNING</p>
+            <h2>运动参数</h2>
+          </div>
+          <button id="closePhysicsButton" type="button" aria-label="关闭物理参数">×</button>
+        </div>
+        <p class="physics-description">调节后立即生效，不会重置本局。</p>
+        <label class="range-control" for="tiltForce">
+          <span>倾斜力 <output id="tiltForceValue">5.4</output></span>
+          <input id="tiltForce" type="range" min="2" max="12" step="0.2" value="5.4" />
+        </label>
+        <label class="range-control" for="rollingDamping">
+          <span>滚动阻尼 <output id="rollingDampingValue">2.1</output></span>
+          <input id="rollingDamping" type="range" min="0.2" max="5" step="0.1" value="2.1" />
+        </label>
+        <label class="range-control" for="maxSpeed">
+          <span>最高速度 <output id="maxSpeedValue">5.2</output></span>
+          <input id="maxSpeed" type="range" min="2" max="10" step="0.2" value="5.2" />
+        </label>
+        <label class="range-control" for="edgeBounce">
+          <span>边界弹性 <output id="edgeBounceValue">0.58</output></span>
+          <input id="edgeBounce" type="range" min="0" max="1" step="0.02" value="0.58" />
+        </label>
+        <label class="range-control" for="targetBounce">
+          <span>撞击弹性 <output id="targetBounceValue">0.42</output></span>
+          <input id="targetBounce" type="range" min="0" max="1" step="0.02" value="0.42" />
+        </label>
+      </aside>
+    </main>
+
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="./game.js"></script>
+  </body>
+</html>
