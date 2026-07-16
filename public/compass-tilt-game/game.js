@@ -18,8 +18,8 @@
   const BALL_RADIUS = 0.32;
   const TARGET_RADIUS = 0.31;
   const physics = {
-    acceleration: 7.2,
-    damping: 1.7,
+    acceleration: 8.0,
+    damping: 1.5,
     maxSpeed: 5.2,
     edgeRestitution: 0.58,
     targetRestitution: 0.42,
@@ -292,20 +292,16 @@
     calibrationPending = true;
   };
 
-  function screenTilt(beta, gamma) {
-    // iOS reports a stale screen.orientation when rotation is locked. The viewport
-    // is what defines the player's visible up/down direction, so use it first.
-    const isLandscapeViewport = window.innerWidth > window.innerHeight;
-    const angle = ((Number(screen.orientation?.angle ?? window.orientation ?? 0) % 360) + 360) % 360;
-    if (isLandscapeViewport && angle === 270) return new BABYLON.Vector2(-beta, gamma);
-    if (isLandscapeViewport) return new BABYLON.Vector2(beta, -gamma);
-    if (angle === 180) return new BABYLON.Vector2(-gamma, -beta);
+  function sensorTilt(beta, gamma) {
+    // Cyber Orb's proven mobile-game mapping: gamma is side-to-side and beta is
+    // front-to-back.  Do not rotate these values with screen.orientation: iOS
+    // reports that value inconsistently while orientation lock is enabled.
     return new BABYLON.Vector2(gamma, beta);
   }
 
   window.addEventListener('deviceorientation', (event) => {
     if (event.beta == null || event.gamma == null) return;
-    const transformed = screenTilt(event.beta, event.gamma);
+    const transformed = sensorTilt(event.beta, event.gamma);
     tilt.x = transformed.x;
     tilt.y = transformed.y;
     if (calibrationPending) {
