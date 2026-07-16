@@ -22,14 +22,14 @@ body {
 
 .hud { position: absolute; z-index: 2; pointer-events: none; display: flex; align-items: center; }
 
-.hud-top { top: max(18px, env(safe-area-inset-top)); left: max(20px, env(safe-area-inset-left)); right: max(20px, env(safe-area-inset-right)); justify-content: space-between; }
+.hud-top { top: max(12px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left)); right: max(14px, env(safe-area-inset-right)); justify-content: flex-end; }
 
-.brand { display: flex; align-items: center; gap: 9px; text-shadow: 0 2px 8px #000; }
+.brand { display: none; align-items: center; gap: 9px; text-shadow: 0 2px 8px #000; }
 .brand-mark { color: #e5b95c; font-size: 27px; line-height: 1; text-shadow: 0 0 13px #b57b24; }
 .eyebrow { margin: 0; font-family: ui-monospace, Consolas, monospace; color: #c69b4a; font-size: 9px; letter-spacing: .16em; }
 h1 { margin: 1px 0 0; font-size: 20px; font-weight: 700; letter-spacing: .16em; }
 
-.progress { min-width: 67px; padding: 7px 10px 6px; border: 1px solid rgba(220, 178, 99, .3); border-radius: 4px; background: rgba(18, 14, 11, .72); box-shadow: inset 0 0 17px rgba(214, 162, 67, .07); text-align: center; backdrop-filter: blur(5px); }
+.progress { min-width: 56px; padding: 5px 8px; border: 1px solid rgba(220, 178, 99, .22); border-radius: 3px; background: rgba(18, 14, 11, .54); box-shadow: inset 0 0 17px rgba(214, 162, 67, .05); text-align: center; backdrop-filter: blur(5px); }
 .progress-label { display: block; color: #ac9a7c; font-size: 10px; letter-spacing: .08em; }
 .progress strong { color: #f3c55f; font-family: ui-monospace, Consolas, monospace; font-size: 14px; font-weight: 600; }
 
@@ -47,22 +47,21 @@ button { font: inherit; cursor: pointer; }
 .primary-button:active { transform: translateY(1px); filter: brightness(.9); }
 .text-button { margin-top: 11px; padding: 5px 12px; border: 0; color: #cdbd9d; background: transparent; font-size: 12px; text-decoration: underline; text-underline-offset: 4px; }
 
-.hud-bottom { left: max(20px, env(safe-area-inset-left)); right: max(20px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); justify-content: space-between; }
+.hud-bottom { left: max(14px, env(safe-area-inset-left)); right: max(14px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); justify-content: space-between; }
 .hud-bottom button { pointer-events: auto; }
 .utility-actions { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
 .round-button, .restart-button { border: 1px solid rgba(235, 193, 101, .65); color: #ffe2a3; background: rgba(31, 24, 18, .84); box-shadow: 0 4px 15px rgba(0,0,0,.35), inset 0 0 13px rgba(222, 166, 59, .07); backdrop-filter: blur(6px); }
 .round-button { width: 43px; height: 43px; border-radius: 50%; font-size: 22px; }
-.tune-button { min-height: 43px; padding: 0 13px; border: 1px solid rgba(235, 193, 101, .65); border-radius: 5px; color: #ffe2a3; background: rgba(31, 24, 18, .84); box-shadow: 0 4px 15px rgba(0,0,0,.35), inset 0 0 13px rgba(222, 166, 59, .07); font-size: 12px; letter-spacing: .1em; backdrop-filter: blur(6px); }
 .restart-button { display: flex; align-items: center; gap: 7px; min-height: 43px; padding: 0 15px; border-radius: 5px; font-size: 13px; letter-spacing: .08em; }
 .restart-icon { color: #f5c65f; font-family: Arial, sans-serif; font-size: 22px; line-height: 1; }
-.round-button:active, .restart-button:active, .tune-button:active { transform: scale(.96); }
+.round-button:active, .restart-button:active { transform: scale(.96); }
 
-.physics-panel { position: absolute; z-index: 4; left: max(20px, env(safe-area-inset-left)); bottom: max(75px, calc(env(safe-area-inset-bottom) + 56px)); width: min(302px, calc(100vw - 40px)); padding: 16px 16px 14px; border: 1px solid rgba(219, 176, 89, .55); border-radius: 7px; color: #ecdfc8; background: linear-gradient(145deg, rgba(44, 33, 25, .96), rgba(18, 14, 12, .97)); box-shadow: 0 13px 38px rgba(0, 0, 0, .55), inset 0 0 28px rgba(208, 155, 60, .07); backdrop-filter: blur(9px); }
-.physics-heading { display: flex; align-items: flex-start; justify-content: space-between; }
-.physics-heading h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: .08em; }
-.physics-heading button { width: 27px; height: 27px; margin: -5px -5px 0 0; border: 0; color: #cbb995; background: transparent; font-size: 25px; line-height: 1; }
-.physics-description { margin: 7px 0 11px; color: #9d917e; font-size: 10px; }
-.range-control { display: block; margin: 11px 0 0; color: #d8c6a0; font-size: 12px; }
+.physics-rails { position: absolute; z-index: 2; inset: 0; pointer-events: none; }
+.physics-rail { position: absolute; top: 50%; width: min(18vw, 220px); transform: translateY(-50%); padding: 10px 11px 12px; border: 1px solid rgba(219, 176, 89, .21); border-radius: 4px; color: #ecdfc8; background: linear-gradient(145deg, rgba(38, 28, 21, .64), rgba(12, 10, 8, .55)); box-shadow: inset 0 0 20px rgba(208, 155, 60, .04); pointer-events: auto; backdrop-filter: blur(5px); }
+.physics-rail-left { left: max(13px, env(safe-area-inset-left)); }
+.physics-rail-right { right: max(13px, env(safe-area-inset-right)); }
+.physics-rail .eyebrow { font-size: 8px; }
+.range-control { display: block; margin: 10px 0 0; color: #d8c6a0; font-size: 11px; }
 .range-control span { display: flex; justify-content: space-between; align-items: center; }
 .range-control output { color: #f5c861; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
 .range-control input { display: block; width: 100%; margin: 6px 0 0; accent-color: #dca63f; }
@@ -70,8 +69,26 @@ button { font: inherit; cursor: pointer; }
 .touch-hint { position: absolute; z-index: 2; bottom: 83px; left: 50%; transform: translateX(-50%); padding: 6px 10px; border-radius: 20px; color: #c4b69e; background: rgba(16, 13, 10, .55); font-size: 11px; white-space: nowrap; pointer-events: none; }
 
 @media (min-width: 720px) {
-  .hud-top { top: 25px; left: 30px; right: 30px; }
-  .hud-bottom { bottom: 25px; left: 30px; right: 30px; }
-  .physics-panel { left: 30px; bottom: 81px; }
+  .hud-top { top: 16px; left: 22px; right: 22px; }
+  .hud-bottom { bottom: 16px; left: 22px; right: 22px; }
   .panel { transform: translate(-50%, -50%) scale(1.05); }
+}
+
+.landscape-notice { display: none; }
+
+@media (orientation: portrait) {
+  #gameCanvas, .hud, .physics-rails, .panel, .touch-hint { visibility: hidden; }
+  .landscape-notice { position: absolute; z-index: 10; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; color: #e8d5aa; background: radial-gradient(circle at center, #2d241c, #100d0b 72%); text-align: center; }
+  .landscape-notice span { color: #e2b65d; font-size: 48px; line-height: 1; }
+  .landscape-notice strong { font-size: 20px; letter-spacing: .12em; }
+  .landscape-notice small { color: #a99a81; font-size: 12px; }
+}
+
+@media (orientation: landscape) and (max-height: 460px) {
+  .physics-rail { width: min(20vw, 185px); padding: 7px 9px 8px; }
+  .range-control { margin-top: 7px; font-size: 10px; }
+  .range-control input { margin-top: 3px; }
+  .round-button { width: 36px; height: 36px; font-size: 19px; }
+  .restart-button { min-height: 36px; padding: 0 11px; font-size: 11px; }
+  .restart-icon { font-size: 18px; }
 }

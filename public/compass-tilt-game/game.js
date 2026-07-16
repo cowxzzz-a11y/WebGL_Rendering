@@ -11,9 +11,6 @@
   const restartButton = document.getElementById('restartButton');
   const againButton = document.getElementById('againButton');
   const recenterButton = document.getElementById('recenterButton');
-  const tuneButton = document.getElementById('tuneButton');
-  const closePhysicsButton = document.getElementById('closePhysicsButton');
-  const physicsPanel = document.getElementById('physicsPanel');
   const touchHint = document.getElementById('touchHint');
 
   const BOARD_RADIUS = 5.65;
@@ -31,9 +28,9 @@
   scene.clearColor = new BABYLON.Color4(0.035, 0.027, 0.022, 1);
   scene.ambientColor = new BABYLON.Color3(0.28, 0.22, 0.16);
 
-  const camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 0.25, 13.9, new BABYLON.Vector3(0, 0, 0), scene);
+  const camera = new BABYLON.ArcRotateCamera('camera', -Math.PI / 2, 0.25, 20.6, new BABYLON.Vector3(0, 0, 0), scene);
   camera.fov = 0.73;
-  camera.lowerRadiusLimit = camera.upperRadiusLimit = 13.9;
+  camera.lowerRadiusLimit = camera.upperRadiusLimit = 20.6;
   camera.lowerBetaLimit = camera.upperBetaLimit = 0.25;
   camera.lowerAlphaLimit = camera.upperAlphaLimit = -Math.PI / 2;
   camera.inputs.clear();
@@ -117,6 +114,8 @@
   let tilt = new BABYLON.Vector2(0, 0);
   let tiltBaseline = new BABYLON.Vector2(0, 0);
   let usingMotion = false;
+  let motionCalibrated = false;
+  let calibrationPending = false;
   let touchActive = false;
   let touchTarget = null;
   let started = false;
@@ -250,14 +249,21 @@
     usingMotion = motion;
     intro.hidden = true;
     touchHint.hidden = motion;
-    if (motion) { tiltBaseline = tilt.clone(); }
+    if (motion) {
+      motionCalibrated = false;
+      calibrationPending = true;
+      document.getElementById('sensorHint').textContent = '请保持手机横放，正在校准重力感应…';
+    }
   }
 
   async function enableMotion() {
     try {
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        const permission = await DeviceOrientationEvent.requestPermission();
-        if (permission !== 'granted') throw new Error('permission denied');
+      const permissionRequests = [window.DeviceOrientationEvent, window.DeviceMotionEvent]
+        .filter((source) => source && typeof source.requestPermission === 'function')
+        .map((source) => source.requestPermission());
+      if (permissionRequests.length) {
+        const results = await Promise.all(permissionRequests);
+        if (results.some((permission) => permission !== 'granted')) throw new Error('permission denied');
       }
       activateGame(true);
     } catch (error) {
@@ -266,12 +272,38 @@
     }
   }
 
+  const requestCalibration = () => {
+    if (!usingMotion) return;
+    motionCalibrated = false;
+    calibrationPending = true;
+  };
+
+  function orientationAngle() {
+    return screen.orientation?.angle ?? window.orientation ?? 0;
+  }
+
+  function screenTilt(beta, gamma) {
+    const angle = ((Number(orientationAngle()) % 360) + 360) % 360;
+    if (angle === 90) return new BABYLON.Vector2(beta, -gamma);
+    if (angle === 270) return new BABYLON.Vector2(-beta, gamma);
+    if (angle === 180) return new BABYLON.Vector2(-gamma, -beta);
+    return new BABYLON.Vector2(gamma, beta);
+  }
+
   window.addEventListener('deviceorientation', (event) => {
     if (event.beta == null || event.gamma == null) return;
-    // Natural portrait: tilt left moves left, tilt forward moves up-screen.
-    tilt.x = BABYLON.Scalar.Clamp(event.gamma / 30, -1, 1);
-    tilt.y = BABYLON.Scalar.Clamp(event.beta / 30, -1, 1);
+    const transformed = screenTilt(event.beta, event.gamma);
+    tilt.x = BABYLON.Scalar.Clamp(transformed.x / 30, -1, 1);
+    tilt.y = BABYLON.Scalar.Clamp(transformed.y / 30, -1, 1);
+    if (calibrationPending) {
+      tiltBaseline = tilt.clone();
+      calibrationPending = false;
+      motionCalibrated = true;
+      document.getElementById('sensorHint').textContent = '重力感应已校准；倾斜手机操控灵珠。';
+    }
   }, true);
+  window.addEventListener('orientationchange', requestCalibration);
+  screen.orientation?.addEventListener?.('change', requestCalibration);
 
   function screenToBoard(clientX, clientY) {
     const ray = scene.createPickingRay(clientX, clientY, BABYLON.Matrix.Identity(), camera);
@@ -299,7 +331,7 @@
     lastTime = now;
     if (!started) return;
     let force = BABYLON.Vector2.Zero();
-    if (usingMotion) {
+    if (usingMotion && motionCalibrated) {
       force = tilt.subtract(tiltBaseline);
     } else if (touchActive && touchTarget) {
       force = new BABYLON.Vector2(touchTarget.x - player.position.x, touchTarget.z - player.position.z).scale(.72);
@@ -354,13 +386,7 @@
   startButton.addEventListener('click', () => activateGame(false));
   restartButton.addEventListener('click', () => { resetGame(); if (!started) activateGame(false); });
   againButton.addEventListener('click', () => resetGame());
-  recenterButton.addEventListener('click', () => { tiltBaseline = tilt.clone(); });
-  const setPhysicsPanel = (open) => {
-    physicsPanel.hidden = !open;
-    tuneButton.setAttribute('aria-expanded', String(open));
-  };
-  tuneButton.addEventListener('click', () => setPhysicsPanel(physicsPanel.hidden));
-  closePhysicsButton.addEventListener('click', () => setPhysicsPanel(false));
+  recenterButton.addEventListener('click', requestCalibration);
   window.addEventListener('resize', () => engine.resize());
   resetGame();
   engine.runRenderLoop(() => scene.render());
