@@ -38,6 +38,7 @@ import { createFrameMetricsController } from './features/metrics/frameMetrics'
 import { createBillboardController } from './features/billboard/billboardController'
 import type { BillboardController } from './features/billboard/billboardController'
 import { setupContentBrowser } from './features/content/contentBrowser'
+import type { ContentBrowserController } from './features/content/contentBrowser'
 import {
   applyRiverWaterMaterial,
   createRiverWaterMaterialDetail,
@@ -130,7 +131,11 @@ const {
   resetCameraButton,
 } = queryAppDom()
 
-let activeTabId = 'tech'
+const clippingQuickPanel = document.querySelector<HTMLElement>('#clippingQuickPanel')
+const clippingQuickContent = document.querySelector<HTMLElement>('#clippingQuickContent')
+const scenePanelCloseButton = document.querySelector<HTMLButtonElement>('#scenePanelClose')
+
+let activeTabId = 'viewport'
 let selectedDetailId: string | null = null
 let selectionMode: 'part' | 'model' = 'part'
 let currentMeshNodes: OutlineNode[] = []
@@ -158,6 +163,7 @@ let lightDirectionHelpers: LightDirectionHelperController
 let billboardController: BillboardController
 let lightmapController: LightmapController
 let clippingController: ClippingController
+let contentBrowserController: ContentBrowserController | null = null
 
 const getEnvironmentState = () => environmentController.getState()
 
@@ -166,20 +172,11 @@ const getCurrentEnvironmentLabel = () => environmentController.getCurrentLabel()
 const getCurrentEnvironmentUrl = () => environmentController.getCurrentUrl()
 
 const applyPanelCollapsedState = () => {
-  const panelRight = Number.parseFloat(window.getComputedStyle(outlinerPanel).right) || 12
   outlinerPanel.classList.toggle('outliner-panel-collapsed', panelCollapsed)
   panelCollapseToggle.classList.toggle('panel-collapse-toggle-collapsed', panelCollapsed)
-  outlinerPanel.style.transform = panelCollapsed ? `translateX(${outlinerPanel.offsetWidth + panelRight}px)` : 'translateX(0)'
-  panelCollapseToggle.style.right = panelCollapsed ? `${panelRight}px` : `calc(${panelRight}px + var(--panel-width))`
-  panelCollapseToggle.textContent = panelCollapsed ? '<' : '>'
-  panelCollapseToggle.ariaLabel = panelCollapsed ? '\u5c55\u5f00\u53c2\u6570\u9762\u677f' : '\u6536\u8d77\u53c2\u6570\u9762\u677f'
-  panelCollapseToggle.title = panelCollapsed ? '\u5c55\u5f00\u53c2\u6570\u9762\u677f' : '\u6536\u8d77\u53c2\u6570\u9762\u677f'
+  panelCollapseToggle.ariaLabel = panelCollapsed ? '\u5c55\u5f00\u573a\u666f\u9762\u677f' : '\u6536\u8d77\u573a\u666f\u9762\u677f'
+  panelCollapseToggle.title = panelCollapseToggle.ariaLabel
 }
-
-panelCollapseToggle.addEventListener('click', () => {
-  panelCollapsed = !panelCollapsed
-  applyPanelCollapsedState()
-})
 
 applyPanelCollapsedState()
 
@@ -212,8 +209,13 @@ const setEnginePreference = (value: ViewerEnginePreference) => {
 
 const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
   {
+    id: 'view',
+    label: '\u67e5\u770b',
+    nodes: [],
+  },
+  {
     id: 'outline',
-    label: '\u5927\u7eb2',
+    label: '\u7f16\u8f91',
     nodes: [
       {
         name: importedFileName,
@@ -226,17 +228,17 @@ const getPanelTabs = (meshNodes: OutlineNode[] = []): PanelTab[] => [
   },
   {
     id: 'general',
-    label: '\u901a\u7528',
+    label: '\u706f\u5149',
     nodes: [],
   },
   {
     id: 'viewport',
-    label: '\u89c6\u53e3\u63a7\u5236',
+    label: '\u5256\u5207',
     nodes: [],
   },
   {
     id: 'tech',
-    label: '\u5149\u5f71\u6a21\u5f0f',
+    label: '\u6e32\u67d3',
     nodes: [],
   },
 ]
@@ -246,16 +248,244 @@ const renderPanelTabs = createPanelTabsRenderer(
   () => activeTabId,
   (tabId) => {
     activeTabId = tabId
+    syncWorkspaceForTopTab(tabId)
   },
   () => setOutline(currentMeshNodes),
 )
 
-let viewportActiveSubTab = '\u6444\u50cf\u673a'
+const panelTabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-panel-tab]'))
+const workspacePanelButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-workspace-panel]'))
+const sceneSearchInput = document.querySelector<HTMLInputElement>('#sceneSearch')
+type WorkspacePanelId = 'scene' | 'content' | 'environment'
+let activeWorkspacePanel: WorkspacePanelId | null = panelCollapsed ? null : 'scene'
+
+const syncWorkspacePanelButtons = () => {
+  workspacePanelButtons.forEach((button) => {
+    const active = button.dataset.workspacePanel === activeWorkspacePanel
+    button.classList.toggle('active', active)
+    button.ariaPressed = String(active)
+    if (button === contentBrowserButton) {
+      button.ariaExpanded = String(active)
+    }
+  })
+}
+
+const closeWorkspacePanels = () => {
+  const wasEnvironmentOpen = activeWorkspacePanel === 'environment'
+  activeWorkspacePanel = null
+  panelCollapsed = true
+  applyPanelCollapsedState()
+  contentBrowserController?.setOpen(false)
+  if (wasEnvironmentOpen) {
+    detailPanel.hidden = true
+  }
+  syncWorkspacePanelButtons()
+}
+
+const openWorkspacePanel = (panelId: WorkspacePanelId) => {
+  const previousPanel = activeWorkspacePanel
+  activeWorkspacePanel = panelId
+  panelCollapsed = panelId !== 'scene'
+  applyPanelCollapsedState()
+  contentBrowserController?.setOpen(panelId === 'content')
+
+  if (previousPanel === 'environment' && panelId !== 'environment') {
+    detailPanel.hidden = true
+  }
+
+  if (panelId === 'environment') {
+    activeTabId = 'general'
+    setOutline(currentMeshNodes)
+  }
+
+  syncWorkspacePanelButtons()
+}
+
+const toggleWorkspacePanel = (panelId: WorkspacePanelId) => {
+  if (activeWorkspacePanel === panelId) {
+    closeWorkspacePanels()
+  } else {
+    openWorkspacePanel(panelId)
+  }
+}
+
+const syncWorkspaceForTopTab = (tabId: string) => {
+  if (tabId === 'general') {
+    activeWorkspacePanel = 'environment'
+    panelCollapsed = true
+    applyPanelCollapsedState()
+    contentBrowserController?.setOpen(false)
+  } else if (activeWorkspacePanel === 'environment') {
+    activeWorkspacePanel = null
+  }
+  syncWorkspacePanelButtons()
+}
+
+const syncPanelTabButtons = () => {
+  panelTabButtons.forEach((button) => {
+    const active = button.dataset.panelTab === activeTabId
+    button.classList.toggle('active', active)
+    button.ariaPressed = String(active)
+  })
+  if (clippingQuickPanel) {
+    clippingQuickPanel.hidden = activeTabId !== 'viewport'
+  }
+}
+
+panelTabButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const nextTabId = button.dataset.panelTab
+    if (!nextTabId) {
+      return
+    }
+
+    activeTabId = nextTabId
+    syncWorkspaceForTopTab(nextTabId)
+    setOutline(currentMeshNodes)
+  })
+})
+
+workspacePanelButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const panelId = button.dataset.workspacePanel as WorkspacePanelId | undefined
+    if (panelId) {
+      toggleWorkspacePanel(panelId)
+    }
+  })
+})
+
+panelCollapseToggle.addEventListener('click', () => toggleWorkspacePanel('scene'))
+scenePanelCloseButton?.addEventListener('click', () => closeWorkspacePanels())
+syncWorkspacePanelButtons()
+
+let floatingPanelZIndex = 60
+
+const makePanelDraggable = (panel: HTMLElement | null, handleSelector: string) => {
+  if (!panel) {
+    return
+  }
+
+  panel.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) {
+      return
+    }
+
+    const target = event.target as Element
+    const handle = target.closest<HTMLElement>(handleSelector)
+    if (!handle || !panel.contains(handle) || target.closest('button, input, select, textarea, a')) {
+      return
+    }
+
+    const startRect = panel.getBoundingClientRect()
+    const startX = event.clientX
+    const startY = event.clientY
+    const minTop = 8
+    panel.classList.add('floating-panel-dragged', 'floating-panel-dragging')
+    panel.style.left = `${startRect.left}px`
+    panel.style.top = `${startRect.top}px`
+    panel.style.right = 'auto'
+    panel.style.bottom = 'auto'
+    panel.style.width = `${startRect.width}px`
+    panel.style.height = `${startRect.height}px`
+    panel.style.zIndex = String(++floatingPanelZIndex)
+    handle.setPointerCapture(event.pointerId)
+
+    let frameId: number | null = null
+    let pendingClientX = startX
+    let pendingClientY = startY
+    let finalLeft = startRect.left
+    let finalTop = startRect.top
+
+    const renderDragFrame = () => {
+      frameId = null
+      const maxLeft = Math.max(8, window.innerWidth - startRect.width - 8)
+      const maxTop = Math.max(minTop, window.innerHeight - startRect.height - 8)
+      finalLeft = clamp(startRect.left + pendingClientX - startX, 8, maxLeft)
+      finalTop = clamp(startRect.top + pendingClientY - startY, minTop, maxTop)
+      panel.style.setProperty(
+        '--panel-drag-transform',
+        `translate3d(${finalLeft - startRect.left}px, ${finalTop - startRect.top}px, 0)`,
+      )
+    }
+
+    const movePanel = (moveEvent: PointerEvent) => {
+      pendingClientX = moveEvent.clientX
+      pendingClientY = moveEvent.clientY
+      if (frameId === null) {
+        frameId = window.requestAnimationFrame(renderDragFrame)
+      }
+    }
+
+    const finishDrag = (finishEvent: PointerEvent) => {
+      pendingClientX = finishEvent.clientX
+      pendingClientY = finishEvent.clientY
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+      renderDragFrame()
+      panel.style.left = `${finalLeft}px`
+      panel.style.top = `${finalTop}px`
+      panel.style.removeProperty('--panel-drag-transform')
+      panel.classList.remove('floating-panel-dragging')
+      handle.removeEventListener('pointermove', movePanel)
+      handle.removeEventListener('pointerup', finishDrag)
+      handle.removeEventListener('pointercancel', finishDrag)
+    }
+
+    handle.addEventListener('pointermove', movePanel)
+    handle.addEventListener('pointerup', finishDrag)
+    handle.addEventListener('pointercancel', finishDrag)
+    event.preventDefault()
+  })
+}
+
+makePanelDraggable(outlinerPanel, '.drawer-header')
+makePanelDraggable(contentBrowserPanel, '.content-browser-header')
+makePanelDraggable(detailPanel, '.inspector-header')
+makePanelDraggable(clippingQuickPanel, '.quick-panel-header')
+
+window.addEventListener('resize', () => {
+  document.querySelectorAll<HTMLElement>('.floating-panel-dragged').forEach((panel) => {
+    panel.classList.remove('floating-panel-dragged')
+    panel.style.removeProperty('left')
+    panel.style.removeProperty('top')
+    panel.style.removeProperty('right')
+    panel.style.removeProperty('bottom')
+    panel.style.removeProperty('width')
+    panel.style.removeProperty('height')
+    panel.style.removeProperty('z-index')
+  })
+})
+
+const applySceneSearch = () => {
+  const query = sceneSearchInput?.value.trim().toLocaleLowerCase() ?? ''
+  sceneOutline.querySelectorAll<HTMLElement>('.outliner-row').forEach((row) => {
+    const name = row.querySelector<HTMLElement>('.outliner-name')?.textContent?.toLocaleLowerCase() ?? ''
+    row.hidden = query.length > 0 && !name.includes(query)
+  })
+}
+
+sceneSearchInput?.addEventListener('input', applySceneSearch)
+
+let viewportActiveSubTab = '\u5256\u5207'
 let realtimeController: RealtimeRenderingController
 
-const hideDetailPanel = () => {
-  detailPanel.hidden = true
+const prepareInspectorPanel = (title: string, eyebrow: string) => {
+  detailPanel.hidden = false
   detailPanel.textContent = ''
+  const header = document.createElement('header')
+  const heading = document.createElement('div')
+  const label = document.createElement('span')
+  const name = document.createElement('h2')
+
+  header.className = 'inspector-header'
+  heading.className = 'inspector-heading'
+  label.className = 'inspector-eyebrow'
+  label.textContent = eyebrow
+  name.textContent = title
+  heading.append(label, name)
+  header.append(heading)
+  detailPanel.append(header)
 }
 
 const renderOutlineDetailPlaceholder = () => {
@@ -301,9 +531,8 @@ const getModelNameForMesh = (mesh: AbstractMesh) => {
 const renderGeneralPanel = () => {
   const environmentState = getEnvironmentState()
 
-  hideDetailPanel()
-  sceneOutline.textContent = ''
-  sceneOutline.append(renderGeneralPanelContent({
+  prepareInspectorPanel('\u706f\u5149\u4e0e\u73af\u5883', 'LIGHTING')
+  detailPanel.append(renderGeneralPanelContent({
     activeSubTab: generalActiveSubTab,
     setActiveSubTab: (value) => { generalActiveSubTab = value },
     hdrEnvironmentOptions,
@@ -349,11 +578,10 @@ const renderClippingPanel = (panel: HTMLElement) => {
   clippingController.renderPanel(panel)
 }
 
-const renderViewportPanel = () => {
+const renderViewportPanel = (title = '\u5256\u5207\u5c5e\u6027', eyebrow = 'CLIPPING') => {
   selectedDetailId = null
-  hideDetailPanel()
-  sceneOutline.textContent = ''
-  sceneOutline.append(renderViewportPanelContent({
+  prepareInspectorPanel(title, eyebrow)
+  detailPanel.append(renderViewportPanelContent({
     activeSubTab: viewportActiveSubTab,
     setActiveSubTab: (value) => { viewportActiveSubTab = value },
     camera,
@@ -420,8 +648,7 @@ const refreshTechRealtimePanel = () => {
 }
 
 const renderTechPanel = () => {
-  hideDetailPanel()
-  sceneOutline.textContent = ''
+  prepareInspectorPanel('\u6e32\u67d3\u8bbe\u7f6e', 'RENDERING')
 
   if (!techPanelCache) {
     const panel = document.createElement('div')
@@ -435,12 +662,12 @@ const renderTechPanel = () => {
     renderBakePanel(bakePanel)
 
     panel.append(realtimePanel, bakePanel)
-    sceneOutline.append(panel)
+    detailPanel.append(panel)
     techPanelCache = { panel, realtimePanel, bakePanel }
   } else {
     refreshTechRealtimePanel()
     renderBakePanel(techPanelCache.bakePanel)
-    sceneOutline.append(techPanelCache.panel)
+    detailPanel.append(techPanelCache.panel)
   }
 }
 
@@ -451,32 +678,15 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
   activeTabId = activeTab.id
 
   renderPanelTabs(tabs)
+  syncPanelTabButtons()
   sceneOutline.textContent = ''
-  sceneOutline.classList.toggle('outliner-tree-outline', activeTab.id === 'outline')
+  sceneOutline.classList.add('outliner-tree-outline')
 
-  const showSelectionPanel = activeTab.id === 'outline' && currentModelRoots.length > 0
+  const showSelectionPanel = currentModelRoots.length > 0
   selectionModePanel.style.display = showSelectionPanel ? 'grid' : 'none'
 
-  if (activeTab.id === 'tech') {
-    renderTechPanel()
-    return
-  }
-
-  if (activeTab.id === 'general') {
-    renderGeneralPanel()
-    return
-  }
-
-  if (activeTab.id === 'viewport') {
-    renderViewportPanel()
-    return
-  }
-
-  if (!selectedDetailId || !detailRegistry.has(selectedDetailId)) {
-    renderDetailPlaceholder(detailPanel)
-  }
-
-  activeTab.nodes.forEach((node) =>
+  const outlineTab = tabs.find((tab) => tab.id === 'outline') ?? tabs[0]
+  outlineTab.nodes.forEach((node) =>
     sceneOutline.append(
       makeOutlineBranch(node, {
         getActiveDetailId: () => selectedDetailId,
@@ -493,6 +703,34 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
       }),
     ),
   )
+  applySceneSearch()
+
+  if (activeTab.id === 'tech') {
+    renderTechPanel()
+    return
+  }
+
+  if (activeTab.id === 'general') {
+    renderGeneralPanel()
+    return
+  }
+
+  if (activeTab.id === 'view') {
+    viewportActiveSubTab = '\u6444\u50cf\u673a'
+    renderViewportPanel('\u89c6\u53e3\u5c5e\u6027', 'VIEWPORT')
+    return
+  }
+
+  if (activeTab.id === 'viewport') {
+    viewportActiveSubTab = '\u5256\u5207'
+    renderViewportPanel()
+    return
+  }
+
+  if (!selectedDetailId || !detailRegistry.has(selectedDetailId)) {
+    detailPanel.hidden = false
+    renderDetailPlaceholder(detailPanel)
+  }
 }
 
 const renderDetail = (descriptor: DetailDescriptor) => {
@@ -518,7 +756,9 @@ const selectDetail = (detailId: string | undefined) => {
     return
   }
 
+  activeTabId = 'outline'
   selectedDetailId = detailId
+  detailPanel.hidden = false
   renderDetail(getDetail())
   setOutline(currentMeshNodes)
 }
@@ -624,7 +864,7 @@ selectionController = createSelectionController({
       setOutline(currentMeshNodes)
     } else {
       selectedDetailId = null
-      hideDetailPanel()
+      setOutline(currentMeshNodes)
     }
   },
   onOutlineChanged: () => setOutline(currentMeshNodes),
@@ -667,6 +907,9 @@ lightmapController = createLightmapController({
 
 clippingController = createClippingController(scene)
 clippingController.setSceneFrame(sceneCenter, sceneRadius)
+if (clippingQuickContent) {
+  clippingController.renderPanel(clippingQuickContent, 'quick')
+}
 
 canvas.addEventListener('contextmenu', (event) => {
   event.preventDefault()
@@ -907,7 +1150,7 @@ setupWechatShare({
   showTemporaryStatus,
 })
 
-setupContentBrowser({
+contentBrowserController = setupContentBrowser({
   button: contentBrowserButton,
   panel: contentBrowserPanel,
   onAssetActivate: (kind) => {
@@ -935,6 +1178,8 @@ setupContentBrowser({
     showTemporaryStatus(`已应用河流水材质：${selectedMesh.name || `Mesh ${selectedMesh.uniqueId}`}`)
   },
 })
+contentBrowserController.setOpen(false)
+syncWorkspacePanelButtons()
 
 saveConfigButton.hidden = true
 resetConfigButton.hidden = true

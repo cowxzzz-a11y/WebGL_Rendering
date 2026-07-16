@@ -16,6 +16,7 @@
     "@babylonjs/core": "^9.11.0",
     "@babylonjs/ktx2decoder": "^9.11.0",
     "@babylonjs/loaders": "^9.11.0",
-    "earcut": "^3.2.3"
+    "earcut": "^3.2.3",
+    "lucide": "^1.24.0"
   }
 }

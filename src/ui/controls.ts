@@ -2,6 +2,16 @@ import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { colorToHex, hexToColor3 } from '../utils/color'
 import { clamp } from '../utils/math'
 
+const formatSliderValue = (value: number, step: number) => {
+  const stepText = String(step).toLowerCase()
+  const exponentIndex = stepText.indexOf('e-')
+  const precision = exponentIndex >= 0
+    ? Number.parseInt(stepText.slice(exponentIndex + 2), 10)
+    : (stepText.split('.')[1]?.length ?? 0)
+
+  return Number(value.toFixed(Math.min(precision, 4))).toString()
+}
+
 export const createSlider = (
   label: string,
   value: number,
@@ -18,7 +28,7 @@ export const createSlider = (
   lbl.textContent = label
   const val = document.createElement('span')
   val.className = 'tech-value'
-  val.textContent = String(value)
+  val.textContent = formatSliderValue(value, step)
   const input = document.createElement('input')
   input.type = 'range'
   input.min = String(min)
@@ -27,12 +37,12 @@ export const createSlider = (
   input.value = String(value)
   input.addEventListener('input', () => {
     const v = parseFloat(input.value)
-    val.textContent = String(v)
+    val.textContent = formatSliderValue(v, step)
     onChange(v)
   })
   input.addEventListener('change', () => {
     const v = parseFloat(input.value)
-    val.textContent = String(v)
+    val.textContent = formatSliderValue(v, step)
     onCommit?.(v)
   })
   row.append(lbl, input, val)

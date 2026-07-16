@@ -1,0 +1,334 @@
+{
+  "coordinateSpace": "local_scene_y_up",
+  "units": "meter",
+  "sourceGisOrigin": [
+    36398784.3431942,
+    4382913.722085111,
+    0
+  ],
+  "transform": {
+    "x": "gis_x - origin_x",
+    "y": "gis_z - origin_z",
+    "z": "origin_y - gis_y"
+  },
+  "outerShellAlignment": {
+    "files": [
+      "徐庄组∈2x0.ply",
+      "徐庄组∈2x_1.ply",
+      "徐庄组∈2x_2.ply"
+    ],
+    "translation": [
+      542.5279,
+      0,
+      -1382.08354
+    ],
+    "reason": "Matches the existing target.glb scene registration."
+  },
+  "dataJsonWorldCenterPreserved": true,
+  "files": [
+    {
+      "sourceName": "5a5db5d62b075156.ply",
+      "targetName": "5a5db5d62b075156.ply",
+      "referencedByDataJson": false,
+      "text": null,
+      "strataName": null,
+      "objectId": null,
+      "format": "binary_little_endian",
+      "vertices": 41522,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "879aeea3851e5d0d.ply",
+      "targetName": "879aeea3851e5d0d.ply",
+      "referencedByDataJson": false,
+      "text": null,
+      "strataName": null,
+      "objectId": null,
+      "format": "binary_little_endian",
+      "vertices": 48113,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "8fa55934081263db.ply",
+      "targetName": "8fa55934081263db.ply",
+      "referencedByDataJson": false,
+      "text": null,
+      "strataName": null,
+      "objectId": null,
+      "format": "binary_little_endian",
+      "vertices": 45968,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "张夏组∈2z1.ply",
+      "targetName": "张夏组∈2z1.ply",
+      "referencedByDataJson": true,
+      "text": "张夏组∈2z1",
+      "strataName": "中寒武统张夏组∈2z1",
+      "objectId": "73364730-dbcc-410d-84e3-a40c413330aa",
+      "format": "binary_little_endian",
+      "vertices": 22267,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "张夏组∈2z2.ply",
+      "targetName": "张夏组∈2z2.ply",
+      "referencedByDataJson": true,
+      "text": "张夏组∈2z2",
+      "strataName": "中寒武统张夏组∈2z2",
+      "objectId": "c3f9f30f-3ec0-40bb-92b2-dd05669b2c31",
+      "format": "binary_little_endian",
+      "vertices": 29287,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "张夏组∈2z3.ply",
+      "targetName": "张夏组∈2z3.ply",
+      "referencedByDataJson": true,
+      "text": "张夏组∈2z3",
+      "strataName": "中寒武统张夏组∈2z3",
+      "objectId": "561372f3-ec4d-449b-82aa-e59b50225929",
+      "format": "binary_little_endian",
+      "vertices": 51571,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "张夏组∈2z4.ply",
+      "targetName": "张夏组∈2z4.ply",
+      "referencedByDataJson": true,
+      "text": "张夏组∈2z4",
+      "strataName": "中寒武统张夏组∈2z4",
+      "objectId": "6ae58bc9-af28-4827-9fb3-d6e9c7856abd",
+      "format": "binary_little_endian",
+      "vertices": 29635,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "张夏组∈2z5.ply",
+      "targetName": "张夏组∈2z5.ply",
+      "referencedByDataJson": true,
+      "text": "张夏组∈2z5",
+      "strataName": "中寒武统张夏组∈2z5",
+      "objectId": "9743a445-a3e8-43da-9efd-7a18a4290d5f",
+      "format": "binary_little_endian",
+      "vertices": 34551,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "张夏组∈2z6-1.ply",
+      "targetName": "张夏组∈2z6-1.ply",
+      "referencedByDataJson": true,
+      "text": "张夏组∈2z6-1",
+      "strataName": "中寒武统张夏组∈2z6-1",
+      "objectId": "416c7fb2-fcf9-431d-94e8-94883de101ae",
+      "format": "binary_little_endian",
+      "vertices": 27913,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "张夏组∈2z6-2.ply",
+      "targetName": "张夏组∈2z6-2.ply",
+      "referencedByDataJson": true,
+      "text": "张夏组∈2z6-2",
+      "strataName": "中寒武统张夏组∈2z6-2",
+      "objectId": "1906bba1-dd47-4616-bfda-f14a42fc4ce6",
+      "format": "binary_little_endian",
+      "vertices": 49917,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "张夏组∈2z7.ply",
+      "targetName": "张夏组∈2z7.ply",
+      "referencedByDataJson": true,
+      "text": "张夏组∈2z7",
+      "strataName": "中寒武统张夏组∈2z7",
+      "objectId": "7509611b-3f5b-411c-9d53-c25b44ddde1c",
+      "format": "binary_little_endian",
+      "vertices": 28588,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "徐庄组∈2x0.ply",
+      "targetName": "徐庄组∈2x0.ply",
+      "referencedByDataJson": true,
+      "text": "徐庄组∈2x0",
+      "strataName": "中寒武统徐庄组∈2x0",
+      "objectId": "dae1d7d8-8a33-4d8f-93b4-488b31d65935",
+      "format": "ascii",
+      "vertices": 69464,
+      "transformed": false,
+      "sceneAlignment": [
+        542.5279,
+        0,
+        -1382.08354
+      ]
+    },
+    {
+      "sourceName": "徐庄组∈2x1.ply",
+      "targetName": "徐庄组∈2x1.ply",
+      "referencedByDataJson": true,
+      "text": "徐庄组∈2x1",
+      "strataName": "中寒武统徐庄组∈2x1",
+      "objectId": "dae1d7d8-8a33-4d8f-93b4-488b31d65937",
+      "format": "binary_little_endian",
+      "vertices": 45025,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "徐庄组∈2x2.ply",
+      "targetName": "徐庄组∈2x2.ply",
+      "referencedByDataJson": true,
+      "text": "徐庄组∈2x2",
+      "strataName": "中寒武统徐庄组∈2x2",
+      "objectId": "03b82a0e-089a-4c92-a1bb-e21f62813663",
+      "format": "binary_little_endian",
+      "vertices": 27299,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "徐庄组∈2x3.ply",
+      "targetName": "徐庄组∈2x3.ply",
+      "referencedByDataJson": true,
+      "text": "徐庄组∈2x3",
+      "strataName": "中寒武统徐庄组∈2x3",
+      "objectId": "291f8926-22a6-480b-b1c1-0142ba22e10f",
+      "format": "binary_little_endian",
+      "vertices": 116904,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "徐庄组∈2x4.ply",
+      "targetName": "徐庄组∈2x4.ply",
+      "referencedByDataJson": true,
+      "text": "徐庄组∈2x4",
+      "strataName": "中寒武统徐庄组∈2x4",
+      "objectId": "119c4165-2724-4e1a-8e08-44b66f2edf30",
+      "format": "binary_little_endian",
+      "vertices": 73898,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "徐庄组∈2x5.ply",
+      "targetName": "徐庄组∈2x5.ply",
+      "referencedByDataJson": true,
+      "text": "徐庄组∈2x5",
+      "strataName": "中寒武统徐庄组∈2x5",
+      "objectId": "eba591ad-aeec-4945-bcb8-45e4b2808cbc",
+      "format": "binary_little_endian",
+      "vertices": 48255,
+      "transformed": false,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "sourceName": "徐庄组∈2x_1.ply",
+      "targetName": "徐庄组∈2x_1.ply",
+      "referencedByDataJson": true,
+      "text": "徐庄组∈2x_1",
+      "strataName": "中寒武统徐庄组∈2x_1",
+      "objectId": "dae1d7d8-8a33-4d8f-93b4-488b31d65936",
+      "format": "ascii",
+      "vertices": 41945,
+      "transformed": false,
+      "sceneAlignment": [
+        542.5279,
+        0,
+        -1382.08354
+      ]
+    },
+    {
+      "sourceName": "徐庄组∈2x_2.ply",
+      "targetName": "徐庄组∈2x_2.ply",
+      "referencedByDataJson": true,
+      "text": "徐庄组∈2x_2",
+      "strataName": "中寒武统徐庄组∈2x_2",
+      "objectId": "dae1d7d8-8a33-4d8f-93b4-488b31d65938",
+      "format": "ascii",
+      "vertices": 252217,
+      "transformed": false,
+      "sceneAlignment": [
+        542.5279,
+        0,
+        -1382.08354
+      ]
+    }
+  ]
+}

@@ -4,6 +4,11 @@ type ContentBrowserOptions = {
   onAssetActivate?: (kind: string) => void
 }
 
+export type ContentBrowserController = {
+  setOpen: (open: boolean) => void
+  isOpen: () => boolean
+}
+
 type ContentAsset = {
   name: string
   description: string
@@ -100,7 +105,7 @@ const createCategory = (category: ContentCategory, open: boolean, onAssetActivat
   return details
 }
 
-export const setupContentBrowser = ({ button, panel, onAssetActivate }: ContentBrowserOptions) => {
+export const setupContentBrowser = ({ button, panel, onAssetActivate }: ContentBrowserOptions): ContentBrowserController => {
   let open = false
 
   const setOpen = (value: boolean) => {
@@ -136,6 +141,10 @@ export const setupContentBrowser = ({ button, panel, onAssetActivate }: ContentB
   panel.textContent = ''
   panel.append(header, body)
 
-  button.addEventListener('click', () => setOpen(!open))
   setOpen(false)
+
+  return {
+    setOpen,
+    isOpen: () => open,
+  }
 }

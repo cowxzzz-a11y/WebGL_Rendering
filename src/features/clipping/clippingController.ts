@@ -23,7 +23,7 @@ type ClippingState = {
 }
 
 export type ClippingController = {
-  renderPanel: (panel: HTMLElement) => void
+  renderPanel: (panel: HTMLElement, mode?: 'full' | 'quick') => void
   setSceneFrame: (center: Vector3, radius: number) => void
   resetForSceneFrame: (center: Vector3, radius: number) => void
   clear: () => void
@@ -365,7 +365,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
   const frameCenter = Vector3.Zero()
   let frameRadius = 8
   let hasCustomTransform = false
-  let activePanel: HTMLElement | null = null
+  const activePanels = new Map<HTMLElement, 'full' | 'quick'>()
   let scheduledCapSyncId: number | undefined
 
   const helperMaterial = new StandardMaterial('__clipping_plane_helper_material', scene)
@@ -817,9 +817,13 @@ export const createClippingController = (scene: Scene): ClippingController => {
   }
 
   const rerenderPanel = () => {
-    if (activePanel?.isConnected) {
-      renderPanel(activePanel)
-    }
+    activePanels.forEach((mode, panel) => {
+      if (panel.isConnected) {
+        renderPanel(panel, mode)
+      } else {
+        activePanels.delete(panel)
+      }
+    })
   }
 
   const setSceneFrame = (center: Vector3, radius: number) => {
@@ -852,8 +856,8 @@ export const createClippingController = (scene: Scene): ClippingController => {
     applyClipPlane(true)
   }
 
-  const renderPanel = (panel: HTMLElement) => {
-    activePanel = panel
+  const renderPanel = (panel: HTMLElement, mode: 'full' | 'quick' = 'full') => {
+    activePanels.set(panel, mode)
     panel.textContent = ''
 
     const radius = Math.max(frameRadius, 0.001)
@@ -868,11 +872,13 @@ export const createClippingController = (scene: Scene): ClippingController => {
       applyClipPlane(true)
       rerenderPanel()
     }))
-    switchBody.push(createCheckbox('\u663e\u793a\u5256\u5207\u9762', state.helperVisible, (value) => {
-      state.helperVisible = value
-      applyClipPlane()
-      rerenderPanel()
-    }))
+    if (mode === 'full') {
+      switchBody.push(createCheckbox('\u663e\u793a\u5256\u5207\u9762', state.helperVisible, (value) => {
+        state.helperVisible = value
+        applyClipPlane()
+        rerenderPanel()
+      }))
+    }
     switchBody.push(createSelect(
       '\u4fdd\u7559\u4fa7',
       [positiveSideLabel, negativeSideLabel],
@@ -909,25 +915,27 @@ export const createClippingController = (scene: Scene): ClippingController => {
         },
       ))
     })
-    ;(['x', 'y', 'z'] as const).forEach((axis) => {
-      transformBody.push(createSlider(
-        `R${axis.toUpperCase()}`,
-        toDegrees(state.rotation[axis]),
-        -180,
-        180,
-        1,
-        (value) => {
-          state.rotation[axis] = toRadians(value)
-          hasCustomTransform = true
-          applyClipPlane(false, 'deferred')
-        },
-        (value) => {
-          state.rotation[axis] = toRadians(value)
-          hasCustomTransform = true
-          applyClipPlane()
-        },
-      ))
-    })
+    if (mode === 'full') {
+      ;(['x', 'y', 'z'] as const).forEach((axis) => {
+        transformBody.push(createSlider(
+          `R${axis.toUpperCase()}`,
+          toDegrees(state.rotation[axis]),
+          -180,
+          180,
+          1,
+          (value) => {
+            state.rotation[axis] = toRadians(value)
+            hasCustomTransform = true
+            applyClipPlane(false, 'deferred')
+          },
+          (value) => {
+            state.rotation[axis] = toRadians(value)
+            hasCustomTransform = true
+            applyClipPlane()
+          },
+        ))
+      })
+    }
 
     const resetRow = document.createElement('div')
     resetRow.className = 'tech-row'
@@ -939,8 +947,8 @@ export const createClippingController = (scene: Scene): ClippingController => {
     resetRow.append(resetButton)
     transformBody.push(resetRow)
 
-    panel.append(createModule('\u5256\u5207', switchBody))
-    panel.append(createModule('\u53d8\u6362', transformBody))
+    panel.append(createModule(mode === 'quick' ? '\u5256\u5207\u5de5\u5177' : '\u5256\u5207', switchBody))
+    panel.append(createModule(mode === 'quick' ? '\u4f4d\u7f6e' : '\u53d8\u6362', transformBody))
   }
 
   return {
