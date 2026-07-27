@@ -33,7 +33,6 @@ const categories: ContentCategory[] = [
   },
   { title: '热点', assets: [] },
   { title: '粒子', assets: [] },
-  { title: '广告牌', assets: [] },
 ]
 
 const createAssetButton = (asset: ContentAsset, onAssetActivate?: (kind: string) => void) => {
@@ -129,7 +128,7 @@ export const setupContentBrowser = ({ button, panel, onAssetActivate }: ContentB
   strong.textContent = 'Content'
 
   const subtitle = document.createElement('span')
-  subtitle.textContent = '材质 / 热点 / 粒子 / 广告牌'
+  subtitle.textContent = '材质 / 热点 / 粒子'
 
   title.append(strong, subtitle)
   header.append(title)

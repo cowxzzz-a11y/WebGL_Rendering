@@ -19,7 +19,6 @@ type RealtimeRenderingControllerOptions = {
   ensureShadowGenerator: () => ShadowGenerator | undefined
   disposeShadowGenerator: () => void
   getImportedMeshes: () => AbstractMesh[]
-  isBillboardMesh: (mesh: AbstractMesh) => boolean
   flushSceneRenderCaches: () => void
 }
 
@@ -33,7 +32,6 @@ export const createRealtimeRenderingController = ({
   ensureShadowGenerator,
   disposeShadowGenerator,
   getImportedMeshes,
-  isBillboardMesh,
   flushSceneRenderCaches,
 }: RealtimeRenderingControllerOptions) => {
   let ssao2Pipeline: SSAO2RenderingPipeline | null = null
@@ -76,9 +74,7 @@ export const createRealtimeRenderingController = ({
 
     const meshes = getImportedMeshes()
     const list = meshes.filter((mesh) =>
-      !isBillboardMesh(mesh)
-      && (meshFXFlags.get(mesh)?.receiveSSAO ?? true)
-      && !isTransparentMesh(mesh),
+      (meshFXFlags.get(mesh)?.receiveSSAO ?? true) && !isTransparentMesh(mesh),
     )
 
     geometryBufferRenderer.renderList = list.length > 0 ? list : null
@@ -132,7 +128,7 @@ export const createRealtimeRenderingController = ({
   }
 
   const getRealtimeShadowMeshes = () =>
-    getImportedMeshes().filter((mesh) => !isBillboardMesh(mesh) && !isTransparentMesh(mesh))
+    getImportedMeshes().filter((mesh) => !isTransparentMesh(mesh))
 
   const applyRealtimeShadowState = () => {
     const shadowEnabled = getShadowActive()
@@ -145,7 +141,7 @@ export const createRealtimeRenderingController = ({
     }
 
     getImportedMeshes().forEach((mesh) => {
-      mesh.receiveShadows = shadowEnabled && !isBillboardMesh(mesh) && !isTransparentMesh(mesh)
+      mesh.receiveShadows = shadowEnabled && !isTransparentMesh(mesh)
     })
 
     if (!shadowEnabled) {

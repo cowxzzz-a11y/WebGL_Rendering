@@ -1,9 +1,6 @@
 import type { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
-import type { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
-import type { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
-import type { Texture } from '@babylonjs/core/Materials/Textures/texture'
 
 export type OutlineNode = {
   name: string
@@ -71,19 +68,6 @@ export type DetailDescriptor = {
   title: string
   kind: string
   sections: DetailSection[]
-}
-
-export type BillboardBinding = {
-  profileId: string
-  mesh: AbstractMesh
-  material: StandardMaterial
-  texture: Texture
-  originalMaterial: AbstractMesh['material']
-  originalReceiveShadows: boolean
-  originalBillboardMode: number
-  originalRotation: Vector3
-  originalRotationQuaternion: Quaternion | null
-  originalHorizontalNormal: Vector3
 }
 
 export type DefaultModel = {

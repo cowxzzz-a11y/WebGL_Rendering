@@ -101,18 +101,36 @@ export const makeOutlineBranch = (node: OutlineNode, options: OutlineRendererOpt
     return leaf
   }
 
-  const details = document.createElement('details')
-  const summary = document.createElement('summary')
+  const branch = document.createElement('div')
+  const header = document.createElement('div')
   const children = document.createElement('div')
+  const row = makeOutlineRow(node, options)
+  const toggle = document.createElement('button')
+  const setExpanded = (expanded: boolean) => {
+    node.open = expanded
+    branch.dataset.open = String(expanded)
+    children.hidden = !expanded
+    toggle.ariaLabel = expanded ? `Collapse ${node.name}` : `Expand ${node.name}`
+    toggle.ariaExpanded = String(expanded)
+  }
 
-  details.className = 'outliner-branch'
-  details.open = node.open ?? true
-  summary.append(makeOutlineRow(node, options))
+  branch.className = 'outliner-branch'
+  header.className = 'outliner-branch-header'
+  toggle.type = 'button'
+  toggle.className = 'outliner-toggle'
+  toggle.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setExpanded(node.open !== true)
+  })
+  row.prepend(toggle)
+  header.append(row)
   children.className = 'outliner-children'
   node.children.forEach((child) => children.append(makeOutlineBranch(child, options)))
-  details.append(summary, children)
+  branch.append(header, children)
+  setExpanded(node.open ?? false)
 
-  return details
+  return branch
 }
 
 export const createPanelTabsRenderer = (

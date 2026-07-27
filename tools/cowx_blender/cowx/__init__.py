@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Cowx Bake Tool",
     "author": "Cowx",
-    "version": (1, 0, 0),
+    "version": (1, 1, 1),
     "blender": (5, 1, 0),
     "location": "View3D > Sidebar > Cowx",
     "description": "多通道纹理烘焙，自动 UV2/UV1 检测及正片叠底融合",
@@ -1288,6 +1288,245 @@ class COWX_OT_GroupObjects(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class COWX_PG_MaterialSlotItem(bpy.types.PropertyGroup):
+    selected: bpy.props.BoolProperty(name="选择", default=False)
+    slot_index: bpy.props.IntProperty(name="材质槽序号", default=0)
+    material: bpy.props.PointerProperty(name="材质", type=bpy.types.Material)
+
+
+class COWX_UL_MaterialSlots(bpy.types.UIList):
+    def draw_item(
+        self, context, layout, data, item, icon, active_data, active_propname, index
+    ):
+        obj = context.scene.cowx_material_object
+        row = layout.row(align=True)
+        row.prop(item, "selected", text="")
+        row.label(text=str(item.slot_index + 1))
+        if item.material:
+            row.label(text=item.material.name, icon="MATERIAL")
+        else:
+            row.label(text="<空材质槽>", icon="ERROR")
+        is_active = bool(obj and item.slot_index == obj.active_material_index)
+        op = row.operator(
+            "cowx.set_active_material",
+            text="",
+            icon="RADIOBUT_ON" if is_active else "RADIOBUT_OFF",
+            emboss=not is_active,
+        )
+        op.slot_index = item.slot_index
+
+
+def _refresh_material_slot_items(scene, obj):
+    scene.cowx_material_items.clear()
+    scene.cowx_material_object = obj
+    for slot_index, slot in enumerate(obj.material_slots):
+        item = scene.cowx_material_items.add()
+        item.slot_index = slot_index
+        item.material = slot.material
+    scene.cowx_material_list_index = min(
+        obj.active_material_index,
+        max(0, len(scene.cowx_material_items) - 1),
+    )
+
+
+def _material_items_match_object(scene, obj):
+    if scene.cowx_material_object != obj:
+        return False
+    if len(scene.cowx_material_items) != len(obj.material_slots):
+        return False
+    return all(
+        item.slot_index == index and item.material == obj.material_slots[index].material
+        for index, item in enumerate(scene.cowx_material_items)
+    )
+
+
+def _selected_material_slot_indices(scene):
+    return {
+        item.slot_index
+        for item in scene.cowx_material_items
+        if item.selected
+    }
+
+
+def _remove_material_slots(obj, remove_indices, replacement_index=None):
+    """Remove material slots and preserve polygon assignments deterministically."""
+    slot_count = len(obj.material_slots)
+    remove_indices = {
+        index for index in remove_indices if 0 <= index < slot_count
+    }
+    if not remove_indices:
+        return 0
+
+    kept_indices = [
+        index for index in range(slot_count) if index not in remove_indices
+    ]
+    old_to_new = {
+        old_index: new_index for new_index, old_index in enumerate(kept_indices)
+    }
+
+    if replacement_index not in old_to_new:
+        replacement_index = kept_indices[0] if kept_indices else None
+
+    polygon_old_indices = [polygon.material_index for polygon in obj.data.polygons]
+    for index in sorted(remove_indices, reverse=True):
+        obj.data.materials.pop(index=index)
+
+    if kept_indices:
+        replacement_new_index = old_to_new[replacement_index]
+        for polygon, old_index in zip(obj.data.polygons, polygon_old_indices):
+            polygon.material_index = old_to_new.get(old_index, replacement_new_index)
+    else:
+        for polygon in obj.data.polygons:
+            polygon.material_index = 0
+
+    obj.data.update()
+    return len(remove_indices)
+
+
+class COWX_OT_RefreshMaterials(bpy.types.Operator):
+    bl_idname = "cowx.refresh_materials"
+    bl_label = "读取当前 Mesh 材质"
+    bl_description = "读取当前活动 Mesh 的全部材质槽"
+    bl_options = {"INTERNAL"}
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.active_object and context.active_object.type == "MESH")
+
+    def execute(self, context):
+        obj = context.active_object
+        _refresh_material_slot_items(context.scene, obj)
+        self.report({"INFO"}, f"已读取 {len(obj.material_slots)} 个材质槽")
+        return {"FINISHED"}
+
+
+class COWX_OT_SelectMaterials(bpy.types.Operator):
+    bl_idname = "cowx.select_materials"
+    bl_label = "选择材质"
+    bl_description = "批量修改材质槽的勾选状态"
+    bl_options = {"INTERNAL"}
+
+    action: bpy.props.EnumProperty(
+        items=(
+            ("SELECT", "全选", ""),
+            ("DESELECT", "全不选", ""),
+            ("INVERT", "反选", ""),
+        ),
+        default="SELECT",
+    )
+
+    def execute(self, context):
+        for item in context.scene.cowx_material_items:
+            if self.action == "SELECT":
+                item.selected = True
+            elif self.action == "DESELECT":
+                item.selected = False
+            else:
+                item.selected = not item.selected
+        return {"FINISHED"}
+
+
+class COWX_OT_SetActiveMaterial(bpy.types.Operator):
+    bl_idname = "cowx.set_active_material"
+    bl_label = "设为保留材质"
+    bl_description = "将这个材质槽设为活动材质，合并时会保留它"
+    bl_options = {"INTERNAL"}
+
+    slot_index: bpy.props.IntProperty(default=0, min=0)
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.active_object and context.active_object.type == "MESH")
+
+    def execute(self, context):
+        obj = context.active_object
+        if self.slot_index >= len(obj.material_slots):
+            return {"CANCELLED"}
+        obj.active_material_index = self.slot_index
+        context.scene.cowx_material_list_index = self.slot_index
+        return {"FINISHED"}
+
+
+class COWX_OT_MergeMaterials(bpy.types.Operator):
+    bl_idname = "cowx.merge_materials"
+    bl_label = "合并选中到活动材质"
+    bl_description = (
+        "将勾选材质槽使用的面改为活动材质，并删除多余材质槽；"
+        "全选时仍会保留活动材质"
+    )
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return bool(obj and obj.type == "MESH" and obj.mode == "OBJECT")
+
+    def execute(self, context):
+        scene = context.scene
+        obj = context.active_object
+        if not _material_items_match_object(scene, obj):
+            self.report({"WARNING"}, "材质列表已变化，请先点击“读取/刷新”")
+            return {"CANCELLED"}
+
+        selected = _selected_material_slot_indices(scene)
+        if not selected:
+            self.report({"WARNING"}, "请先勾选要合并的材质槽")
+            return {"CANCELLED"}
+
+        keep_index = obj.active_material_index
+        if not (0 <= keep_index < len(obj.material_slots)):
+            keep_index = min(selected)
+        remove_indices = selected - {keep_index}
+        if not remove_indices:
+            self.report({"WARNING"}, "除活动材质外，没有可合并的材质槽")
+            return {"CANCELLED"}
+
+        removed = _remove_material_slots(
+            obj, remove_indices, replacement_index=keep_index
+        )
+        obj.active_material_index = max(
+            0,
+            keep_index - sum(index < keep_index for index in remove_indices),
+        )
+        _refresh_material_slot_items(scene, obj)
+        self.report({"INFO"}, f"已合并并删除 {removed} 个材质槽")
+        return {"FINISHED"}
+
+
+class COWX_OT_DeleteMaterials(bpy.types.Operator):
+    bl_idname = "cowx.delete_materials"
+    bl_label = "删除选中材质槽"
+    bl_description = (
+        "删除勾选的材质槽；使用这些材质的面会改用活动材质，"
+        "若活动材质也被删除则改用第一个保留材质"
+    )
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return bool(obj and obj.type == "MESH" and obj.mode == "OBJECT")
+
+    def execute(self, context):
+        scene = context.scene
+        obj = context.active_object
+        if not _material_items_match_object(scene, obj):
+            self.report({"WARNING"}, "材质列表已变化，请先点击“读取/刷新”")
+            return {"CANCELLED"}
+
+        selected = _selected_material_slot_indices(scene)
+        if not selected:
+            self.report({"WARNING"}, "请先勾选要删除的材质槽")
+            return {"CANCELLED"}
+
+        removed = _remove_material_slots(
+            obj, selected, replacement_index=obj.active_material_index
+        )
+        _refresh_material_slot_items(scene, obj)
+        self.report({"INFO"}, f"已删除 {removed} 个材质槽")
+        return {"FINISHED"}
+
+
 class COWX_PT_BakePanel(bpy.types.Panel):
     bl_label = "Cowx 烘焙工具"
     bl_idname = "COWX_PT_BakePanel"
@@ -1367,6 +1606,70 @@ class COWX_PT_BakePanel(bpy.types.Panel):
         box_sys.operator("cowx.purge_unused", icon="TRASH", text="清理")
 
 
+class COWX_PT_MaterialTools(bpy.types.Panel):
+    bl_label = "材质清理"
+    bl_idname = "COWX_PT_MaterialTools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Cowx"
+    bl_parent_id = "COWX_PT_BakePanel"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        obj = context.active_object
+
+        if not (obj and obj.type == "MESH"):
+            layout.label(text="请先选择一个 Mesh", icon="INFO")
+            return
+
+        row = layout.row(align=True)
+        row.operator("cowx.refresh_materials", text="读取/刷新", icon="FILE_REFRESH")
+        row.label(text=f"{len(obj.material_slots)} 个槽")
+
+        if not _material_items_match_object(scene, obj):
+            layout.label(text="点击“读取/刷新”载入当前材质", icon="INFO")
+            return
+
+        layout.template_list(
+            "COWX_UL_MaterialSlots",
+            "",
+            scene,
+            "cowx_material_items",
+            scene,
+            "cowx_material_list_index",
+            rows=7,
+        )
+
+        row = layout.row(align=True)
+        op = row.operator("cowx.select_materials", text="全选")
+        op.action = "SELECT"
+        op = row.operator("cowx.select_materials", text="全不选")
+        op.action = "DESELECT"
+        op = row.operator("cowx.select_materials", text="反选")
+        op.action = "INVERT"
+
+        selected_count = len(_selected_material_slot_indices(scene))
+        layout.label(text=f"已选择 {selected_count} 个材质槽")
+
+        column = layout.column(align=True)
+        column.enabled = obj.mode == "OBJECT" and selected_count > 0
+        column.operator(
+            "cowx.merge_materials",
+            text="合并选中到活动材质",
+            icon="AUTOMERGE_ON",
+        )
+        column.operator(
+            "cowx.delete_materials",
+            text="删除选中材质槽",
+            icon="TRASH",
+        )
+        layout.label(text="点击右侧圆点选择要保留的材质", icon="RADIOBUT_ON")
+        if obj.mode != "OBJECT":
+            layout.label(text="请切换到物体模式后执行", icon="ERROR")
+
+
 classes = (
     COWX_OT_SmartIsolate,
     COWX_OT_Bake,
@@ -1375,7 +1678,15 @@ classes = (
     COWX_OT_FlipNormals,
     COWX_OT_PurgeUnused,
     COWX_OT_GroupObjects,
+    COWX_PG_MaterialSlotItem,
+    COWX_UL_MaterialSlots,
+    COWX_OT_RefreshMaterials,
+    COWX_OT_SelectMaterials,
+    COWX_OT_SetActiveMaterial,
+    COWX_OT_MergeMaterials,
+    COWX_OT_DeleteMaterials,
     COWX_PT_BakePanel,
+    COWX_PT_MaterialTools,
 )
 
 _addon_keymaps = []
@@ -1383,6 +1694,9 @@ _addon_keymaps = []
 
 def register():
     global _active_object_poll_running
+
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
     bpy.types.Scene.cowx_bake_uv_layer = bpy.props.StringProperty(
         name="UV 通道", default="",
@@ -1414,10 +1728,16 @@ def register():
     bpy.types.Scene.cowx_bake_pass_light = bpy.props.BoolProperty(
         name="Light", default=False,
     )
+    bpy.types.Scene.cowx_material_items = bpy.props.CollectionProperty(
+        type=COWX_PG_MaterialSlotItem,
+    )
+    bpy.types.Scene.cowx_material_list_index = bpy.props.IntProperty(
+        name="材质列表位置", default=0, min=0,
+    )
+    bpy.types.Scene.cowx_material_object = bpy.props.PointerProperty(
+        name="材质来源物体", type=bpy.types.Object,
+    )
 
-
-    for cls in classes:
-        bpy.utils.register_class(cls)
 
     bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update)
 
@@ -1462,16 +1782,18 @@ def unregister():
     if _on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update)
 
-    for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
-
     props = [
         "cowx_bake_uv_layer", "cowx_bake_resolution", "cowx_bake_device",
         "cowx_bake_samples", "cowx_bake_margin",
         "cowx_bake_pass_color", "cowx_bake_pass_normal",
         "cowx_bake_pass_roughness", "cowx_bake_pass_ao",
         "cowx_bake_pass_light",
+        "cowx_material_items", "cowx_material_list_index",
+        "cowx_material_object",
     ]
     for prop in props:
         if hasattr(bpy.types.Scene, prop):
             delattr(bpy.types.Scene, prop)
+
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)

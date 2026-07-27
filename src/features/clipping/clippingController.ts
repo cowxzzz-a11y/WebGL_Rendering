@@ -8,7 +8,9 @@ import { Matrix, Vector2, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { VertexBuffer } from '@babylonjs/core/Buffers/buffer'
+import { GizmoManager } from '@babylonjs/core/Gizmos/gizmoManager'
 import { createCheckbox, createModule, createSelect, createSlider } from '../../ui/controls'
 
 type ClippingSide = 'positive' | 'negative'
@@ -364,6 +366,8 @@ export const createClippingController = (scene: Scene): ClippingController => {
 
   const frameCenter = Vector3.Zero()
   let frameRadius = 8
+  const frameBoundsMin = new Vector3(-8, -8, -8)
+  const frameBoundsMax = new Vector3(8, 8, 8)
   let hasCustomTransform = false
   const activePanels = new Map<HTMLElement, 'full' | 'quick'>()
   let scheduledCapSyncId: number | undefined
@@ -385,6 +389,26 @@ export const createClippingController = (scene: Scene): ClippingController => {
   helperPlane.renderingGroupId = 2
   helperPlane.alwaysSelectAsActiveMesh = true
   helperPlane.setEnabled(false)
+
+  const clippingPivot = new TransformNode('__clipping_plane_pivot', scene)
+  helperPlane.parent = clippingPivot
+
+  const gizmoManager = new GizmoManager(scene)
+  gizmoManager.usePointerToAttachGizmos = false
+  gizmoManager.enableAutoPicking = false
+  gizmoManager.clearGizmoOnEmptyPointerEvent = false
+  gizmoManager.positionGizmoEnabled = true
+  gizmoManager.rotationGizmoEnabled = true
+
+  const positionGizmo = gizmoManager.gizmos.positionGizmo
+  const rotationGizmo = gizmoManager.gizmos.rotationGizmo
+  if (positionGizmo) {
+    positionGizmo.scaleRatio = 0.78
+    positionGizmo.planarGizmoEnabled = false
+  }
+  if (rotationGizmo) {
+    rotationGizmo.scaleRatio = 0.48
+  }
 
   const capBindings = new Map<number, CapBinding>()
 
@@ -497,6 +521,47 @@ export const createClippingController = (scene: Scene): ClippingController => {
         mesh.name !== 'background'
       )
     })
+  }
+
+  const updateFrameBounds = () => {
+    const targetMeshes = getTargetMeshes()
+    if (targetMeshes.length === 0) {
+      const fallback = new Vector3(frameRadius, frameRadius, frameRadius)
+      frameBoundsMin.copyFrom(frameCenter.subtract(fallback))
+      frameBoundsMax.copyFrom(frameCenter.add(fallback))
+      return
+    }
+
+    const minimum = new Vector3(
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+    )
+    const maximum = new Vector3(
+      Number.NEGATIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    )
+
+    targetMeshes.forEach((mesh) => {
+      mesh.computeWorldMatrix(true)
+      mesh.refreshBoundingInfo(true, false)
+      const bounds = mesh.getBoundingInfo().boundingBox
+      minimum.minimizeInPlace(bounds.minimumWorld)
+      maximum.maximizeInPlace(bounds.maximumWorld)
+    })
+
+    if (
+      Number.isFinite(minimum.x) &&
+      Number.isFinite(minimum.y) &&
+      Number.isFinite(minimum.z) &&
+      Number.isFinite(maximum.x) &&
+      Number.isFinite(maximum.y) &&
+      Number.isFinite(maximum.z)
+    ) {
+      frameBoundsMin.copyFrom(minimum)
+      frameBoundsMax.copyFrom(maximum)
+    }
   }
 
   const excludeFromRenderPasses = (mesh: AbstractMesh) => {
@@ -775,16 +840,60 @@ export const createClippingController = (scene: Scene): ClippingController => {
     return state.keepSide === 'positive' ? displayNormal.scale(-1) : displayNormal
   }
 
-  const syncHelperPlane = (displayNormal: Vector3, clipNormal: Vector3) => {
+  const getFrameCorners = () => {
+    const corners: Vector3[] = []
+    ;[frameBoundsMin.x, frameBoundsMax.x].forEach((x) => {
+      ;[frameBoundsMin.y, frameBoundsMax.y].forEach((y) => {
+        ;[frameBoundsMin.z, frameBoundsMax.z].forEach((z) => {
+          corners.push(new Vector3(x, y, z))
+        })
+      })
+    })
+    return corners
+  }
+
+  const getHelperPlaneSize = () => {
+    const rotation = Matrix.RotationYawPitchRoll(state.rotation.y, state.rotation.x, state.rotation.z)
+    const localX = Vector3.TransformNormal(Vector3.Right(), rotation).normalize()
+    const localY = Vector3.TransformNormal(Vector3.Up(), rotation).normalize()
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+
+    getFrameCorners().forEach((corner) => {
+      const relative = corner.subtract(frameCenter)
+      const x = Vector3.Dot(relative, localX)
+      const y = Vector3.Dot(relative, localY)
+      minX = Math.min(minX, x)
+      maxX = Math.max(maxX, x)
+      minY = Math.min(minY, y)
+      maxY = Math.max(maxY, y)
+    })
+
+    const minimumSize = Math.max(frameRadius * 0.05, 0.01)
+    return {
+      width: Math.max((maxX - minX) * 1.08, minimumSize),
+      height: Math.max((maxY - minY) * 1.08, minimumSize),
+    }
+  }
+
+  const syncHelperPlane = () => {
     helperPlane.setEnabled(state.enabled && state.helperVisible)
+    clippingPivot.setEnabled(state.enabled && state.helperVisible)
+    gizmoManager.attachToNode(state.enabled && state.helperVisible ? clippingPivot : null)
     if (!state.enabled || !state.helperVisible) {
       return
     }
 
-    const radius = Math.max(frameRadius, 0.001)
-    helperPlane.scaling.setAll(radius * 2.35)
-    helperPlane.rotation.copyFrom(state.rotation)
-    helperPlane.position.copyFrom(state.position.add(clipNormal.scale(-radius * 0.001)))
+    const planeSize = getHelperPlaneSize()
+    helperPlane.scaling.set(planeSize.width, planeSize.height, 1)
+    helperPlane.position.setAll(0)
+    helperPlane.rotation.setAll(0)
+    clippingPivot.rotationQuaternion = null
+    clippingPivot.rotation.copyFrom(state.rotation)
+    clippingPivot.position.copyFrom(state.position)
+    clippingPivot.scaling.setAll(1)
 
     if (state.keepSide === 'positive') {
       helperMaterial.diffuseColor = new Color3(0.2, 0.68, 0.92)
@@ -794,17 +903,14 @@ export const createClippingController = (scene: Scene): ClippingController => {
       helperMaterial.emissiveColor = new Color3(0.5, 0.22, 0.05)
     }
 
-    const planeFacesNormal = Vector3.Dot(displayNormal, clipNormal) > 0
-    helperPlane.rotation.z = planeFacesNormal ? state.rotation.z : state.rotation.z + Math.PI
   }
 
   const applyClipPlane = (definesMayChange = false, capSync: 'immediate' | 'deferred' = 'immediate') => {
     const hadClipPlane = scene.clipPlane !== null
-    const displayNormal = getDisplayNormal()
     const clipNormal = getClipNormal()
     scene.clipPlane = state.enabled ? Plane.FromPositionAndNormal(state.position, clipNormal) : null
 
-    syncHelperPlane(displayNormal, clipNormal)
+    syncHelperPlane()
     if (capSync === 'deferred') {
       scheduleCapBindingsSync()
     } else {
@@ -829,6 +935,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
   const setSceneFrame = (center: Vector3, radius: number) => {
     frameCenter.copyFrom(center)
     frameRadius = Math.max(radius, 0.001)
+    updateFrameBounds()
 
     if (!hasCustomTransform) {
       state.position.copyFrom(frameCenter)
@@ -838,6 +945,28 @@ export const createClippingController = (scene: Scene): ClippingController => {
     rerenderPanel()
   }
 
+  const syncStateFromGizmo = (capSync: 'immediate' | 'deferred') => {
+    state.position.copyFrom(clippingPivot.position)
+    const rotation = clippingPivot.rotationQuaternion?.toEulerAngles() ?? clippingPivot.rotation
+    state.rotation.copyFrom(rotation)
+    hasCustomTransform = true
+    applyClipPlane(false, capSync)
+  }
+
+  positionGizmo?.onDragObservable.add(() => {
+    syncStateFromGizmo('deferred')
+  })
+  positionGizmo?.onDragEndObservable.add(() => {
+    syncStateFromGizmo('immediate')
+    rerenderPanel()
+  })
+  rotationGizmo?.onDragObservable.add(() => {
+    syncStateFromGizmo('deferred')
+  })
+  rotationGizmo?.onDragEndObservable.add(() => {
+    syncStateFromGizmo('immediate')
+    rerenderPanel()
+  })
   const resetPlaneTransform = () => {
     hasCustomTransform = false
     state.position.copyFrom(frameCenter)
@@ -873,7 +1002,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
       rerenderPanel()
     }))
     if (mode === 'full') {
-      switchBody.push(createCheckbox('\u663e\u793a\u5256\u5207\u9762', state.helperVisible, (value) => {
+      switchBody.push(createCheckbox('\u663e\u793a\u5256\u5207\u9762\u4e0e\u64cd\u7eb5\u5668', state.helperVisible, (value) => {
         state.helperVisible = value
         applyClipPlane()
         rerenderPanel()

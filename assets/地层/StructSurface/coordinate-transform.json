@@ -1,0 +1,524 @@
+{
+  "coordinateSpace": "local_scene_y_up",
+  "units": "meter",
+  "sourceGisOrigin": [
+    36398784.3431942,
+    4382913.722085111,
+    0
+  ],
+  "transform": {
+    "x": "gis_x - origin_x",
+    "y": "gis_z - origin_z",
+    "z": "origin_y - gis_y"
+  },
+  "dataJsonWorldCenterPreserved": true,
+  "files": [
+    {
+      "sourceName": "c80b3b9ceb036d32.ply",
+      "targetName": "f3.ply",
+      "text": "f3",
+      "objectId": "292f636e-1a24-4962-8178-23bd8f3f283b",
+      "dataId": "eb904615-cb72-4b5f-ae2a-a3900050d5c6",
+      "format": "ascii",
+      "vertices": 513,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36398104.0481418,
+          4382870.72047493,
+          600
+        ],
+        "max": [
+          36398380.7421804,
+          4383102.56076992,
+          1230.22925709288
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -680.2950524017215,
+          600,
+          -188.83868480939418
+        ],
+        "max": [
+          -403.60101380199194,
+          1230.22925709288,
+          43.00161018129438
+        ]
+      }
+    },
+    {
+      "sourceName": "8ce27ac00e952ceb.ply",
+      "targetName": "f6.ply",
+      "text": "f6",
+      "objectId": "086ade51-8258-4927-8d53-fbeeed920a37",
+      "dataId": "42314882-569d-4775-b919-de02d8cd62bf",
+      "format": "ascii",
+      "vertices": 893,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36397793.7142132,
+          4382097.92531947,
+          600
+        ],
+        "max": [
+          36398177.66,
+          4382675.3296228,
+          1345.92398595249
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -990.6289810016751,
+          600,
+          238.39246231038123
+        ],
+        "max": [
+          -606.6831942051649,
+          1345.92398595249,
+          815.796765640378
+        ]
+      }
+    },
+    {
+      "sourceName": "2555bbf11b031d1e.ply",
+      "targetName": "f7.ply",
+      "text": "f7",
+      "objectId": "f5a4fd63-c202-4b4e-9e74-ee296345867f",
+      "dataId": "04a68da4-aa70-4914-ace5-ec8caadf87e9",
+      "format": "ascii",
+      "vertices": 2339,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36397707.8885901,
+          4381992.7891909,
+          600
+        ],
+        "max": [
+          36398565.1609767,
+          4383326.94911471,
+          1359.86627039063
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -1076.4546041041613,
+          600,
+          -413.22702959924936
+        ],
+        "max": [
+          -219.18221750110388,
+          1359.86627039063,
+          920.9328942112625
+        ]
+      }
+    },
+    {
+      "sourceName": "7e8e348ec15848d3.ply",
+      "targetName": "f9.ply",
+      "text": "f9",
+      "objectId": "7d6c2b2d-f7e1-4199-9a69-a672eade3d4b",
+      "dataId": "affa4361-d9ea-4c87-9ef4-1d534d3468bc",
+      "format": "ascii",
+      "vertices": 2147,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36398905.3682962,
+          4380339.09658336,
+          1200
+        ],
+        "max": [
+          36399798.16617,
+          4382074.26170587,
+          1674.13347293598
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          121.02510199695826,
+          1200,
+          839.4603792410344
+        ],
+        "max": [
+          1013.8229757994413,
+          1674.13347293598,
+          2574.6255017509684
+        ]
+      }
+    },
+    {
+      "sourceName": "b4654bd796268cd0.ply",
+      "targetName": "f12.ply",
+      "text": "f12",
+      "objectId": "b10b4469-5dee-476c-a630-1b1c2f240f27",
+      "dataId": "09ab0148-e85c-47bb-917f-d75a2f3a3fb1",
+      "format": "ascii",
+      "vertices": 815,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36398617.9600268,
+          4381065.28515695,
+          1200
+        ],
+        "max": [
+          36398975.0220262,
+          4381562.53004864,
+          1608.23238069057
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -166.38316740095615,
+          1200,
+          1351.1920364703983
+        ],
+        "max": [
+          190.67883200198412,
+          1608.23238069057,
+          1848.4369281604886
+        ]
+      }
+    },
+    {
+      "sourceName": "a793a84cee2d8c10.ply",
+      "targetName": "f16.ply",
+      "text": "f16",
+      "objectId": "2f2eca35-873b-42e5-a214-407715fe9463",
+      "dataId": "82045b86-169f-4a3f-9ad4-fbc934aeccd7",
+      "format": "ascii",
+      "vertices": 1367,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36398651.2613501,
+          4380653.08042598,
+          1200
+        ],
+        "max": [
+          36399031.6239,
+          4381716.02033065,
+          1653.98776379605
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -133.081844098866,
+          1200,
+          1197.7017544610426
+        ],
+        "max": [
+          247.28070579469204,
+          1653.98776379605,
+          2260.6416591312736
+        ]
+      }
+    },
+    {
+      "sourceName": "662657510e8597f5.ply",
+      "targetName": "f17.ply",
+      "text": "f17",
+      "objectId": "54d4b4b2-834a-4cc6-a764-94d31e8db9a9",
+      "dataId": "422dafcf-be0b-4c3c-8938-573c98bb6b7e",
+      "format": "ascii",
+      "vertices": 623,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36398724.1339677,
+          4380518.41809644,
+          1200
+        ],
+        "max": [
+          36398909.4496188,
+          4381102.17638934,
+          1671.40588101096
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -60.20922650396824,
+          1200,
+          1811.545695770532
+        ],
+        "max": [
+          125.10642459988594,
+          1671.40588101096,
+          2395.3039886709303
+        ]
+      }
+    },
+    {
+      "sourceName": "8b0ceee995ba6c2.ply",
+      "targetName": "f18.ply",
+      "text": "f18",
+      "objectId": "629d74d4-69e2-4d69-ba81-7d8948537752",
+      "dataId": "3dd83db6-1895-4300-aa61-9833bbcbb1f9",
+      "format": "ascii",
+      "vertices": 525,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36399012.2394561,
+          4380259.83077089,
+          1200
+        ],
+        "max": [
+          36399103.8768442,
+          4380701.48825691,
+          1658.17798242926
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          227.89626190066338,
+          1200,
+          2212.2338282009587
+        ],
+        "max": [
+          319.53364999592304,
+          1658.17798242926,
+          2653.8913142206147
+        ]
+      }
+    },
+    {
+      "sourceName": "3f9257797bdca03c.ply",
+      "targetName": "F19.ply",
+      "text": "F19",
+      "objectId": "87ae7899-6ac9-42c9-aacb-75ee525d7034",
+      "dataId": "e00b84cf-cb09-40cb-8495-f5bb6e828956",
+      "format": "ascii",
+      "vertices": 2649,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36397851.0622018,
+          4381523.36786065,
+          1000
+        ],
+        "max": [
+          36399139.1069695,
+          4382967.37514684,
+          1428.08222606342
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -933.2809924036264,
+          1000,
+          -53.65306172892451
+        ],
+        "max": [
+          354.76377529650927,
+          1428.08222606342,
+          1390.3542244611308
+        ]
+      }
+    },
+    {
+      "sourceName": "2c805a7b060120fc.ply",
+      "targetName": "f25.ply",
+      "text": "f25",
+      "objectId": "f8e2b9f5-5a52-4e43-a1fa-12cf1aa28a65",
+      "dataId": "773be400-ef03-49ee-b9fc-65a2e856aa2f",
+      "format": "ascii",
+      "vertices": 715,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36400743.376378,
+          4381228.90356423,
+          869
+        ],
+        "max": [
+          36401215.2267514,
+          4381921.1494901,
+          1638.4923567893
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          1959.033183798194,
+          869,
+          992.5725950105116
+        ],
+        "max": [
+          2430.883557200432,
+          1638.4923567893,
+          1684.8185208812356
+        ]
+      }
+    },
+    {
+      "sourceName": "b3cbe3b8fe8868fa.ply",
+      "targetName": "f27.ply",
+      "text": "f27",
+      "objectId": "537594c3-17a6-4ae3-822c-84fd9b3d383c",
+      "dataId": "5fe3d94b-48c2-49bc-be38-18615a693956",
+      "format": "ascii",
+      "vertices": 609,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36400989.0425707,
+          4381391.82768001,
+          869
+        ],
+        "max": [
+          36401339.0957656,
+          4381927.31776355,
+          1648.03869892926
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          2204.699376501143,
+          869,
+          986.4043215606362
+        ],
+        "max": [
+          2554.7525713965297,
+          1648.03869892926,
+          1521.8944051004946
+        ]
+      }
+    },
+    {
+      "sourceName": "addfa4e213853ade.ply",
+      "targetName": "F10-1.ply",
+      "text": "F10-1",
+      "objectId": "a4223eba-898a-4f8b-be28-75b9914af5ff",
+      "dataId": "c64a4ed8-9070-4a1c-aa88-1435aa940aea",
+      "format": "ascii",
+      "vertices": 3949,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36398045.1274843,
+          4381240.86248246,
+          869
+        ],
+        "max": [
+          36399792.9793709,
+          4383691.16686824,
+          1449.59982546352
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -739.2157099023461,
+          869,
+          -777.444783128798
+        ],
+        "max": [
+          1008.6361766979098,
+          1449.59982546352,
+          1672.8596026506275
+        ]
+      }
+    },
+    {
+      "sourceName": "c31a91084e054217.ply",
+      "targetName": "F11-1.ply",
+      "text": "F11-1",
+      "objectId": "63563359-1b31-401c-b62c-e2aa22e0ebf0",
+      "dataId": "00aa9d8c-6609-4232-94d2-81a1ac141c99",
+      "format": "ascii",
+      "vertices": 3338,
+      "transformed": true,
+      "sceneAlignment": [
+        0,
+        0,
+        0
+      ],
+      "sourceBounds": {
+        "min": [
+          36397867.2229946,
+          4381347.2676155,
+          869
+        ],
+        "max": [
+          36400124.0938466,
+          4383307.60003544,
+          1474.82114942679
+        ]
+      },
+      "sceneBounds": {
+        "min": [
+          -917.120199598372,
+          869,
+          -393.87795032933354
+        ],
+        "max": [
+          1339.7506523951888,
+          1474.82114942679,
+          1566.454469610937
+        ]
+      }
+    }
+  ]
+}

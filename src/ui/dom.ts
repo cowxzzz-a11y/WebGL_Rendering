@@ -14,6 +14,7 @@ import {
   Plus,
   Rotate3d,
   Share2,
+  SlidersHorizontal,
   X,
   createIcons,
 } from 'lucide'
@@ -38,6 +39,7 @@ export type AppDom = {
   shareQrCanvas: HTMLCanvasElement
   shareQrClose: HTMLButtonElement
   sceneTabs: HTMLElement
+  viewportPropertiesButton: HTMLButtonElement
   outlinerPanel: HTMLElement
   panelCollapseToggle: HTMLButtonElement
   touchModeToggle: HTMLButtonElement
@@ -86,7 +88,11 @@ export const renderAppShell = (app: HTMLDivElement) => {
     </div>
     <nav id="sceneTabs" class="viewer-mode-tabs" aria-label="工作模式"></nav>
     <div class="viewer-topbar-actions">
-      <button class="topbar-icon-button" type="button" data-panel-tab="tech" aria-label="渲染设置" title="渲染设置">
+      <button id="viewportPropertiesButton" class="topbar-icon-button viewport-properties-button" type="button" aria-label="视口属性" aria-pressed="false" title="视口属性">
+        <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+        <span>视口属性</span>
+      </button>
+      <button class="topbar-icon-button" type="button" data-panel-tab="general" data-panel-subtab="渲染" aria-label="渲染设置" title="渲染设置">
         <i data-lucide="palette" aria-hidden="true"></i>
       </button>
       <button id="resetCameraButton" class="reset-camera-button topbar-icon-button" type="button" aria-label="重置视角" title="重置视角">
@@ -99,17 +105,13 @@ export const renderAppShell = (app: HTMLDivElement) => {
   </header>
 
   <nav class="workspace-rail" aria-label="工作区导航">
-    <button class="workspace-rail-button active" type="button" data-workspace-panel="scene" aria-label="场景" title="场景">
+    <button class="workspace-rail-button" type="button" data-workspace-panel="scene" aria-label="场景" aria-pressed="false" title="场景">
       <i data-lucide="folder-tree" aria-hidden="true"></i>
       <span>场景</span>
     </button>
-    <button id="contentBrowserButton" class="content-browser-button workspace-rail-button" type="button" data-workspace-panel="content" aria-label="内容" aria-expanded="false" title="内容">
+    <button id="contentBrowserButton" class="content-browser-button workspace-rail-button" type="button" data-workspace-panel="content" aria-label="内容" aria-pressed="false" aria-expanded="false" title="内容">
       <i data-lucide="folder-open" aria-hidden="true"></i>
       <span>内容</span>
-    </button>
-    <button class="workspace-rail-button" type="button" data-workspace-panel="environment" aria-label="环境" title="环境">
-      <i data-lucide="palette" aria-hidden="true"></i>
-      <span>环境</span>
     </button>
     <button id="panelCollapseToggle" class="panel-collapse-toggle" type="button" aria-label="收起场景面板" title="收起场景面板">
       <i data-lucide="menu" aria-hidden="true"></i>
@@ -142,16 +144,6 @@ export const renderAppShell = (app: HTMLDivElement) => {
     <section id="sceneOutline" class="outliner-tree"></section>
   </aside>
 
-  <aside id="clippingQuickPanel" class="clipping-quick-panel" aria-label="剖切快捷工具" hidden>
-    <header class="quick-panel-header">
-      <div>
-        <span class="drawer-eyebrow">QUICK TOOL</span>
-        <h2>剖切工具</h2>
-      </div>
-    </header>
-    <div id="clippingQuickContent" class="clipping-quick-content"></div>
-  </aside>
-
   <section id="detailPanel" class="detail-panel inspector-panel" aria-label="属性面板" hidden></section>
   <div id="contentBrowserPanel" class="content-browser-panel" aria-label="内容浏览器" aria-hidden="true"></div>
 
@@ -170,7 +162,7 @@ export const renderAppShell = (app: HTMLDivElement) => {
       <button type="button" data-mode="replace">替换场景</button>
       <button type="button" data-mode="insert">追加模型</button>
     </div>
-    <button class="dock-button" type="button" data-panel-tab="viewport" aria-label="剖切工具" title="剖切工具">
+    <button class="dock-button" type="button" data-panel-tab="viewport" data-panel-subtab="剖切" aria-label="工具" title="工具">
       <i data-lucide="focus" aria-hidden="true"></i>
     </button>
     <button id="shareWechat" class="share-button dock-button" type="button" aria-label="分享" title="分享">
@@ -224,6 +216,7 @@ export const renderAppShell = (app: HTMLDivElement) => {
       Plus,
       Rotate3d,
       Share2,
+      SlidersHorizontal,
       X,
     },
   })
@@ -266,6 +259,7 @@ export const queryAppDom = (): AppDom => ({
   shareQrCanvas: requireElement<HTMLCanvasElement>('#shareQrCanvas', 'Share QR canvas'),
   shareQrClose: requireElement<HTMLButtonElement>('#shareQrClose', 'Share close button'),
   sceneTabs: requireElement<HTMLElement>('#sceneTabs', 'Scene tabs'),
+  viewportPropertiesButton: requireElement<HTMLButtonElement>('#viewportPropertiesButton', 'Viewport properties button'),
   outlinerPanel: requireElement<HTMLElement>('#outlinerPanel', 'Outliner panel'),
   panelCollapseToggle: requireElement<HTMLButtonElement>('#panelCollapseToggle', 'Panel collapse toggle'),
   touchModeToggle: requireElement<HTMLButtonElement>('#touchModeToggle', 'Touch mode toggle'),

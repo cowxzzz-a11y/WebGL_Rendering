@@ -1,6 +1,6 @@
 {
   "title": "\u5730\u5c42",
-  "models": ["target.glb"],
+  "models": ["target.glb", "struct-surface.glb"],
   "config": {
     "realtimeEffectsEnabled": false,
     "environmentIntensity": 0.8

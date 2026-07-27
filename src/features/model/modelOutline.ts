@@ -27,7 +27,7 @@ export const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
         mesh.isVisible = visible
       },
     },
-    open: true,
+    open: false,
     children:
       mesh.material instanceof Material
         ? [{ name: mesh.material.name || `Material ${mesh.material.uniqueId}`, kind: 'material', detailId: `material:${mesh.material.uniqueId}` }]
@@ -45,6 +45,6 @@ export const makeModelOutlineNode = (fileName: string, root: TransformNode, mesh
       root.setEnabled(visible)
     },
   },
-  open: true,
+  open: false,
   children: makeMeshOutlineNodes(meshes),
 })

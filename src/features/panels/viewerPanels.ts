@@ -3,7 +3,6 @@ import type { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
 import type { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import type { ClassicPipeline } from '../../core/pipeline'
-import type { ViewerEngineMode, ViewerEnginePreference } from '../../core/engine'
 import type { EnvironmentOption } from '../../shared/types'
 import { createCheckbox, createColorInput, createModule, createNumberInput, createSelect, createSlider } from '../../ui/controls'
 
@@ -31,11 +30,7 @@ type GeneralPanelOptions = {
   setHemiLightHelperVisible: (value: boolean) => void
   getHemiLightHelperVisible: () => boolean
   updateLightDirectionHelpers: () => void
-  enginePreference: ViewerEnginePreference
-  engineMode: ViewerEngineMode
-  webgpuSupported: boolean
-  engineFallbackReason: string | null
-  setEnginePreference: (value: ViewerEnginePreference) => void
+  renderRenderingPanel: (panel: HTMLElement) => void
 }
 
 export const renderGeneralPanelContent = ({
@@ -62,11 +57,7 @@ export const renderGeneralPanelContent = ({
   setHemiLightHelperVisible,
   getHemiLightHelperVisible,
   updateLightDirectionHelpers,
-  enginePreference,
-  engineMode,
-  webgpuSupported,
-  engineFallbackReason,
-  setEnginePreference,
+  renderRenderingPanel,
 }: GeneralPanelOptions) => {
   const panel = document.createElement('div')
   panel.className = 'tech-panel'
@@ -74,8 +65,9 @@ export const renderGeneralPanelContent = ({
   subTabs.className = 'tech-sub-tabs'
   const postPanel = document.createElement('div')
   const environmentPanel = document.createElement('div')
+  const renderingPanel = document.createElement('div')
 
-  ;['\u73af\u5883', '\u540e\u671f'].forEach((label) => {
+  ;['\u6e32\u67d3', '\u73af\u5883', '\u540e\u671f'].forEach((label) => {
     const button = document.createElement('button')
     button.className = 'tech-sub-tab'
     button.textContent = label
@@ -87,6 +79,7 @@ export const renderGeneralPanelContent = ({
       })
       postPanel.hidden = label !== '\u540e\u671f'
       environmentPanel.hidden = label !== '\u73af\u5883'
+      renderingPanel.hidden = label !== '\u6e32\u67d3'
     })
     subTabs.append(button)
   })
@@ -115,16 +108,13 @@ export const renderGeneralPanelContent = ({
     setHemiLightHelperVisible,
     getHemiLightHelperVisible,
     updateLightDirectionHelpers,
-    enginePreference,
-    engineMode,
-    webgpuSupported,
-    engineFallbackReason,
-    setEnginePreference,
   })
+  renderRenderingPanel(renderingPanel)
 
   postPanel.hidden = activeSubTab !== '\u540e\u671f'
   environmentPanel.hidden = activeSubTab !== '\u73af\u5883'
-  panel.append(subTabs, environmentPanel, postPanel)
+  renderingPanel.hidden = activeSubTab !== '\u6e32\u67d3'
+  panel.append(subTabs, renderingPanel, environmentPanel, postPanel)
   return panel
 }
 
@@ -183,49 +173,9 @@ const renderGeneralEnvironmentPanel = (
     setHemiLightHelperVisible,
     getHemiLightHelperVisible,
     updateLightDirectionHelpers,
-    enginePreference,
-    engineMode,
-    webgpuSupported,
-    engineFallbackReason,
-    setEnginePreference,
-  }: Omit<GeneralPanelOptions, 'activeSubTab' | 'setActiveSubTab' | 'imageProcessing' | 'pipeline' | 'getClearColor' | 'setClearColor'>,
+  }: Omit<GeneralPanelOptions, 'activeSubTab' | 'setActiveSubTab' | 'imageProcessing' | 'pipeline' | 'getClearColor' | 'setClearColor' | 'renderRenderingPanel'>,
 ) => {
   const environmentBody: HTMLElement[] = []
-  const engineBody: HTMLElement[] = []
-
-  engineBody.push(createSelect(
-    '渲染器',
-    ['auto', 'webgl2', 'webgpu'],
-    enginePreference,
-    (value) => setEnginePreference(value as ViewerEnginePreference),
-  ))
-
-  const engineStateRow = document.createElement('div')
-  engineStateRow.className = 'tech-row tech-row-stack'
-  const engineStateLabel = document.createElement('span')
-  engineStateLabel.className = 'tech-label'
-  engineStateLabel.textContent = '当前'
-  const engineStateValue = document.createElement('span')
-  engineStateValue.className = 'tech-text'
-  engineStateValue.textContent = `${engineMode.toUpperCase()}${webgpuSupported ? '' : ' / WebGPU 不支持'}`
-  engineStateRow.append(engineStateLabel, engineStateValue)
-  engineBody.push(engineStateRow)
-
-  if (engineFallbackReason) {
-    const fallbackRow = document.createElement('div')
-    fallbackRow.className = 'tech-row tech-row-stack'
-    const fallbackLabel = document.createElement('span')
-    fallbackLabel.className = 'tech-label'
-    fallbackLabel.textContent = '状态'
-    const fallbackText = document.createElement('span')
-    fallbackText.className = 'tech-text'
-    fallbackText.textContent = engineFallbackReason
-    fallbackRow.append(fallbackLabel, fallbackText)
-    engineBody.push(fallbackRow)
-  }
-
-  panel.append(createModule('渲染器', engineBody))
-
   if (hdrEnvironmentOptions.length > 0) {
     environmentBody.push(
       createSelect(
@@ -352,57 +302,14 @@ export const buildCameraPanelContent = (camera: ArcRotateCamera) => {
 }
 
 type ViewportPanelOptions = {
-  activeSubTab: string
-  setActiveSubTab: (value: string) => void
   camera: ArcRotateCamera
-  renderBillboardPanel: (panel: HTMLElement) => void
-  renderClippingPanel: (panel: HTMLElement) => void
 }
 
 export const renderViewportPanelContent = ({
-  activeSubTab,
-  setActiveSubTab,
   camera,
-  renderBillboardPanel,
-  renderClippingPanel,
 }: ViewportPanelOptions) => {
   const panel = document.createElement('div')
   panel.className = 'tech-panel'
-  const subTabs = document.createElement('div')
-  subTabs.className = 'tech-sub-tabs'
-  const cameraPanel = document.createElement('div')
-  const billboardPanel = document.createElement('div')
-  const clippingPanel = document.createElement('div')
-
-  ;['\u6444\u50cf\u673a', '\u5e7f\u544a\u724c', '\u5256\u5207'].forEach((label) => {
-    const button = document.createElement('button')
-    button.className = 'tech-sub-tab'
-    button.textContent = label
-    button.ariaSelected = String(label === activeSubTab)
-    button.addEventListener('click', () => {
-      setActiveSubTab(label)
-      subTabs.querySelectorAll('.tech-sub-tab').forEach((tab) => {
-        ;(tab as HTMLElement).ariaSelected = String((tab as HTMLElement).textContent === label)
-      })
-      cameraPanel.hidden = label !== '\u6444\u50cf\u673a'
-      billboardPanel.hidden = label !== '\u5e7f\u544a\u724c'
-      clippingPanel.hidden = label !== '\u5256\u5207'
-      if (label === '\u5e7f\u544a\u724c') {
-        renderBillboardPanel(billboardPanel)
-      }
-      if (label === '\u5256\u5207') {
-        renderClippingPanel(clippingPanel)
-      }
-    })
-    subTabs.append(button)
-  })
-
-  cameraPanel.append(buildCameraPanelContent(camera))
-  renderBillboardPanel(billboardPanel)
-  renderClippingPanel(clippingPanel)
-  cameraPanel.hidden = activeSubTab !== '\u6444\u50cf\u673a'
-  billboardPanel.hidden = activeSubTab !== '\u5e7f\u544a\u724c'
-  clippingPanel.hidden = activeSubTab !== '\u5256\u5207'
-  panel.append(subTabs, cameraPanel, billboardPanel, clippingPanel)
+  panel.append(buildCameraPanelContent(camera))
   return panel
 }

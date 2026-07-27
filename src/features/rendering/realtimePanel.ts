@@ -32,6 +32,7 @@ type RealtimePanelOptions = {
   setSunLightHelperVisible: (value: boolean) => void
   getSunLightHelperVisible: () => boolean
   updateLightDirectionHelpers: () => void
+  appendRendererControls: (body: HTMLElement[]) => void
 }
 
 const createRangeNumberRow = (
@@ -101,12 +102,14 @@ export const renderRealtimePanel = ({
   setSunLightHelperVisible,
   getSunLightHelperVisible,
   updateLightDirectionHelpers,
+  appendRendererControls,
 }: RealtimePanelOptions) => {
   const realtimeBody: HTMLElement[] = []
   realtimeBody.push(createCheckbox('\u5b9e\u65f6\u6e32\u67d3\u603b\u5f00\u5173', getRealtimeEffectsEnabled(), (value) => {
     setRealtimeEffectsEnabled(value)
     applyRealtimeEffectsState()
   }))
+  appendRendererControls(realtimeBody)
   panel.append(createModule('\u5b9e\u65f6\u6e32\u67d3', realtimeBody))
 
   const sunBody: HTMLElement[] = []

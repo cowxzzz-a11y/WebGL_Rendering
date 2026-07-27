@@ -29,8 +29,8 @@ export const renderDetailDescriptor = (
 
     closeButton.className = 'detail-close'
     closeButton.type = 'button'
-    closeButton.textContent = 'x'
-    closeButton.ariaLabel = 'Close detail panel'
+    closeButton.textContent = '\u00d7'
+    closeButton.ariaLabel = '\u5173\u95ed\u5c5e\u6027\u9762\u677f'
     closeButton.addEventListener('click', onClose)
     header.append(title, closeButton)
   } else {
