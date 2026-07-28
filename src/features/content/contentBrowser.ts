@@ -29,6 +29,11 @@ const categories: ContentCategory[] = [
         description: '程序化流动水面',
         kind: 'material.riverWater',
       },
+      {
+        name: '抖动透明材质',
+        description: '深度裁剪式可调透明',
+        kind: 'material.ditherFade',
+      },
     ],
   },
   { title: '热点', assets: [] },

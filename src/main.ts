@@ -42,6 +42,11 @@ import {
   createRiverWaterMaterialDetail,
   isRiverWaterMaterial,
 } from './features/content/materials/riverWaterMaterial'
+import {
+  applyDitherFadeMaterial,
+  createDitherFadeMaterialDetail,
+  isDitherFadeMaterial,
+} from './features/content/materials/ditherFadeMaterial'
 import { createEnvironmentController } from './features/environment/environmentController'
 import type { EnvironmentController } from './features/environment/environmentController'
 import { createLightmapController } from './features/lightmap/lightmapController'
@@ -1170,7 +1175,7 @@ contentBrowserController = setupContentBrowser({
   button: contentBrowserButton,
   panel: contentBrowserPanel,
   onAssetActivate: (kind) => {
-    if (kind !== 'material.riverWater') {
+    if (kind !== 'material.riverWater' && kind !== 'material.ditherFade') {
       return
     }
 
@@ -1180,18 +1185,27 @@ contentBrowserController = setupContentBrowser({
       return
     }
 
-    applyRiverWaterMaterial({
-      scene,
-      camera,
-      sunLight,
-      mesh: selectedMesh,
-    })
+    const appliedMaterial = kind === 'material.riverWater'
+      ? applyRiverWaterMaterial({
+        scene,
+        camera,
+        sunLight,
+        mesh: selectedMesh,
+      })
+      : applyDitherFadeMaterial({
+        scene,
+        camera,
+        sunLight,
+        mesh: selectedMesh,
+      })
     refreshImportedDetails()
     rebuildImportedOutline()
     selectMesh(selectedMesh)
+    selectDetail(`material:${appliedMaterial.uniqueId}`)
     refreshImportedRenderingState()
     flushSceneRenderCaches()
-    showTemporaryStatus(`已应用河流水材质：${selectedMesh.name || `Mesh ${selectedMesh.uniqueId}`}`)
+    const materialName = kind === 'material.riverWater' ? '河流水材质' : '抖动透明材质'
+    showTemporaryStatus(`已应用${materialName}：${selectedMesh.name || `Mesh ${selectedMesh.uniqueId}`}`)
   },
 })
 contentBrowserController.setOpen(false)
@@ -1209,6 +1223,10 @@ const createMeshDetail = (mesh: AbstractMesh): DetailDescriptor => createMeshDet
 const createMaterialDetail = (material: Material): DetailDescriptor => {
   if (isRiverWaterMaterial(material)) {
     return createRiverWaterMaterialDetail(material)
+  }
+
+  if (isDitherFadeMaterial(material)) {
+    return createDitherFadeMaterialDetail(material)
   }
 
   if (material instanceof PBRMaterial) {

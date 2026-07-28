@@ -32,4 +32,5 @@ dist-ssr
 # Large binary assets
 *.glb
 !*target*.glb
+!assets/*/wuhai-bim.glb
 !assets/地层/struct-surface.glb
