@@ -1,9 +1,9 @@
 import type { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
+import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
-import type { LinesMesh } from '@babylonjs/core/Meshes/linesMesh'
-import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
+import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import { clamp } from '../../utils/math'
@@ -33,41 +33,8 @@ type SelectionControllerOptions = {
 }
 
 const selectionClickMaxDistance = 5
-const pinchZoomClearDistance = 8
 
-const getSelectionBoxLines = (mesh: AbstractMesh) => {
-  mesh.computeWorldMatrix(true)
-  mesh.refreshBoundingInfo(true, false)
-
-  const boundingBox = mesh.getBoundingInfo().boundingBox
-  const min = boundingBox.minimumWorld
-  const max = boundingBox.maximumWorld
-  const corners = [
-    new Vector3(min.x, min.y, min.z),
-    new Vector3(max.x, min.y, min.z),
-    new Vector3(max.x, min.y, max.z),
-    new Vector3(min.x, min.y, max.z),
-    new Vector3(min.x, max.y, min.z),
-    new Vector3(max.x, max.y, min.z),
-    new Vector3(max.x, max.y, max.z),
-    new Vector3(min.x, max.y, max.z),
-  ]
-
-  return [
-    [corners[0], corners[1]],
-    [corners[1], corners[2]],
-    [corners[2], corners[3]],
-    [corners[3], corners[0]],
-    [corners[4], corners[5]],
-    [corners[5], corners[6]],
-    [corners[6], corners[7]],
-    [corners[7], corners[4]],
-    [corners[0], corners[4]],
-    [corners[1], corners[5]],
-    [corners[2], corners[6]],
-    [corners[3], corners[7]],
-  ]
-}
+const selectionOutlineColor = new Color3(1, 1, 1)
 
 const getFocusBoundsForMeshes = (meshes: AbstractMesh[]) => {
   const validMeshes = meshes.filter((mesh) => !mesh.isDisposed())
@@ -107,7 +74,10 @@ export const createSelectionController = ({
   onOutlineChanged,
 }: SelectionControllerOptions) => {
   let selectedMesh: AbstractMesh | null = null
-  let selectionBox: LinesMesh | null = null
+  const highlightLayer = new HighlightLayer('selectionHighlight', scene, {
+    blurHorizontalSize: 0.4,
+    blurVerticalSize: 0.4,
+  })
   let focusAnimation: FocusAnimation | null = null
   let lastFocusedTarget: FocusTarget | null = null
   let pointerSelectionState:
@@ -119,8 +89,6 @@ export const createSelectionController = ({
       }
     | null = null
   const activeTouchPointers = new Map<number, { x: number, y: number }>()
-  let pinchStartDistance: number | null = null
-  let pinchSelectionCleared = false
 
   const getMeshesForRoot = (root: TransformNode) =>
     getImportedMeshes().filter((mesh) => {
@@ -155,67 +123,25 @@ export const createSelectionController = ({
     return getFocusBoundsForMeshes(getMeshesForRoot(target))
   }
 
-  const updateSelectionBox = () => {
-    if (!selectedMesh) {
-      selectionBox?.dispose()
-      selectionBox = null
-      return
-    }
-
-    const lines = getSelectionBoxLines(selectedMesh)
-
-    if (!selectionBox) {
-      selectionBox = MeshBuilder.CreateLineSystem(
-        'SelectionBoundingBox',
-        {
-          lines,
-          updatable: true,
-        },
-        scene,
-      )
-      selectionBox.color = new Color3(1, 0.86, 0.08)
-      selectionBox.isPickable = false
-      selectionBox.renderingGroupId = 2
-      return
-    }
-
-    MeshBuilder.CreateLineSystem('SelectionBoundingBox', { lines, instance: selectionBox })
-  }
-
   const clearSelection = () => {
     if (selectedMesh) {
-      selectedMesh.showBoundingBox = false
+      if (selectedMesh instanceof Mesh) {
+        highlightLayer.removeMesh(selectedMesh)
+      }
       selectedMesh = null
     }
     lastFocusedTarget = null
 
-    selectionBox?.dispose()
-    selectionBox = null
     focusAnimation = null
     onClearDetail()
     onOutlineChanged()
   }
 
-  const clearSelectionForZoom = () => {
-    if (!selectedMesh && !selectionBox) {
-      return
-    }
-
-    clearSelection()
-  }
-
-  const getTouchPinchDistance = () => {
-    const [first, second] = [...activeTouchPointers.values()]
-    if (!first || !second) {
-      return null
-    }
-
-    return Math.hypot(second.x - first.x, second.y - first.y)
-  }
-
   const selectMesh = (mesh: AbstractMesh) => {
     if (selectedMesh && selectedMesh !== mesh) {
-      selectedMesh.showBoundingBox = false
+      if (selectedMesh instanceof Mesh) {
+        highlightLayer.removeMesh(selectedMesh)
+      }
       lastFocusedTarget = null
     }
     if (selectedMesh === null) {
@@ -223,7 +149,9 @@ export const createSelectionController = ({
     }
 
     selectedMesh = mesh
-    updateSelectionBox()
+    if (mesh instanceof Mesh) {
+      highlightLayer.addMesh(mesh, selectionOutlineColor)
+    }
     onSelectDetail(`mesh:${mesh.uniqueId}`)
   }
 
@@ -308,8 +236,6 @@ export const createSelectionController = ({
 
       if (activeTouchPointers.size >= 2) {
         pointerSelectionState = null
-        pinchStartDistance = getTouchPinchDistance()
-        pinchSelectionCleared = false
         return
       }
 
@@ -342,17 +268,6 @@ export const createSelectionController = ({
 
       if (activeTouchPointers.size >= 2) {
         pointerSelectionState = null
-        const nextPinchDistance = getTouchPinchDistance()
-
-        if (pinchStartDistance !== null && nextPinchDistance !== null && !pinchSelectionCleared) {
-          const pinchDelta = Math.abs(nextPinchDistance - pinchStartDistance)
-
-          if (pinchDelta >= pinchZoomClearDistance) {
-            clearSelectionForZoom()
-            pinchSelectionCleared = true
-          }
-        }
-
         return
       }
 
@@ -379,13 +294,6 @@ export const createSelectionController = ({
   canvas.addEventListener('pointerup', (event) => {
     if (event.pointerType === 'touch') {
       activeTouchPointers.delete(event.pointerId)
-
-      if (activeTouchPointers.size < 2) {
-        pinchStartDistance = null
-        pinchSelectionCleared = false
-      } else {
-        pinchStartDistance = getTouchPinchDistance()
-      }
 
       if (getSingleTouchPanMode()) {
         pointerSelectionState = null
@@ -421,21 +329,8 @@ export const createSelectionController = ({
 
     activeTouchPointers.delete(event.pointerId)
 
-    if (activeTouchPointers.size < 2) {
-      pinchStartDistance = null
-      pinchSelectionCleared = false
-    }
-
     pointerSelectionState = null
   })
-
-  canvas.addEventListener('wheel', (event) => {
-    if (event.deltaY === 0) {
-      return
-    }
-
-    clearSelectionForZoom()
-  }, { passive: true })
 
   return {
     clearSelection,
@@ -445,7 +340,6 @@ export const createSelectionController = ({
     selectMesh,
     startFocusAnimationForTarget,
     updateFocusAnimation,
-    updateSelectionBox,
   }
 }
 

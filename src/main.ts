@@ -841,8 +841,6 @@ const startFocusAnimationForTarget = (target: AbstractMesh | TransformNode) =>
 
 const updateFocusAnimation = () => selectionController.updateFocusAnimation()
 
-const updateSelectionBox = () => selectionController.updateSelectionBox()
-
 const {
   engine,
   scene,
@@ -1370,7 +1368,6 @@ const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: 
     }
   })
 
-  updateSelectionBox()
 }
 
 const createModelDetail = (root: TransformNode, meshes: AbstractMesh[]) => createModelDetailDescriptor({
@@ -1968,7 +1965,6 @@ engine.runRenderLoop(() => {
   try {
     keyboardNavigationController.update()
     updateFocusAnimation()
-    updateSelectionBox()
     updateCameraDepthRange()
     frameMetricsController.update(engine.getDeltaTime())
   } catch (error) {
