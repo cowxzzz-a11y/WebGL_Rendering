@@ -130,9 +130,6 @@ const {
   frameOverlay,
   frameOverlayClose,
   frameGrid,
-  selectionModePanel,
-  selectModePartButton,
-  selectModeModelButton,
   resetCameraButton,
 } = queryAppDom()
 
@@ -140,7 +137,6 @@ const scenePanelCloseButton = document.querySelector<HTMLButtonElement>('#sceneP
 
 let activeTabId = 'view'
 let selectedDetailId: string | null = null
-let selectionMode: 'part' | 'model' = 'part'
 let currentMeshNodes: OutlineNode[] = []
 let importedFileName = '\u672a\u5bfc\u5165'
 let generalActiveSubTab = '\u6e32\u67d3'
@@ -719,6 +715,26 @@ const renderRenderingPanel = (container: HTMLElement) => {
   container.append(techPanelCache.panel)
 }
 
+const expandBranchesForDetail = (nodes: OutlineNode[], detailId: string): boolean => {
+  for (const node of nodes) {
+    if (node.detailId === detailId) {
+      return true
+    }
+    if (node.children?.length && expandBranchesForDetail(node.children, detailId)) {
+      node.open = true
+      return true
+    }
+  }
+  return false
+}
+
+const scrollActiveOutlineRowIntoView = () => {
+  const activeRow = sceneOutline.querySelector<HTMLElement>('[data-detail-active="true"]')
+  if (activeRow) {
+    activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+}
+
 const setOutline = (meshNodes: OutlineNode[] = []) => {
   currentMeshNodes = meshNodes
   const tabs = getPanelTabs(meshNodes)
@@ -729,9 +745,6 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
   syncPanelTabButtons()
   sceneOutline.textContent = ''
   sceneOutline.classList.add('outliner-tree-outline')
-
-  const showSelectionPanel = currentModelRoots.length > 0
-  selectionModePanel.style.display = showSelectionPanel ? 'grid' : 'none'
 
   const viewTab = tabs.find((tab) => tab.id === 'view') ?? tabs[0]
   viewTab.nodes.forEach((node) =>
@@ -801,12 +814,18 @@ const selectDetail = (detailId: string | undefined) => {
     return
   }
 
+  if (activeWorkspacePanel !== 'scene') {
+    openWorkspacePanel('scene')
+  }
+
   activeTabId = 'view'
   viewportPropertiesOpen = false
   objectPropertiesOpen = true
   selectedDetailId = detailId
   detailPanel.hidden = false
+  expandBranchesForDetail(currentMeshNodes, detailId)
   setOutline(currentMeshNodes)
+  requestAnimationFrame(() => scrollActiveOutlineRowIntoView())
 }
 
 const getMeshFromDetailId = (detailId: string | undefined) => selectionController.getMeshFromDetailId(detailId)
@@ -910,8 +929,6 @@ selectionController = createSelectionController({
     setOutline(currentMeshNodes)
   },
   onOutlineChanged: () => setOutline(currentMeshNodes),
-  getSelectionMode: () => selectionMode,
-  getModelRootForMesh,
 })
 
 lightmapController = createLightmapController({
@@ -1764,25 +1781,6 @@ setupModelImportControls({
   },
   showTemporaryStatus,
   setStatus,
-})
-
-const updateSelectionModeUI = () => {
-  selectModePartButton.classList.toggle('active', selectionMode === 'part')
-  selectModeModelButton.classList.toggle('active', selectionMode === 'model')
-}
-
-selectModePartButton.addEventListener('click', () => {
-  if (selectionMode === 'part') return
-  selectionMode = 'part'
-  updateSelectionModeUI()
-  clearMeshSelection()
-})
-
-selectModeModelButton.addEventListener('click', () => {
-  if (selectionMode === 'model') return
-  selectionMode = 'model'
-  updateSelectionModeUI()
-  clearMeshSelection()
 })
 
 resetCameraButton.addEventListener('click', () => {

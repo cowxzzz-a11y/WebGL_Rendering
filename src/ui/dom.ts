@@ -55,8 +55,6 @@ export type AppDom = {
   frameOverlayClose: HTMLButtonElement
   frameGrid: HTMLDivElement
   selectionModePanel: HTMLDivElement
-  selectModePartButton: HTMLButtonElement
-  selectModeModelButton: HTMLButtonElement
   resetCameraButton: HTMLButtonElement
 }
 
@@ -136,8 +134,6 @@ export const renderAppShell = (app: HTMLDivElement) => {
       <input id="sceneSearch" type="search" placeholder="搜索节点" autocomplete="off" />
     </label>
     <div id="selectionModePanel" class="config-actions" aria-label="选择模式" style="display: none;">
-      <button id="selectModePart" type="button" class="active">选择零件</button>
-      <button id="selectModeModel" type="button">选择整模</button>
       <button id="saveConfig" type="button" style="display: none;">保存</button>
       <button id="resetConfig" type="button" style="display: none;">重置</button>
     </div>
@@ -275,7 +271,5 @@ export const queryAppDom = (): AppDom => ({
   frameOverlayClose: requireElement<HTMLButtonElement>('#frameOverlayClose', 'Frame overlay close'),
   frameGrid: requireElement<HTMLDivElement>('#frameGrid', 'Frame grid'),
   selectionModePanel: requireElement<HTMLDivElement>('#selectionModePanel', 'Selection mode panel'),
-  selectModePartButton: requireElement<HTMLButtonElement>('#selectModePart', 'Select part button'),
-  selectModeModelButton: requireElement<HTMLButtonElement>('#selectModeModel', 'Select model button'),
   resetCameraButton: requireElement<HTMLButtonElement>('#resetCameraButton', 'Reset camera button'),
 })

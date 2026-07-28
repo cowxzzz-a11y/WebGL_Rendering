@@ -30,8 +30,6 @@ type SelectionControllerOptions = {
   onSelectDetail: (detailId: string) => void
   onClearDetail: () => void
   onOutlineChanged: () => void
-  getSelectionMode?: () => 'part' | 'model'
-  getModelRootForMesh?: (mesh: AbstractMesh) => TransformNode | null
 }
 
 const selectionClickMaxDistance = 5
@@ -94,34 +92,6 @@ const getFocusBoundsForMeshes = (meshes: AbstractMesh[]) => {
   return { center, radius, min, max }
 }
 
-const getSelectionBoxLinesForBounds = (min: Vector3, max: Vector3) => {
-  const corners = [
-    new Vector3(min.x, min.y, min.z),
-    new Vector3(max.x, min.y, min.z),
-    new Vector3(max.x, min.y, max.z),
-    new Vector3(min.x, min.y, max.z),
-    new Vector3(min.x, max.y, min.z),
-    new Vector3(max.x, max.y, min.z),
-    new Vector3(max.x, max.y, max.z),
-    new Vector3(min.x, max.y, max.z),
-  ]
-
-  return [
-    [corners[0], corners[1]],
-    [corners[1], corners[2]],
-    [corners[2], corners[3]],
-    [corners[3], corners[0]],
-    [corners[4], corners[5]],
-    [corners[5], corners[6]],
-    [corners[6], corners[7]],
-    [corners[7], corners[4]],
-    [corners[0], corners[4]],
-    [corners[1], corners[5]],
-    [corners[2], corners[6]],
-    [corners[3], corners[7]],
-  ]
-}
-
 const easeInOutCubic = (value: number) =>
   value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2
 
@@ -135,11 +105,8 @@ export const createSelectionController = ({
   onSelectDetail,
   onClearDetail,
   onOutlineChanged,
-  getSelectionMode,
-  getModelRootForMesh,
 }: SelectionControllerOptions) => {
   let selectedMesh: AbstractMesh | null = null
-  let selectedModel: TransformNode | null = null
   let selectionBox: LinesMesh | null = null
   let focusAnimation: FocusAnimation | null = null
   let lastFocusedTarget: FocusTarget | null = null
@@ -189,24 +156,13 @@ export const createSelectionController = ({
   }
 
   const updateSelectionBox = () => {
-    if (!selectedMesh && !selectedModel) {
+    if (!selectedMesh) {
       selectionBox?.dispose()
       selectionBox = null
       return
     }
 
-    let lines: Vector3[][]
-    if (selectedMesh) {
-      lines = getSelectionBoxLines(selectedMesh)
-    } else {
-      const bounds = getFocusBoundsForMeshes(getMeshesForRoot(selectedModel!))
-      if (!bounds) {
-        selectionBox?.dispose()
-        selectionBox = null
-        return
-      }
-      lines = getSelectionBoxLinesForBounds(bounds.min, bounds.max)
-    }
+    const lines = getSelectionBoxLines(selectedMesh)
 
     if (!selectionBox) {
       selectionBox = MeshBuilder.CreateLineSystem(
@@ -231,7 +187,6 @@ export const createSelectionController = ({
       selectedMesh.showBoundingBox = false
       selectedMesh = null
     }
-    selectedModel = null
     lastFocusedTarget = null
 
     selectionBox?.dispose()
@@ -242,7 +197,7 @@ export const createSelectionController = ({
   }
 
   const clearSelectionForZoom = () => {
-    if (!selectedMesh && !selectedModel && !selectionBox) {
+    if (!selectedMesh && !selectionBox) {
       return
     }
 
@@ -266,24 +221,10 @@ export const createSelectionController = ({
     if (selectedMesh === null) {
       lastFocusedTarget = null
     }
-    selectedModel = null
 
     selectedMesh = mesh
     updateSelectionBox()
     onSelectDetail(`mesh:${mesh.uniqueId}`)
-  }
-
-  const selectModel = (root: TransformNode) => {
-    if (selectedMesh) {
-      selectedMesh.showBoundingBox = false
-      selectedMesh = null
-    }
-    if (selectedModel !== root) {
-      lastFocusedTarget = null
-    }
-    selectedModel = root
-    updateSelectionBox()
-    onSelectDetail(`model:${root.uniqueId}`)
   }
 
   const getFocusRadius = (bounds: { center: Vector3, radius: number }, forceResetZoom: boolean) => {
@@ -303,7 +244,7 @@ export const createSelectionController = ({
   }
 
   const startSelectedFocusAnimation = () => {
-    const target = selectedMesh || selectedModel
+    const target = selectedMesh
     if (!target || lastFocusedTarget === target) {
       return
     }
@@ -469,16 +410,7 @@ export const createSelectionController = ({
     const pickInfo = scene.pick(scene.pointerX, scene.pointerY, (mesh) => getImportedMeshes().includes(mesh))
 
     if (pickInfo?.hit && pickInfo.pickedMesh) {
-      if (getSelectionMode && getSelectionMode() === 'model' && getModelRootForMesh) {
-        const root = getModelRootForMesh(pickInfo.pickedMesh)
-        if (root) {
-          selectModel(root)
-        } else {
-          selectMesh(pickInfo.pickedMesh)
-        }
-      } else {
-        selectMesh(pickInfo.pickedMesh)
-      }
+      selectMesh(pickInfo.pickedMesh)
     }
   })
 
@@ -510,9 +442,7 @@ export const createSelectionController = ({
     getMeshFromDetailId,
     getMeshesForRoot,
     getSelectedMesh: () => selectedMesh,
-    getSelectedModel: () => selectedModel,
     selectMesh,
-    selectModel,
     startFocusAnimationForTarget,
     updateFocusAnimation,
     updateSelectionBox,
