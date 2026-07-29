@@ -104,6 +104,7 @@ def main() -> None:
             / "features"
             / "content"
             / "materials"
+            / "ditherFade"
             / "blue-noise-void-cluster-128.png"
         ),
     )

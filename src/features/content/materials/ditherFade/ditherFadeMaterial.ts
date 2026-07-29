@@ -10,8 +10,8 @@ import type { UniformBuffer } from '@babylonjs/core/Materials/uniformBuffer'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { SubMesh } from '@babylonjs/core/Meshes/subMesh'
 import type { Scene } from '@babylonjs/core/scene'
-import type { DetailDescriptor } from '../../../shared/types'
-import { colorItem, numberItem, textItem } from '../../../ui/detailPanel'
+import type { DetailDescriptor } from '../../../../shared/types'
+import { colorItem, numberItem, textItem } from '../../../../ui/detailPanel'
 
 const noiseTextureUrl = new URL(
   './blue-noise-void-cluster-128.png',

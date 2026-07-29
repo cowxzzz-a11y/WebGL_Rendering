@@ -4,8 +4,8 @@ import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Scene } from '@babylonjs/core/scene'
-import type { DetailDescriptor } from '../../../shared/types'
-import { colorItem, numberItem, selectItem, textItem } from '../../../ui/detailPanel'
+import type { DetailDescriptor } from '../../../../shared/types'
+import { colorItem, numberItem, selectItem, textItem } from '../../../../ui/detailPanel'
 
 const riverWaterVertexShader = `
 precision highp float;

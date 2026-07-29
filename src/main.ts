@@ -38,15 +38,13 @@ import { createFrameMetricsController } from './features/metrics/frameMetrics'
 import { setupContentBrowser } from './features/content/contentBrowser'
 import type { ContentBrowserController } from './features/content/contentBrowser'
 import {
-  applyRiverWaterMaterial,
-  createRiverWaterMaterialDetail,
-  isRiverWaterMaterial,
-} from './features/content/materials/riverWaterMaterial'
-import {
   applyDitherFadeMaterial,
   createDitherFadeMaterialDetail,
   isDitherFadeMaterial,
-} from './features/content/materials/ditherFadeMaterial'
+  applyRiverWaterMaterial,
+  createRiverWaterMaterialDetail,
+  isRiverWaterMaterial,
+} from './features/content/materials'
 import { createEnvironmentController } from './features/environment/environmentController'
 import type { EnvironmentController } from './features/environment/environmentController'
 import { createLightmapController } from './features/lightmap/lightmapController'
