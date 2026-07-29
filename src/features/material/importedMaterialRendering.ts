@@ -119,6 +119,14 @@ export const syncImportedGlassEnvironmentTexture = (
 }
 
 export const syncImportedMaterialRenderingState = (material: PBRMaterial) => {
+  if (material.metadata?.contentMaterial === 'viewer.content.material.ditherFade') {
+    material.needDepthPrePass = false
+    material.separateCullingPass = false
+    material.forceDepthWrite = true
+    material.twoSidedLighting = !material.backFaceCulling
+    return
+  }
+
   if (isAlphaCutoutPbrMaterial(material)) {
     material.needDepthPrePass = false
     material.separateCullingPass = false

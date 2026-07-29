@@ -14,7 +14,7 @@ import type { DetailDescriptor } from '../../../shared/types'
 import { colorItem, numberItem, textItem } from '../../../ui/detailPanel'
 
 const noiseTextureUrl = new URL(
-  '../../../../assets/地层/blue-noise-void-cluster-128.png',
+  './blue-noise-void-cluster-128.png',
   import.meta.url,
 ).href
 
@@ -153,23 +153,27 @@ class DitherFadePlugin extends MaterialPluginBase {
     if (shaderLanguage === ShaderLanguage.WGSL) {
       return {
         CUSTOM_FRAGMENT_DEFINITIONS: wgslFragmentDefinitions,
-        CUSTOM_FRAGMENT_BEFORE_LIGHTS: `
-surfaceAlbedo = surfaceAlbedo * viewerDitherSideShade(geometricNormalW);
+        CUSTOM_FRAGMENT_UPDATE_ALBEDO: `
 let viewerCoverage: f32 = clamp(uniforms.ditherFadeOpacity, 0.0, 1.0);
 if (viewerCoverage <= viewerDitherThreshold(fragmentInputs.position.xy)) {
   discard;
 }
 `,
+        CUSTOM_FRAGMENT_BEFORE_LIGHTS: `
+surfaceAlbedo = surfaceAlbedo * viewerDitherSideShade(geometricNormalW);
+`,
       }
     }
     return {
       CUSTOM_FRAGMENT_DEFINITIONS: glslFragmentDefinitions,
-      CUSTOM_FRAGMENT_BEFORE_LIGHTS: `
-surfaceAlbedo *= viewerDitherSideShade(geometricNormalW);
+      CUSTOM_FRAGMENT_UPDATE_ALBEDO: `
 float viewerCoverage = clamp(ditherFadeOpacity, 0.0, 1.0);
 if (viewerCoverage <= viewerDitherThreshold(gl_FragCoord.xy)) {
   discard;
 }
+`,
+      CUSTOM_FRAGMENT_BEFORE_LIGHTS: `
+surfaceAlbedo *= viewerDitherSideShade(geometricNormalW);
 `,
     }
   }

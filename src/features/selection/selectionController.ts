@@ -123,6 +123,9 @@ export const createSelectionController = ({
     return getFocusBoundsForMeshes(getMeshesForRoot(target))
   }
 
+  const supportsHighlightLayer = (mesh: Mesh) =>
+    mesh.material?.metadata?.contentMaterial !== 'viewer.content.material.ditherFade'
+
   const clearSelection = () => {
     if (selectedMesh) {
       if (selectedMesh instanceof Mesh) {
@@ -150,7 +153,13 @@ export const createSelectionController = ({
 
     selectedMesh = mesh
     if (mesh instanceof Mesh) {
-      highlightLayer.addMesh(mesh, selectionOutlineColor)
+      // HighlightLayer renders with a replacement shader and cannot reproduce
+      // DitherFade's screen-space discard. Always remove first so re-selecting
+      // a mesh immediately after applying the material also clears old glow.
+      highlightLayer.removeMesh(mesh)
+      if (supportsHighlightLayer(mesh)) {
+        highlightLayer.addMesh(mesh, selectionOutlineColor)
+      }
     }
     onSelectDetail(`mesh:${mesh.uniqueId}`)
   }

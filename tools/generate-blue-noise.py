@@ -100,8 +100,10 @@ def main() -> None:
         type=Path,
         default=(
             Path(__file__).resolve().parents[1]
-            / "assets"
-            / "地层"
+            / "src"
+            / "features"
+            / "content"
+            / "materials"
             / "blue-noise-void-cluster-128.png"
         ),
     )

@@ -50,6 +50,13 @@ export const createRealtimeRenderingController = ({
 
   const getSsaoActive = () => realtimeEffectsEnabledPreference && ssaoEnabledPreference
 
+  const usesCustomDitherMask = (mesh: AbstractMesh) =>
+    mesh.material instanceof PBRMaterial &&
+    mesh.material.metadata?.contentMaterial === 'viewer.content.material.ditherFade'
+
+  const excludeFromUnmaskedDepthPasses = (mesh: AbstractMesh) =>
+    isTransparentMesh(mesh) || usesCustomDitherMask(mesh)
+
   const ensureGeometryBufferRenderer = () => {
     geometryBufferRenderer ??= scene.enableGeometryBufferRenderer()
 
@@ -74,7 +81,7 @@ export const createRealtimeRenderingController = ({
 
     const meshes = getImportedMeshes()
     const list = meshes.filter((mesh) =>
-      (meshFXFlags.get(mesh)?.receiveSSAO ?? true) && !isTransparentMesh(mesh),
+      (meshFXFlags.get(mesh)?.receiveSSAO ?? true) && !excludeFromUnmaskedDepthPasses(mesh),
     )
 
     geometryBufferRenderer.renderList = list.length > 0 ? list : null
@@ -128,7 +135,7 @@ export const createRealtimeRenderingController = ({
   }
 
   const getRealtimeShadowMeshes = () =>
-    getImportedMeshes().filter((mesh) => !isTransparentMesh(mesh))
+    getImportedMeshes().filter((mesh) => !excludeFromUnmaskedDepthPasses(mesh))
 
   const applyRealtimeShadowState = () => {
     const shadowEnabled = getShadowActive()
@@ -141,7 +148,7 @@ export const createRealtimeRenderingController = ({
     }
 
     getImportedMeshes().forEach((mesh) => {
-      mesh.receiveShadows = shadowEnabled && !isTransparentMesh(mesh)
+      mesh.receiveShadows = shadowEnabled && !excludeFromUnmaskedDepthPasses(mesh)
     })
 
     if (!shadowEnabled) {
@@ -150,7 +157,7 @@ export const createRealtimeRenderingController = ({
   }
 
   const syncImportedMeshRenderingState = (mesh: AbstractMesh) => {
-    const transparent = isTransparentMesh(mesh)
+    const transparent = excludeFromUnmaskedDepthPasses(mesh)
     const currentFlags = meshFXFlags.get(mesh)
 
     meshFXFlags.set(mesh, {
