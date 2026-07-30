@@ -23,6 +23,16 @@ export const makeMeshOutlineNodes = (meshes: AbstractMesh[]): OutlineNode[] =>
     visibilityTarget: {
       getVisible: () => mesh.isVisible,
       setVisible: (visible) => {
+        const metadata = mesh.metadata ?? (mesh.metadata = {})
+
+        if (!visible) {
+          metadata.outlinerPickableBeforeHidden ??= mesh.isPickable
+          mesh.isPickable = false
+        } else {
+          mesh.isPickable = metadata.outlinerPickableBeforeHidden ?? true
+          delete metadata.outlinerPickableBeforeHidden
+        }
+
         mesh.isVisible = visible
       },
     },

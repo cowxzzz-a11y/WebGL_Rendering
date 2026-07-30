@@ -1,6 +1,6 @@
 {
   "title": "\u5730\u5c42",
-  "models": ["target.glb", "struct-surface.glb", "wuhai-bim.glb"],
+  "models": ["diceng.glb", "struct-surface.glb", "bim.glb"],
   "material": "dtaa",
   "pbrTextureSets": [
     {
@@ -32,11 +32,15 @@
       "albedo": "PBR岩性图/变质岩/片麻岩/Albedo_2K__wehpadev.PNG",
       "normal": "PBR岩性图/变质岩/片麻岩/Normal_512__ui1obc3n.PNG",
       "arm": "PBR岩性图/变质岩/片麻岩/ARM_512__ui1obc3n.PNG"
+    },
+    {
+      "id": "混凝土",
+      "albedo": "混凝土.PNG"
     }
   ],
   "pbrTextureRules": [
     {
-      "model": "target.glb",
+      "model": "diceng.glb",
       "meshIncludes": "张夏组",
       "textureSets": ["片麻岩", "白云岩", "片麻岩", "角砾岩"],
       "distribution": "alternating",
@@ -45,17 +49,44 @@
       "uvScaleV": 0.06
     },
     {
-      "model": "target.glb",
+      "model": "diceng.glb",
       "meshIncludes": "徐庄组",
       "textureSets": ["片麻岩", "页岩", "片麻岩", "泥岩", "片麻岩", "白云岩"],
       "distribution": "alternating",
       "seed": 0,
       "uvScaleU": 0.06,
       "uvScaleV": 0.06
+    },
+    {
+      "model": "bim.glb",
+      "meshIncludes": "上库盆",
+      "textureSets": ["混凝土"],
+      "uvScaleU": 0.8,
+      "uvScaleV": 0.8
+    },
+    {
+      "model": "bim.glb",
+      "meshIncludes": "下库盆",
+      "textureSets": ["混凝土"],
+      "uvScaleU": 0.8,
+      "uvScaleV": 0.8
+    }
+  ],
+  "materialRules": [
+    {
+      "model": "bim.glb",
+      "meshIncludes": "上库水面",
+      "material": "riverWater"
+    },
+    {
+      "model": "bim.glb",
+      "meshIncludes": "下库水面",
+      "material": "riverWater"
     }
   ],
   "config": {
     "realtimeEffectsEnabled": false,
-    "environmentIntensity": 1
+    "environmentIntensity": 1,
+    "clearColor": [0.7019607843, 0.8862745098, 1]
   }
 }

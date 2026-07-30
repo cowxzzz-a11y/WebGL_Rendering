@@ -27,6 +27,12 @@ export type ProjectPbrTextureRuleConfig = {
   uvScaleV?: number
 }
 
+export type ProjectMaterialRuleConfig = {
+  model?: string
+  meshIncludes: string
+  material: 'pbr' | 'dtaa' | 'riverWater'
+}
+
 export type ProjectConfig = {
   id?: string
   title?: string
@@ -37,6 +43,7 @@ export type ProjectConfig = {
   material?: 'pbr' | 'dtaa' | 'riverWater'
   pbrTextureSets?: ProjectPbrTextureSetConfig[]
   pbrTextureRules?: ProjectPbrTextureRuleConfig[]
+  materialRules?: ProjectMaterialRuleConfig[]
   camera?: {
     alpha?: number
     beta?: number
@@ -91,6 +98,7 @@ export type ProjectEntry = {
   models: ResolvedProjectModel[]
   lightmaps: ResolvedProjectLightmap[]
   pbrTextureRules: ResolvedProjectPbrTextureRule[]
+  materialRules: ProjectMaterialRuleConfig[]
 }
 
 const projectConfigs = import.meta.glob<ProjectConfig>('../../../assets/*/project.json', {
@@ -259,6 +267,7 @@ export const getProjectEntries = (): ProjectEntry[] =>
         models: resolveConfiguredModels(id, config),
         lightmaps: resolveConfiguredLightmaps(id, config),
         pbrTextureRules: resolveConfiguredPbrTextureRules(id, config),
+        materialRules: config.materialRules ?? [],
       }]
     })
     .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))

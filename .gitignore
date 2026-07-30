@@ -32,7 +32,8 @@ dist-ssr
 # Large binary assets
 *.glb
 !*target*.glb
-!assets/*/wuhai-bim.glb
+!assets/地层/diceng.glb
+!assets/地层/bim.glb
 !assets/地层/struct-surface.glb
 
 # Oversized geology source texture (not used at runtime)

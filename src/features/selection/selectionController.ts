@@ -140,6 +140,10 @@ export const createSelectionController = ({
   }
 
   const selectMesh = (mesh: AbstractMesh) => {
+    if (!mesh.isEnabled() || !mesh.isVisible || mesh.visibility <= 0 || !mesh.isPickable) {
+      return
+    }
+
     if (selectedMesh && selectedMesh !== mesh) {
       selectionOutlineLayer.clearSelection()
       lastFocusedTarget = null
@@ -319,7 +323,16 @@ export const createSelectionController = ({
       return
     }
 
-    const pickInfo = scene.pick(scene.pointerX, scene.pointerY, (mesh) => getImportedMeshes().includes(mesh))
+    const pickInfo = scene.pick(
+      scene.pointerX,
+      scene.pointerY,
+      (mesh) =>
+        getImportedMeshes().includes(mesh) &&
+        mesh.isEnabled() &&
+        mesh.isVisible &&
+        mesh.visibility > 0 &&
+        mesh.isPickable,
+    )
 
     if (pickInfo?.hit && pickInfo.pickedMesh) {
       selectMesh(pickInfo.pickedMesh)

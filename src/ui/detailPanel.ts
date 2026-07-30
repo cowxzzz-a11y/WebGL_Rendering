@@ -75,22 +75,43 @@ export const renderDetailDescriptor = (
         input.max = String(max)
         input.step = String(step)
         input.value = String(Number(item.value.toFixed(4)))
+        let lastCommittedValue = clamp(item.value, min, max)
 
-        const update = (rawValue: string) => {
-          const value = Number.parseFloat(rawValue)
+        const applyValue = (value: number, syncNumberInput: boolean) => {
+          const nextValue = clamp(value, min, max)
 
-          if (Number.isNaN(value)) {
+          slider.value = String(nextValue)
+          if (syncNumberInput) {
+            input.value = String(Number(nextValue.toFixed(4)))
+          }
+          if (nextValue !== lastCommittedValue) {
+            lastCommittedValue = nextValue
+            item.onChange(nextValue)
+          }
+        }
+
+        slider.addEventListener('input', () => applyValue(Number.parseFloat(slider.value), true))
+        input.addEventListener('input', () => {
+          const value = Number.parseFloat(input.value)
+
+          // Keep incomplete editing states such as "", "0", or "0." intact.
+          // The value is normalized only when the user commits the field.
+          if (Number.isNaN(value) || value < min || value > max) {
             return
           }
 
-          const nextValue = clamp(value, min, max)
-          slider.value = String(nextValue)
-          input.value = String(Number(nextValue.toFixed(4)))
-          item.onChange(nextValue)
-        }
+          applyValue(value, false)
+        })
+        input.addEventListener('change', () => {
+          const value = Number.parseFloat(input.value)
 
-        slider.addEventListener('input', () => update(slider.value))
-        input.addEventListener('input', () => update(input.value))
+          if (Number.isNaN(value)) {
+            input.value = String(Number(lastCommittedValue.toFixed(4)))
+            return
+          }
+
+          applyValue(value, true)
+        })
         controlGroup.append(slider, input)
         row.append(controlGroup)
       }

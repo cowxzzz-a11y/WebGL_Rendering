@@ -60,6 +60,7 @@ import { getProjectById, getProjectEntries } from './features/projects/projectAs
 import type { ProjectEntry } from './features/projects/projectAssets'
 import { renderProjectManager } from './features/projects/projectManager'
 import { applyProjectPbrTextureRules } from './features/projects/projectPbrTextures'
+import { applyProjectMaterialRules } from './features/projects/projectMaterials'
 import { renderRealtimePanel as renderRealtimePanelContent } from './features/rendering/realtimePanel'
 import { createRealtimeRenderingController } from './features/rendering/realtimeRuntime'
 import type { RealtimeRenderingController } from './features/rendering/realtimeRuntime'
@@ -821,6 +822,20 @@ const setOutline = (meshNodes: OutlineNode[] = []) => {
         onFocusTarget: startFocusAnimationForTarget,
         onMeshSelect: selectMesh,
         onVisibilityToggle: (node) => {
+          const nodeIsVisible = node.visibilityTarget?.getVisible() ?? true
+          const selectedMesh = selectionController.getSelectedMesh()
+          const selectedMeshBecameHidden = selectedMesh && (
+            !selectedMesh.isEnabled() ||
+            !selectedMesh.isVisible ||
+            selectedMesh.visibility <= 0 ||
+            !selectedMesh.isPickable
+          )
+
+          if (selectedMeshBecameHidden || (!nodeIsVisible && node.detailId === selectedDetailId)) {
+            clearMeshSelection()
+            return
+          }
+
           setOutline(currentMeshNodes)
           if (node.detailId === selectedDetailId) {
             selectDetail(node.detailId)
@@ -1983,6 +1998,25 @@ const loadProject = async (project: ProjectEntry) => {
         console.warn(`Project PBR texture rules matched no meshes: ${project.id}`)
       }
       refreshImportedDetails()
+      refreshImportedRenderingState()
+      flushSceneRenderCaches()
+    }
+
+    if (project.materialRules.length > 0) {
+      const appliedMaterialCount = applyProjectMaterialRules({
+        scene,
+        camera,
+        sunLight,
+        rules: project.materialRules,
+        modelRoots: currentModelRoots,
+        modelFileNames: importedFileNames,
+        getMeshesForRoot,
+      })
+      if (appliedMaterialCount === 0) {
+        console.warn(`Project material rules matched no meshes: ${project.id}`)
+      }
+      refreshImportedDetails()
+      rebuildImportedOutline()
       refreshImportedRenderingState()
       flushSceneRenderCaches()
     }
