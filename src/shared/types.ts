@@ -58,6 +58,24 @@ export type DetailItem =
       }>
       onChange: (value: string) => void
     }
+  | {
+      type: 'vector3'
+      label: string
+      value: [number, number, number]
+      min?: number
+      max?: number
+      step?: number
+      onChange: (axis: 0 | 1 | 2, value: number) => void
+    }
+  | {
+      type: 'texture'
+      label: string
+      fileName: string | null
+      previewUrl: string | null
+      accept?: string
+      onSelect: (file: File) => void | Promise<void>
+      onClear: () => void
+    }
 
 export type DetailSection = {
   title: string
@@ -68,6 +86,12 @@ export type DetailDescriptor = {
   title: string
   kind: string
   sections: DetailSection[]
+  tabs?: Array<{
+    id: string
+    label: string
+    kind?: string
+    sections: DetailSection[]
+  }>
 }
 
 export type DefaultModel = {

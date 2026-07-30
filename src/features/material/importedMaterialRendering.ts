@@ -93,7 +93,7 @@ const normalizeImportedGlassMaterial = (material: PBRMaterial) => {
   material.albedoColor = new Color3(0.08, 0.12, 0.16)
   material.roughness = Math.min(material.roughness ?? 0.18, 0.18)
   material.metallic = 0
-  material.environmentIntensity = Math.max(material.environmentIntensity, 1.8)
+  material.environmentIntensity = 1
   material.specularIntensity = Math.max(material.specularIntensity, 1)
   material.needDepthPrePass = false
   material.separateCullingPass = false
@@ -153,7 +153,7 @@ export const tuneImportedMaterial = (material: PBRMaterial) => {
 
   material.maxSimultaneousLights = 4
   material.directIntensity = transparent ? Math.max(material.directIntensity, 0.8) : 1
-  material.environmentIntensity = transparent ? Math.max(material.environmentIntensity, 1.1) : 0.55
+  material.environmentIntensity = 1
   material.specularIntensity = transparent ? Math.max(material.specularIntensity, 0.75) : 0.45
   material.backFaceCulling = false
 

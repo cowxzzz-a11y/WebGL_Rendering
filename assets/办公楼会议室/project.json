@@ -3,6 +3,6 @@
   "models": ["target2.glb"],
   "config": { 
     "realtimeEffectsEnabled": false,
-    "environmentIntensity": 1.5
+    "environmentIntensity": 1
   }
 }

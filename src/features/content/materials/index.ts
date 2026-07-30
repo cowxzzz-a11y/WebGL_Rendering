@@ -1,7 +1,9 @@
 export {
   applyDitherFadeMaterial,
   createDitherFadeMaterialDetail,
+  getDitherFadeOpacity,
   isDitherFadeMaterial,
+  setDitherFadeOpacity,
 } from './ditherFade/ditherFadeMaterial'
 
 export {
@@ -9,3 +11,10 @@ export {
   createRiverWaterMaterialDetail,
   isRiverWaterMaterial,
 } from './riverWater/riverWaterMaterial'
+
+export {
+  applyStandardPbrMaterial,
+  createStandardPbrMaterialDetail,
+  isStandardPbrMaterial,
+  markAsStandardPbrMaterial,
+} from './standardPbr/standardPbrMaterial'

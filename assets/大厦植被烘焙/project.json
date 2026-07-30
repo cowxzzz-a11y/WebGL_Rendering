@@ -30,6 +30,6 @@
   ],
     "config": { 
     "realtimeEffectsEnabled": false,
-    "environmentIntensity": 2
+    "environmentIntensity": 1
   }
 }

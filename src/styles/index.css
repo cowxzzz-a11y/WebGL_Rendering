@@ -1254,6 +1254,14 @@ button.outliner-icon.outliner-visibility {
   background: rgba(12, 14, 14, 0.65);
   color: #e7ecea;
   font: inherit;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.detail-field input[type='number']::-webkit-inner-spin-button,
+.detail-field input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 .detail-field input[type='color'] {
@@ -2730,4 +2738,176 @@ button.outliner-icon.outliner-visibility {
 
 .frame-overlay-content {
   pointer-events: auto;
+}
+
+/* Object inspector: compact UE-style transform rows and embedded materials. */
+.detail-field-vector {
+  grid-template-columns: 62px minmax(0, 1fr);
+  min-height: 32px;
+}
+
+.detail-vector3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.detail-axis {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  background: rgba(12, 15, 16, 0.72);
+}
+
+.detail-axis > span {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  color: #dce3e5;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.detail-axis > span[data-axis='x'] { background: rgba(190, 63, 63, 0.72); }
+.detail-axis > span[data-axis='y'] { background: rgba(55, 142, 79, 0.72); }
+.detail-axis > span[data-axis='z'] { background: rgba(54, 102, 176, 0.78); }
+
+.detail-axis input[type='number'] {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: #edf1f2;
+  font: inherit;
+}
+
+.detail-material-region {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.detail-material-tabs {
+  position: sticky;
+  top: 60px;
+  z-index: 3;
+  display: flex;
+  gap: 3px;
+  padding: 7px 8px;
+  overflow-x: auto;
+  background: rgba(29, 34, 37, 0.98);
+}
+
+.detail-material-tabs button {
+  flex: 0 0 auto;
+  max-width: 145px;
+  padding: 5px 9px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #9ea9ad;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.detail-material-tabs button[data-active='true'] {
+  border-color: rgba(90, 169, 248, 0.55);
+  background: rgba(90, 169, 248, 0.14);
+  color: #dceeff;
+}
+
+.detail-material-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px 7px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.detail-material-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #edf1f2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-material-heading span {
+  flex: 0 0 auto;
+  color: #7f8c90;
+  font-size: 10px;
+}
+
+.detail-field-texture {
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: start;
+  padding: 3px 0;
+}
+
+.detail-texture {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-areas: 'preview meta' 'preview actions';
+  gap: 3px 7px;
+  min-width: 0;
+}
+
+.detail-texture-preview {
+  grid-area: preview;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.24);
+  background-position: center;
+  background-size: cover;
+}
+
+.detail-texture-preview[data-empty='true']::after {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #697579;
+  content: '＋';
+}
+
+.detail-texture-meta {
+  grid-area: meta;
+  min-width: 0;
+  overflow: hidden;
+  color: #c8d0d2;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-texture-actions {
+  grid-area: actions;
+  display: flex;
+  gap: 4px;
+}
+
+.detail-texture-actions button {
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #bfc8ca;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.detail-texture-actions button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }

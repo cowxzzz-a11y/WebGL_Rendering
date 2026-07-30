@@ -15,7 +15,7 @@
   ],
   "config": {
     "realtimeEffectsEnabled": false,
-    "environmentIntensity": 1.7
+    "environmentIntensity": 1
 
   }
 }

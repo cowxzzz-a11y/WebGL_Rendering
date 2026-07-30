@@ -1,5 +1,5 @@
 import type { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
-import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer'
+import { SelectionOutlineLayer } from '@babylonjs/core/Layers/selectionOutlineLayer'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
@@ -74,10 +74,14 @@ export const createSelectionController = ({
   onOutlineChanged,
 }: SelectionControllerOptions) => {
   let selectedMesh: AbstractMesh | null = null
-  const highlightLayer = new HighlightLayer('selectionHighlight', scene, {
-    blurHorizontalSize: 0.4,
-    blurVerticalSize: 0.4,
+  const selectionOutlineLayer = new SelectionOutlineLayer('selectionOutline', scene, {
+    mainTextureRatio: 1,
+    mainTextureSamples: 1,
+    useDepthOcclusion: true,
   })
+  selectionOutlineLayer.outlineColor = selectionOutlineColor
+  selectionOutlineLayer.outlineThickness = 2
+  selectionOutlineLayer.occlusionStrength = 1
   let focusAnimation: FocusAnimation | null = null
   let lastFocusedTarget: FocusTarget | null = null
   let pointerSelectionState:
@@ -123,14 +127,9 @@ export const createSelectionController = ({
     return getFocusBoundsForMeshes(getMeshesForRoot(target))
   }
 
-  const supportsHighlightLayer = (mesh: Mesh) =>
-    mesh.material?.metadata?.contentMaterial !== 'viewer.content.material.ditherFade'
-
   const clearSelection = () => {
     if (selectedMesh) {
-      if (selectedMesh instanceof Mesh) {
-        highlightLayer.removeMesh(selectedMesh)
-      }
+      selectionOutlineLayer.clearSelection()
       selectedMesh = null
     }
     lastFocusedTarget = null
@@ -142,9 +141,7 @@ export const createSelectionController = ({
 
   const selectMesh = (mesh: AbstractMesh) => {
     if (selectedMesh && selectedMesh !== mesh) {
-      if (selectedMesh instanceof Mesh) {
-        highlightLayer.removeMesh(selectedMesh)
-      }
+      selectionOutlineLayer.clearSelection()
       lastFocusedTarget = null
     }
     if (selectedMesh === null) {
@@ -153,13 +150,11 @@ export const createSelectionController = ({
 
     selectedMesh = mesh
     if (mesh instanceof Mesh) {
-      // HighlightLayer renders with a replacement shader and cannot reproduce
-      // DitherFade's screen-space discard. Always remove first so re-selecting
-      // a mesh immediately after applying the material also clears old glow.
-      highlightLayer.removeMesh(mesh)
-      if (supportsHighlightLayer(mesh)) {
-        highlightLayer.addMesh(mesh, selectionOutlineColor)
-      }
+      // SelectionOutlineLayer produces only a silhouette contour, so DTAA's
+      // transparent interior stays visible instead of being filled by the
+      // replacement shader used by HighlightLayer.
+      selectionOutlineLayer.clearSelection()
+      selectionOutlineLayer.addSelection(mesh)
     }
     onSelectDetail(`mesh:${mesh.uniqueId}`)
   }

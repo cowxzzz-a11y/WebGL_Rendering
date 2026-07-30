@@ -1,46 +1,51 @@
 # Design QA
 
-- Source visual truth: `C:/Users/29193/AppData/Local/Temp/codex-clipboard-848dbb45-7711-4d69-884c-c3aa8d049f28.png`
-- Implementation screenshot: `E:/MyProject/WebGL_Rendering/artifacts/design-qa-implementation.png`
-- Viewport: 1809 x 869 desktop; responsive check at 390 x 844
-- State: Suzanne sample project loaded, clipping workspace selected, clipping disabled, cap enabled
+- Source visual truth: `C:\Users\29193\AppData\Local\Temp\codex-clipboard-d84cb74c-9f44-401b-b21a-c8938cb049ab.png`
+- Implementation screenshot: `E:\MyProject\WebGL_Rendering\design-qa-implementation.png`
+- Focused implementation panel: `E:\MyProject\WebGL_Rendering\design-qa-implementation-panel.png`
+- Combined comparison: `E:\MyProject\WebGL_Rendering\design-qa-comparison.png`
+- Viewport: 1264 × 712 CSS px, device scale factor 1
+- Source pixels: 420 × 776
+- Implementation pixels: 1264 × 712; focused panel 320 × 544
+- State: 地层项目，选中 `target.glb` 根对象，DTAA 总控透明度为 0.42
 
 ## Full-view comparison evidence
 
-The source and implementation were opened together at the same desktop viewport. The implementation now preserves the source composition: 64 px top mode bar, slim left navigation rail, floating scene tree, synchronized floating clipping quick tool, right-side clipping inspector, bottom-center tool dock, and an unobstructed WebGL viewport. Major panel widths, offsets, dark neutral surfaces, blue active states, compact typography, and restrained radii align with the selected reference.
+The implementation preserves the existing dark inspector styling, hierarchy, control treatment, spacing tokens, and root-model information from the source. The requested intentional changes are present: position, rotation, and scale are consolidated into one compact three-axis section, and a DTAA aggregate-control section is added below it.
 
-## Focused-region evidence
+## Focused region comparison evidence
 
-A separate crop was not needed because both source and implementation are full-resolution 1809 x 869 images and the top mode bar, quick clipping panel, scene tree, inspector controls, and bottom dock remain legible in the full-view comparison. DOM checks additionally verified the quick and full clipping panels independently.
+The combined comparison shows the source inspector on the left and the revised inspector on the right. A focused comparison is required because the important changes are confined to the property panel. The revised panel is materially shorter while retaining legible labels and editable numeric fields.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: Segoe UI / Microsoft YaHei system stack, compact 9-15 px hierarchy, zero negative letter spacing, and no clipped button labels.
-- Spacing and layout rhythm: major regions match the reference proportions; persistent controls do not overlap at desktop or 390 px mobile.
-- Colors and tokens: charcoal surfaces, cool gray text, blue active controls, and subtle neutral borders consistently map to the reference.
-- Image and asset fidelity: the viewport uses the project's real Babylon.js model, materials, HDR lighting, and shadows. UI icons use the Lucide icon library; no placeholder imagery or CSS-drawn icons were introduced.
-- Copy and content: five working modes use `查看 / 编辑 / 剖切 / 灯光 / 渲染`; clipping, cap, scene, content, and environment labels are concise and domain-specific.
+- Fonts and typography: Existing application font family, weights, sizes, hierarchy, and antialiasing are preserved.
+- Spacing and layout rhythm: Section separators and padding match the existing inspector; the three transform groups now use the established compact vector-row component.
+- Colors and visual tokens: Existing dark panel, field, border, axis-color, and slider tokens are reused.
+- Image quality and asset fidelity: No raster, logo, illustration, or custom icon assets are involved in this change.
+- Copy and content: Root name, part count, explosion controls, transform labels, `DTAA 总控`, child-material count, and `统一透明度` are present and readable.
+
+## Findings
+
+- No actionable P0, P1, or P2 visual mismatch found.
+- The shorter panel height is an intentional result of the requested compact transform layout.
 
 ## Interaction verification
 
-- Scene search filters visible outline rows and can be cleared.
-- Scene drawer collapses and restores correctly.
-- View, edit, clipping, lighting, and rendering modes route to real panels.
-- Enabling clipping in the quick panel synchronizes the full inspector immediately.
-- Cap controls and position sliders in both panels share the same controller state.
-- Fullscreen, camera reset, import, performance, content, and share entry points remain connected.
-- 390 x 844 check: no horizontal overflow; scene drawer starts collapsed; inspector and bottom dock do not overlap.
-- Browser console errors: none from the application.
+- Selected the `target.glb` root object and confirmed the aggregate panel appears.
+- Changed `统一透明度` from 1 to 0.42.
+- Selected child mesh `张夏组∈2z1` and confirmed its independent DTAA opacity became 0.42.
+- Confirmed the root reports 16 DTAA child-material instances.
+- Browser console errors/warnings checked: none.
 
 ## Comparison history
 
-1. Initial pass found a P2 mismatch: the source's floating clipping quick tool was missing. Added a functional quick panel backed by the same clipping controller as the inspector.
-2. Second pass found a P2 readability issue: long raw slider values overflowed the compact panel. Added step-aware value formatting and flexible range sizing.
-3. Final pass found no actionable P0, P1, or P2 mismatch.
+- Initial issue: root transforms used three large legacy sections and there was no aggregate DTAA control.
+- Fix: replaced the three sections with compact vector rows and added a root-level DTAA opacity aggregator.
+- Post-fix evidence: combined comparison and browser interaction checks listed above.
 
 ## Follow-up polish
 
-- P3: the reference includes decorative undo/redo and FPS indicators that are intentionally omitted until the product has truthful history and live metrics APIs.
-- P3: the reference shows an active vertical clipping plane; the implementation keeps the user's actual clipping state instead of changing scene data for visual matching.
+- None required for this scoped change.
 
 final result: passed

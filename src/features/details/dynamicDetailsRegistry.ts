@@ -9,7 +9,6 @@ type DetailRegistry = Map<string, () => DetailDescriptor>
 type DynamicDetailsRegistryOptions = {
   detailRegistry: DetailRegistry
   createMeshDetail: (mesh: AbstractMesh) => DetailDescriptor
-  createMaterialDetail: (material: Material) => DetailDescriptor
   createModelDetail: (root: TransformNode, meshes: AbstractMesh[]) => DetailDescriptor
   getModelRoots: () => TransformNode[]
   getMeshesForRoot: (root: TransformNode) => AbstractMesh[]
@@ -18,7 +17,6 @@ type DynamicDetailsRegistryOptions = {
 export const createDynamicDetailsRegistry = ({
   detailRegistry,
   createMeshDetail,
-  createMaterialDetail,
   createModelDetail,
   getModelRoots,
   getMeshesForRoot,
@@ -30,7 +28,10 @@ export const createDynamicDetailsRegistry = ({
     dynamicDetailIds.clear()
   }
 
-  const registerImportedDetails = (meshes: AbstractMesh[], materials: Set<Material>) => {
+  // Keep the former materials argument accepted while the dev server hot-reloads.
+  // Older registry closures still read it, so omitting it can break project opening
+  // until a full page refresh even though material detail routes are no longer used.
+  const registerImportedDetails = (meshes: AbstractMesh[], _legacyMaterials?: Set<Material>) => {
     const roots = getModelRoots()
     roots.forEach((root) => {
       const detailId = `model:${root.uniqueId}`
@@ -45,12 +46,6 @@ export const createDynamicDetailsRegistry = ({
       detailRegistry.set(detailId, () => createMeshDetail(mesh))
     })
 
-    materials.forEach((material) => {
-      const detailId = `material:${material.uniqueId}`
-
-      dynamicDetailIds.add(detailId)
-      detailRegistry.set(detailId, () => createMaterialDetail(material))
-    })
   }
 
   const refreshImportedDetails = (meshes: AbstractMesh[]) => {

@@ -112,7 +112,7 @@ export const createViewerEngineScene = async ({
   const scene = new Scene(engine)
   scene.clearColor = new Color4(0.79, 0.82, 0.84, 1)
   scene.environmentTexture = hasHdrEnvironments ? null : CubeTexture.CreateFromPrefilteredData(legacyEnvironmentUrl, scene)
-  scene.environmentIntensity = 0.35
+  scene.environmentIntensity = 1
 
   const imageProcessing = scene.imageProcessingConfiguration
   imageProcessing.isEnabled = true

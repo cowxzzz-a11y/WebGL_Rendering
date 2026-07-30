@@ -10,6 +10,23 @@ export type ProjectLightmapConfig = {
   level?: number
 }
 
+export type ProjectPbrTextureSetConfig = {
+  id: string
+  albedo: string
+  normal?: string
+  arm?: string
+}
+
+export type ProjectPbrTextureRuleConfig = {
+  model?: string
+  meshIncludes: string
+  textureSets: string[]
+  distribution?: 'stableRandom' | 'alternating'
+  seed?: number
+  uvScaleU?: number
+  uvScaleV?: number
+}
+
 export type ProjectConfig = {
   id?: string
   title?: string
@@ -17,6 +34,9 @@ export type ProjectConfig = {
   model?: string
   config?: ViewerProjectConfigInput
   lightmaps?: ProjectLightmapConfig[]
+  material?: 'pbr' | 'dtaa' | 'riverWater'
+  pbrTextureSets?: ProjectPbrTextureSetConfig[]
+  pbrTextureRules?: ProjectPbrTextureRuleConfig[]
   camera?: {
     alpha?: number
     beta?: number
@@ -42,6 +62,26 @@ export type ResolvedProjectLightmap = {
   level: number
 }
 
+export type ResolvedProjectPbrTextureSet = {
+  id: string
+  albedoUrl: string
+  albedoFileName: string
+  normalUrl?: string
+  normalFileName?: string
+  armUrl?: string
+  armFileName?: string
+}
+
+export type ResolvedProjectPbrTextureRule = {
+  model?: string
+  meshIncludes: string
+  textureSets: ResolvedProjectPbrTextureSet[]
+  distribution: 'stableRandom' | 'alternating'
+  seed: number
+  uvScaleU: number
+  uvScaleV: number
+}
+
 export type ProjectEntry = {
   id: string
   routeId: string
@@ -50,6 +90,7 @@ export type ProjectEntry = {
   config: ProjectConfig
   models: ResolvedProjectModel[]
   lightmaps: ResolvedProjectLightmap[]
+  pbrTextureRules: ResolvedProjectPbrTextureRule[]
 }
 
 const projectConfigs = import.meta.glob<ProjectConfig>('../../../assets/*/project.json', {
@@ -57,7 +98,11 @@ const projectConfigs = import.meta.glob<ProjectConfig>('../../../assets/*/projec
   import: 'default',
 })
 
-const projectAssetUrls = import.meta.glob<string>('../../../assets/*/*.{glb,png,jpg,jpeg,ktx2}', {
+const projectAssetUrls = import.meta.glob<string>([
+  '../../../assets/*/*.{glb,png,jpg,jpeg,ktx2,PNG,JPG,JPEG,KTX2}',
+  '../../../assets/*/PBR岩性图/沉积岩/{白云岩,角砾岩,页岩,泥岩}/*.{png,jpg,jpeg,ktx2,PNG,JPG,JPEG,KTX2}',
+  '../../../assets/*/PBR岩性图/变质岩/片麻岩/*.{png,jpg,jpeg,ktx2,PNG,JPG,JPEG,KTX2}',
+], {
   eager: true,
   query: '?url',
   import: 'default',
@@ -134,6 +179,68 @@ const resolveConfiguredLightmaps = (projectId: string, config: ProjectConfig): R
   })
 }
 
+const resolveConfiguredPbrTextureRules = (
+  projectId: string,
+  config: ProjectConfig,
+): ResolvedProjectPbrTextureRule[] => {
+  const resolvedSets = new Map<string, ResolvedProjectPbrTextureSet>()
+
+  ;(config.pbrTextureSets ?? []).forEach((textureSet) => {
+    const albedoUrl = resolveProjectAssetUrl(projectId, textureSet.albedo)
+    if (!albedoUrl) {
+      console.warn(`Project PBR albedo texture was not found: ${projectId}/${textureSet.albedo}`)
+      return
+    }
+
+    const normalUrl = textureSet.normal
+      ? resolveProjectAssetUrl(projectId, textureSet.normal) ?? undefined
+      : undefined
+    const armUrl = textureSet.arm
+      ? resolveProjectAssetUrl(projectId, textureSet.arm) ?? undefined
+      : undefined
+
+    if (textureSet.normal && !normalUrl) {
+      console.warn(`Project PBR normal texture was not found: ${projectId}/${textureSet.normal}`)
+    }
+    if (textureSet.arm && !armUrl) {
+      console.warn(`Project PBR ARM texture was not found: ${projectId}/${textureSet.arm}`)
+    }
+
+    resolvedSets.set(textureSet.id, {
+      id: textureSet.id,
+      albedoUrl,
+      albedoFileName: getFileName(textureSet.albedo),
+      normalUrl,
+      normalFileName: textureSet.normal ? getFileName(textureSet.normal) : undefined,
+      armUrl,
+      armFileName: textureSet.arm ? getFileName(textureSet.arm) : undefined,
+    })
+  })
+
+  return (config.pbrTextureRules ?? []).flatMap((rule) => {
+    const textureSets = rule.textureSets.flatMap((id) => {
+      const textureSet = resolvedSets.get(id)
+      if (!textureSet) {
+        console.warn(`Project PBR texture set was not found: ${projectId}/${id}`)
+        return []
+      }
+      return [textureSet]
+    })
+
+    if (textureSets.length === 0) return []
+
+    return [{
+      model: rule.model,
+      meshIncludes: rule.meshIncludes,
+      textureSets,
+      distribution: rule.distribution ?? 'stableRandom',
+      seed: rule.seed ?? 0,
+      uvScaleU: Math.max(0.01, rule.uvScaleU ?? 1),
+      uvScaleV: Math.max(0.01, rule.uvScaleV ?? 1),
+    }]
+  })
+}
+
 export const getProjectEntries = (): ProjectEntry[] =>
   Object.entries(projectConfigs)
     .flatMap(([path, config]) => {
@@ -151,6 +258,7 @@ export const getProjectEntries = (): ProjectEntry[] =>
         config,
         models: resolveConfiguredModels(id, config),
         lightmaps: resolveConfiguredLightmaps(id, config),
+        pbrTextureRules: resolveConfiguredPbrTextureRules(id, config),
       }]
     })
     .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))

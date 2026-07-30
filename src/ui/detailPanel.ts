@@ -39,7 +39,8 @@ export const renderDetailDescriptor = (
 
   detailPanel.append(header)
 
-  descriptor.sections.forEach((section) => {
+  const renderSections = (sections: DetailDescriptor['sections'], target: HTMLElement) => {
+    sections.forEach((section) => {
     const sectionElement = document.createElement('section')
     const sectionTitle = document.createElement('h3')
 
@@ -135,11 +136,163 @@ export const renderDetailDescriptor = (
         row.append(select)
       }
 
+      if (item.type === 'vector3') {
+        const control = document.createElement('div')
+        const axes = ['X', 'Y', 'Z'] as const
+        const min = item.min ?? Number.NEGATIVE_INFINITY
+        const max = item.max ?? Number.POSITIVE_INFINITY
+        const step = item.step ?? 0.01
+
+        control.className = 'detail-vector3'
+        axes.forEach((axis, index) => {
+          const axisField = document.createElement('label')
+          const axisLabel = document.createElement('span')
+          const input = document.createElement('input')
+
+          axisField.className = 'detail-axis'
+          axisLabel.textContent = axis
+          axisLabel.dataset.axis = axis.toLowerCase()
+          input.type = 'number'
+          input.step = String(step)
+          if (Number.isFinite(min)) input.min = String(min)
+          if (Number.isFinite(max)) input.max = String(max)
+          input.value = String(Number(item.value[index].toFixed(4)))
+          input.addEventListener('change', () => {
+            const parsed = Number.parseFloat(input.value)
+            if (Number.isNaN(parsed)) return
+            const value = clamp(parsed, min, max)
+            input.value = String(Number(value.toFixed(4)))
+            item.onChange(index as 0 | 1 | 2, value)
+          })
+          axisField.append(axisLabel, input)
+          control.append(axisField)
+        })
+        row.classList.add('detail-field-vector')
+        row.append(control)
+      }
+
+      if (item.type === 'texture') {
+        const control = document.createElement('div')
+        const preview = document.createElement('span')
+        const meta = document.createElement('span')
+        const buttons = document.createElement('span')
+        const upload = document.createElement('button')
+        const clear = document.createElement('button')
+        const input = document.createElement('input')
+
+        control.className = 'detail-texture'
+        preview.className = 'detail-texture-preview'
+        if (item.previewUrl) {
+          preview.style.backgroundImage = `url("${item.previewUrl}")`
+        } else {
+          preview.dataset.empty = 'true'
+        }
+        meta.className = 'detail-texture-meta'
+        meta.textContent = item.fileName ?? '未设置贴图'
+        buttons.className = 'detail-texture-actions'
+        upload.type = 'button'
+        upload.textContent = item.fileName ? '替换' : '上传'
+        clear.type = 'button'
+        clear.textContent = '清除'
+        clear.disabled = !item.fileName
+        input.type = 'file'
+        input.accept = item.accept ?? '.png,.jpg,.jpeg,.webp,.avif,.ktx2'
+        input.hidden = true
+        upload.addEventListener('click', () => input.click())
+        clear.addEventListener('click', () => {
+          item.onClear()
+          preview.style.backgroundImage = ''
+          preview.dataset.empty = 'true'
+          meta.textContent = '未设置贴图'
+          clear.disabled = true
+          upload.textContent = '上传'
+        })
+        input.addEventListener('change', async () => {
+          const file = input.files?.[0]
+          if (!file) return
+          await item.onSelect(file)
+          if (file.type.startsWith('image/')) {
+            const reader = new FileReader()
+            reader.addEventListener('load', () => {
+              preview.style.backgroundImage = `url("${String(reader.result)}")`
+              delete preview.dataset.empty
+            })
+            reader.readAsDataURL(file)
+          } else {
+            preview.style.backgroundImage = ''
+            preview.dataset.empty = 'true'
+          }
+          meta.textContent = file.name
+          clear.disabled = false
+          upload.textContent = '替换'
+          input.value = ''
+        })
+        buttons.append(upload, clear)
+        control.append(preview, meta, buttons, input)
+        row.classList.add('detail-field-texture')
+        row.append(control)
+      }
+
       sectionElement.append(row)
     })
 
-    detailPanel.append(sectionElement)
-  })
+      target.append(sectionElement)
+    })
+  }
+
+  renderSections(descriptor.sections, detailPanel)
+
+  if (descriptor.tabs?.length) {
+    const region = document.createElement('div')
+    const tabs = descriptor.tabs
+    const owner = `${descriptor.kind}:${descriptor.title}`
+    const previousOwner = detailPanel.dataset.tabOwner
+    const previousTab = previousOwner === owner ? detailPanel.dataset.activeMaterialTab : undefined
+    let activeId = tabs.some((tab) => tab.id === previousTab) ? previousTab! : tabs[0].id
+    const nav = document.createElement('div')
+    const content = document.createElement('div')
+
+    region.className = 'detail-material-region'
+    nav.className = 'detail-material-tabs'
+    content.className = 'detail-material-content'
+
+    const renderActive = () => {
+      const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0]
+      content.textContent = ''
+      const heading = document.createElement('div')
+      const label = document.createElement('strong')
+      const kind = document.createElement('span')
+      heading.className = 'detail-material-heading'
+      label.textContent = active.label
+      kind.textContent = active.kind ?? '材质'
+      heading.append(label, kind)
+      content.append(heading)
+      renderSections(active.sections, content)
+      nav.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
+        button.dataset.active = String(button.dataset.tabId === activeId)
+      })
+      detailPanel.dataset.tabOwner = owner
+      detailPanel.dataset.activeMaterialTab = activeId
+    }
+
+    if (tabs.length > 1) {
+      tabs.forEach((tab, index) => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.dataset.tabId = tab.id
+        button.textContent = tab.label || `材质 ${index + 1}`
+        button.addEventListener('click', () => {
+          activeId = tab.id
+          renderActive()
+        })
+        nav.append(button)
+      })
+      region.append(nav)
+    }
+    region.append(content)
+    detailPanel.append(region)
+    renderActive()
+  }
 }
 
 export const renderDetailPlaceholder = (detailPanel: HTMLElement) => {
@@ -152,7 +305,7 @@ export const renderDetailPlaceholder = (detailPanel: HTMLElement) => {
 
   empty.className = 'detail-empty'
   title.textContent = '属性'
-  text.textContent = '从上方大纲选择对象或材质'
+  text.textContent = '从左侧场景选择一个对象'
   empty.append(title, text)
   detailPanel.append(empty)
 }
@@ -208,6 +361,38 @@ export const selectItem = (
   value,
   options,
   onChange,
+})
+
+export const vector3Item = (
+  label: string,
+  value: [number, number, number],
+  min: number,
+  max: number,
+  step: number,
+  onChange: (axis: 0 | 1 | 2, value: number) => void,
+): DetailItem => ({
+  type: 'vector3',
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+})
+
+export const textureItem = (
+  label: string,
+  fileName: string | null,
+  previewUrl: string | null,
+  onSelect: (file: File) => void | Promise<void>,
+  onClear: () => void,
+): DetailItem => ({
+  type: 'texture',
+  label,
+  fileName,
+  previewUrl,
+  onSelect,
+  onClear,
 })
 
 export const vectorItems = (

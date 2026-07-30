@@ -230,7 +230,7 @@ const createDefaultRiverWaterParams = (): RiverWaterParams => ({
   opacity: 0.82,
   environmentMode: 'mixed',
   ownEnvironmentIntensity: 0.9,
-  ambientStrength: 0.48,
+  ambientStrength: 1,
   glintStrength: 0.72,
   multiAngleReflection: 0.85,
 })

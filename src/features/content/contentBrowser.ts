@@ -25,14 +25,19 @@ const categories: ContentCategory[] = [
     title: '材质',
     assets: [
       {
+        name: '\u6807\u51c6PBR\u6750\u8d28',
+        description: '\u6807\u51c6GLB PBR\u8868\u9762',
+        kind: 'material.pbr',
+      },
+      {
         name: '河流水材质',
         description: '程序化流动水面',
         kind: 'material.riverWater',
       },
       {
-        name: '抖动透明材质',
+        name: 'DTAA透明材质',
         description: '深度裁剪式可调透明',
-        kind: 'material.ditherFade',
+        kind: 'material.dtaa',
       },
     ],
   },

@@ -1,5 +1,6 @@
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { Material } from '@babylonjs/core/Materials/material'
+import { MultiMaterial } from '@babylonjs/core/Materials/multiMaterial'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { DetailDescriptor } from '../../shared/types'
@@ -7,31 +8,60 @@ import {
   checkboxItem,
   colorItem,
   numberItem,
-  selectItem,
   textItem,
-  vectorItems,
+  vector3Item,
 } from '../../ui/detailPanel'
 
 type MeshDetailOptions = {
   mesh: AbstractMesh
   getReceiveSsao: (mesh: AbstractMesh) => boolean
   setReceiveSsao: (mesh: AbstractMesh, value: boolean) => void
+  createMaterialDetail: (material: Material) => DetailDescriptor
+}
+
+const setVectorAxis = (
+  vector: { x: number, y: number, z: number },
+  axis: 0 | 1 | 2,
+  value: number,
+) => {
+  if (axis === 0) vector.x = value
+  if (axis === 1) vector.y = value
+  if (axis === 2) vector.z = value
 }
 
 export const createMeshDetail = ({
   mesh,
   getReceiveSsao,
   setReceiveSsao,
-}: MeshDetailOptions): DetailDescriptor => ({
-  title: mesh.name,
-  kind: '\u7f51\u683c',
-  sections: [
+  createMaterialDetail,
+}: MeshDetailOptions): DetailDescriptor => {
+  const materials = mesh.material instanceof MultiMaterial
+    ? mesh.material.subMaterials.filter((material): material is Material => material instanceof Material)
+    : mesh.material instanceof Material
+      ? [mesh.material]
+      : []
+  const materialTabs = materials.map((material, index) => {
+    const detail = createMaterialDetail(material)
+    return {
+      id: String(material.uniqueId),
+      label: detail.title || `材质 ${index + 1}`,
+      kind: detail.kind,
+      sections: detail.sections,
+    }
+  })
+  const rotationDegrees: [number, number, number] = [
+    mesh.rotation.x * 180 / Math.PI,
+    mesh.rotation.y * 180 / Math.PI,
+    mesh.rotation.z * 180 / Math.PI,
+  ]
+
+  return {
+    title: mesh.name,
+    kind: '\u7f51\u683c',
+    sections: [
     {
       title: '\u663e\u793a',
       items: [
-        numberItem('\u900f\u660e\u5ea6', mesh.visibility, 0, 1, 0.01, (value) => {
-          mesh.visibility = value
-        }),
         checkboxItem('\u63a5\u6536\u9634\u5f71', mesh.receiveShadows, (value) => {
           mesh.receiveShadows = value
         }),
@@ -41,19 +71,23 @@ export const createMeshDetail = ({
       ],
     },
     {
-      title: '\u4f4d\u7f6e',
-      items: vectorItems(mesh.position, ['X', 'Y', 'Z'], -200, 200, 0.01),
-    },
-    {
-      title: '\u65cb\u8f6c',
-      items: vectorItems(mesh.rotation, ['X', 'Y', 'Z'], -Math.PI, Math.PI, 0.01),
-    },
-    {
-      title: '\u7f29\u653e',
-      items: vectorItems(mesh.scaling, ['X', 'Y', 'Z'], 0.01, 10, 0.01),
+      title: '\u53d8\u6362',
+      items: [
+        vector3Item('位置', [mesh.position.x, mesh.position.y, mesh.position.z], -200, 200, 0.01, (axis, value) => {
+          setVectorAxis(mesh.position, axis, value)
+        }),
+        vector3Item('旋转', rotationDegrees, -360, 360, 0.1, (axis, value) => {
+          setVectorAxis(mesh.rotation, axis, value * Math.PI / 180)
+        }),
+        vector3Item('缩放', [mesh.scaling.x, mesh.scaling.y, mesh.scaling.z], 0.01, 100, 0.01, (axis, value) => {
+          setVectorAxis(mesh.scaling, axis, value)
+        }),
+      ],
     },
   ],
-})
+    tabs: materialTabs,
+  }
+}
 
 type MaterialDetailOptions = {
   material: PBRMaterial
@@ -156,19 +190,24 @@ export const createMaterialDetail = ({
 type ModelDetailOptions = {
   root: TransformNode
   meshes: AbstractMesh[]
-  onExplosionChange: (value: number) => void
-  onExplosionModeChange: (value: string) => void
+  dtaaOpacity?: number
+  dtaaMaterialCount?: number
+  onDtaaOpacityChange?: (value: number) => void
 }
 
 export const createModelDetail = ({
   root,
   meshes,
-  onExplosionChange,
-  onExplosionModeChange,
+  dtaaOpacity,
+  dtaaMaterialCount = 0,
+  onDtaaOpacityChange,
 }: ModelDetailOptions): DetailDescriptor => {
   root.metadata = root.metadata || {}
-  const intensity = root.metadata.explosionIntensity ?? 0
-  const mode = root.metadata.explosionMode ?? 'radial'
+  const rotationDegrees: [number, number, number] = [
+    root.rotation.x * 180 / Math.PI,
+    root.rotation.y * 180 / Math.PI,
+    root.rotation.z * 180 / Math.PI,
+  ]
 
   return {
     title: root.name.replace(/Root$/i, ''),
@@ -181,38 +220,28 @@ export const createModelDetail = ({
         ],
       },
       {
-        title: '结构炸开',
+        title: '变换',
         items: [
-          selectItem(
-            '炸开方向',
-            mode,
-            [
-              { label: '径向 (所有方向)', value: 'radial' },
-              { label: 'X 轴方向', value: 'x' },
-              { label: 'Y 轴方向', value: 'y' },
-              { label: 'Z 轴方向', value: 'z' },
-            ],
-            (value) => {
-              onExplosionModeChange(value)
-            },
-          ),
-          numberItem('炸开力度', intensity, 0, 1, 0.01, (value) => {
-            onExplosionChange(value)
+          vector3Item('位置', [root.position.x, root.position.y, root.position.z], -200, 200, 0.01, (axis, value) => {
+            setVectorAxis(root.position, axis, value)
+          }),
+          vector3Item('旋转', rotationDegrees, -360, 360, 0.1, (axis, value) => {
+            setVectorAxis(root.rotation, axis, value * Math.PI / 180)
+          }),
+          vector3Item('缩放', [root.scaling.x, root.scaling.y, root.scaling.z], 0.01, 100, 0.01, (axis, value) => {
+            setVectorAxis(root.scaling, axis, value)
           }),
         ],
       },
-      {
-        title: '位置',
-        items: vectorItems(root.position, ['X', 'Y', 'Z'], -200, 200, 0.01),
-      },
-      {
-        title: '旋转',
-        items: vectorItems(root.rotation, ['X', 'Y', 'Z'], -Math.PI, Math.PI, 0.01),
-      },
-      {
-        title: '缩放',
-        items: vectorItems(root.scaling, ['X', 'Y', 'Z'], 0.01, 10, 0.01),
-      },
+      ...(dtaaOpacity !== undefined && onDtaaOpacityChange
+        ? [{
+            title: 'DTAA 总控',
+            items: [
+              textItem('子材质数量', String(dtaaMaterialCount)),
+              numberItem('统一透明度', dtaaOpacity, 0, 1, 0.01, onDtaaOpacityChange),
+            ],
+          }]
+        : []),
     ],
   }
 }

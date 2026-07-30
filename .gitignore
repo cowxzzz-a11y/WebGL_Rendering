@@ -34,3 +34,6 @@ dist-ssr
 !*target*.glb
 !assets/*/wuhai-bim.glb
 !assets/地层/struct-surface.glb
+
+# Oversized geology source texture (not used at runtime)
+/assets/地层/PBR岩性图/Wheathing_xbmica0_8K_Normal.PNG

@@ -40,10 +40,15 @@ import type { ContentBrowserController } from './features/content/contentBrowser
 import {
   applyDitherFadeMaterial,
   createDitherFadeMaterialDetail,
+  getDitherFadeOpacity,
   isDitherFadeMaterial,
+  setDitherFadeOpacity,
   applyRiverWaterMaterial,
   createRiverWaterMaterialDetail,
   isRiverWaterMaterial,
+  applyStandardPbrMaterial,
+  createStandardPbrMaterialDetail,
+  markAsStandardPbrMaterial,
 } from './features/content/materials'
 import { createEnvironmentController } from './features/environment/environmentController'
 import type { EnvironmentController } from './features/environment/environmentController'
@@ -54,12 +59,13 @@ import type { ClippingController } from './features/clipping/clippingController'
 import { getProjectById, getProjectEntries } from './features/projects/projectAssets'
 import type { ProjectEntry } from './features/projects/projectAssets'
 import { renderProjectManager } from './features/projects/projectManager'
+import { applyProjectPbrTextureRules } from './features/projects/projectPbrTextures'
 import { renderRealtimePanel as renderRealtimePanelContent } from './features/rendering/realtimePanel'
 import { createRealtimeRenderingController } from './features/rendering/realtimeRuntime'
 import type { RealtimeRenderingController } from './features/rendering/realtimeRuntime'
 import { renderGeneralPanelContent, renderViewportPanelContent } from './features/panels/viewerPanels'
 import { createDynamicDetailsRegistry } from './features/details/dynamicDetailsRegistry'
-import { createMaterialDetail as createMaterialDetailDescriptor, createMeshDetail as createMeshDetailDescriptor, createModelDetail as createModelDetailDescriptor } from './features/details/modelDetails'
+import { createMeshDetail as createMeshDetailDescriptor, createModelDetail as createModelDetailDescriptor } from './features/details/modelDetails'
 import { registerStaticDetails } from './features/details/staticDetails'
 import { getCurrentModelSignature as getModelSignature } from './features/model/modelIdentity'
 import { setupModelImportControls } from './features/model/modelImportControls'
@@ -76,7 +82,7 @@ import type {
 } from './shared/types'
 import { queryAppDom, renderAppShell } from './ui/dom'
 import { renderDetailDescriptor, textItem } from './ui/detailPanel'
-import { createModule, createSelect } from './ui/controls'
+import { createModule, createSelect, createSlider } from './ui/controls'
 import { createPanelTabsRenderer, makeOutlineBranch } from './ui/outliner'
 import { clamp } from './utils/math'
 
@@ -139,6 +145,7 @@ let currentMeshNodes: OutlineNode[] = []
 let importedFileName = '\u672a\u5bfc\u5165'
 let generalActiveSubTab = '\u6e32\u67d3'
 let toolsActiveSubTab = '\u5256\u5207'
+let selectedExplosionRootId: number | null = null
 const detailRegistry = new Map<string, () => DetailDescriptor>()
 let importedMeshes: AbstractMesh[] = []
 let importedMaterialTotal = 0
@@ -569,13 +576,70 @@ const renderToolsPanel = () => {
   const subTabs = document.createElement('div')
   subTabs.className = 'tech-sub-tabs'
   const clippingPanel = document.createElement('div')
+  const explosionPanel = document.createElement('div')
   const measurementPanel = document.createElement('div')
   const measurementNotice = document.createElement('div')
   measurementNotice.className = 'tool-placeholder'
   measurementNotice.textContent = '\u6d4b\u91cf\u5de5\u5177\u5f85\u63a5\u5165'
   measurementPanel.append(createModule('\u6d4b\u91cf', [measurementNotice]))
 
-  ;['\u5256\u5207', '\u6d4b\u91cf'].forEach((label) => {
+  const renderExplosionPanel = () => {
+    explosionPanel.textContent = ''
+    if (currentModelRoots.length === 0) {
+      const empty = document.createElement('div')
+      empty.className = 'tool-placeholder'
+      empty.textContent = '\u5f53\u524d\u6ca1\u6709\u53ef\u70b8\u5f00\u7684 GLB'
+      explosionPanel.append(createModule('\u7ed3\u6784\u70b8\u5f00', [empty]))
+      return
+    }
+
+    const selectedRoot = currentModelRoots.find((root) => root.uniqueId === selectedExplosionRootId)
+      ?? currentModelRoots[0]
+    selectedExplosionRootId = selectedRoot.uniqueId
+    selectedRoot.metadata = selectedRoot.metadata || {}
+    const selectedIndex = currentModelRoots.indexOf(selectedRoot)
+    const modelOptions = currentModelRoots.map((root, index) => {
+      const name = importedFileNames[index] ?? root.name.replace(/Root$/i, '')
+      return `${index + 1}. ${name}`
+    })
+    const selectedLabel = modelOptions[selectedIndex]
+    const mode = selectedRoot.metadata.explosionMode ?? 'radial'
+    const intensity = selectedRoot.metadata.explosionIntensity ?? 0
+    const body: HTMLElement[] = []
+
+    body.push(createSelect('GLB', modelOptions, selectedLabel, (value) => {
+      const index = modelOptions.indexOf(value)
+      const root = currentModelRoots[index]
+      if (!root) return
+      selectedExplosionRootId = root.uniqueId
+      renderExplosionPanel()
+    }))
+    body.push(createSelect(
+      '\u70b8\u5f00\u65b9\u5411',
+      ['\u6240\u6709\u65b9\u5411', 'X \u8f74', 'Y \u8f74', 'Z \u8f74'],
+      mode === 'x' ? 'X \u8f74' : mode === 'y' ? 'Y \u8f74' : mode === 'z' ? 'Z \u8f74' : '\u6240\u6709\u65b9\u5411',
+      (value) => {
+        const nextMode = value === 'X \u8f74' ? 'x' : value === 'Y \u8f74' ? 'y' : value === 'Z \u8f74' ? 'z' : 'radial'
+        applyExplosion(
+          selectedRoot,
+          getMeshesForRoot(selectedRoot),
+          selectedRoot.metadata.explosionIntensity ?? 0,
+          nextMode,
+        )
+      },
+    ))
+    body.push(createSlider('\u70b8\u5f00\u529b\u5ea6', intensity, 0, 1, 0.01, (value) => {
+      applyExplosion(
+        selectedRoot,
+        getMeshesForRoot(selectedRoot),
+        value,
+        selectedRoot.metadata.explosionMode ?? 'radial',
+      )
+    }))
+    explosionPanel.append(createModule('\u7ed3\u6784\u70b8\u5f00', body))
+  }
+
+  ;['\u5256\u5207', '\u70b8\u5f00', '\u6d4b\u91cf'].forEach((label) => {
     const button = document.createElement('button')
     button.className = 'tech-sub-tab'
     button.textContent = label
@@ -586,15 +650,18 @@ const renderToolsPanel = () => {
         tab.ariaSelected = String(tab.textContent === label)
       })
       clippingPanel.hidden = label !== '\u5256\u5207'
+      explosionPanel.hidden = label !== '\u70b8\u5f00'
       measurementPanel.hidden = label !== '\u6d4b\u91cf'
     })
     subTabs.append(button)
   })
 
   renderClippingPanel(clippingPanel)
+  renderExplosionPanel()
   clippingPanel.hidden = toolsActiveSubTab !== '\u5256\u5207'
+  explosionPanel.hidden = toolsActiveSubTab !== '\u70b8\u5f00'
   measurementPanel.hidden = toolsActiveSubTab !== '\u6d4b\u91cf'
-  panel.append(subTabs, clippingPanel, measurementPanel)
+  panel.append(subTabs, clippingPanel, explosionPanel, measurementPanel)
   detailPanel.append(panel)
 }
 
@@ -1188,7 +1255,7 @@ contentBrowserController = setupContentBrowser({
   button: contentBrowserButton,
   panel: contentBrowserPanel,
   onAssetActivate: (kind) => {
-    if (kind !== 'material.riverWater' && kind !== 'material.ditherFade') {
+    if (kind !== 'material.riverWater' && kind !== 'material.dtaa' && kind !== 'material.pbr') {
       return
     }
 
@@ -1198,26 +1265,37 @@ contentBrowserController = setupContentBrowser({
       return
     }
 
-    const appliedMaterial = kind === 'material.riverWater'
-      ? applyRiverWaterMaterial({
+    if (kind === 'material.riverWater') {
+      applyRiverWaterMaterial({
         scene,
         camera,
         sunLight,
         mesh: selectedMesh,
       })
-      : applyDitherFadeMaterial({
+    } else if (kind === 'material.dtaa') {
+      applyDitherFadeMaterial({
         scene,
         camera,
         sunLight,
         mesh: selectedMesh,
       })
+    } else {
+      applyStandardPbrMaterial({
+        scene,
+        mesh: selectedMesh,
+      })
+    }
     refreshImportedDetails()
     rebuildImportedOutline()
     selectMesh(selectedMesh)
-    selectDetail(`material:${appliedMaterial.uniqueId}`)
+    selectDetail(`mesh:${selectedMesh.uniqueId}`)
     refreshImportedRenderingState()
     flushSceneRenderCaches()
-    const materialName = kind === 'material.riverWater' ? '河流水材质' : '抖动透明材质'
+    const materialName = kind === 'material.riverWater'
+      ? '\u6cb3\u6d41\u6c34\u6750\u8d28'
+      : kind === 'material.dtaa'
+        ? 'DTAA\u900f\u660e\u6750\u8d28'
+        : '\u6807\u51c6PBR\u6750\u8d28'
     showTemporaryStatus(`已应用${materialName}：${selectedMesh.name || `Mesh ${selectedMesh.uniqueId}`}`)
   },
 })
@@ -1226,12 +1304,6 @@ syncWorkspacePanelButtons()
 
 saveConfigButton.hidden = true
 resetConfigButton.hidden = true
-
-const createMeshDetail = (mesh: AbstractMesh): DetailDescriptor => createMeshDetailDescriptor({
-  mesh,
-  getReceiveSsao: realtimeController.getReceiveSsao,
-  setReceiveSsao: realtimeController.setReceiveSsao,
-})
 
 const createMaterialDetail = (material: Material): DetailDescriptor => {
   if (isRiverWaterMaterial(material)) {
@@ -1243,10 +1315,7 @@ const createMaterialDetail = (material: Material): DetailDescriptor => {
   }
 
   if (material instanceof PBRMaterial) {
-    return createMaterialDetailDescriptor({
-      material,
-      refreshImportedRenderingState,
-    })
+    return createStandardPbrMaterialDetail(material, refreshImportedRenderingState)
   }
 
   return {
@@ -1263,6 +1332,13 @@ const createMaterialDetail = (material: Material): DetailDescriptor => {
   }
 }
 
+const createMeshDetail = (mesh: AbstractMesh): DetailDescriptor => createMeshDetailDescriptor({
+  mesh,
+  getReceiveSsao: realtimeController.getReceiveSsao,
+  setReceiveSsao: realtimeController.setReceiveSsao,
+  createMaterialDetail,
+})
+
 const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: number, mode?: string) => {
   root.metadata = root.metadata || {}
   root.metadata.explosionIntensity = intensity
@@ -1271,7 +1347,8 @@ const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: 
   }
   const currentMode = root.metadata.explosionMode || 'radial'
 
-  const scaleFactor = root.metadata.modelRadius * 1.5
+  const modelRadius = Math.max(root.metadata.modelRadius ?? 1, 0.001)
+  const axisScaleFactor = modelRadius * 1.5
 
   const sortedMeshes = [...meshes].sort((a, b) => {
     let depthA = 0
@@ -1348,7 +1425,7 @@ const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: 
       else if (currentMode === 'y') axisDir = new Vector3(0, 1, 0)
       else if (currentMode === 'z') axisDir = new Vector3(0, 0, 1)
 
-      const targetPosRootLocal = originalPosLocal.add(axisDir.scale(ratio * intensity * scaleFactor))
+      const targetPosRootLocal = originalPosLocal.add(axisDir.scale(ratio * intensity * axisScaleFactor))
       const targetWorldPos = Vector3.TransformCoordinates(targetPosRootLocal, root.getWorldMatrix())
 
       mesh.setAbsolutePosition(targetWorldPos)
@@ -1357,8 +1434,9 @@ const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: 
       // Radial mode
       const dir = mesh.metadata.explosionDirRootLocal || new Vector3(0, 1, 0)
       const dist = mesh.metadata.originalDistance || 0
-
-      const targetPosRootLocal = originalPosLocal.add(dir.scale(intensity * scaleFactor * (0.5 + 0.5 * dist)))
+      const normalizedDistance = clamp(dist / modelRadius, 0, 1)
+      const radialOffset = intensity * modelRadius * 0.9 * (0.4 + 0.6 * normalizedDistance)
+      const targetPosRootLocal = originalPosLocal.add(dir.scale(radialOffset))
       const targetWorldPos = Vector3.TransformCoordinates(targetPosRootLocal, root.getWorldMatrix())
 
       mesh.setAbsolutePosition(targetWorldPos)
@@ -1368,21 +1446,39 @@ const applyExplosion = (root: TransformNode, meshes: AbstractMesh[], intensity: 
 
 }
 
-const createModelDetail = (root: TransformNode, meshes: AbstractMesh[]) => createModelDetailDescriptor({
-  root,
-  meshes,
-  onExplosionChange: (value) => {
-    applyExplosion(root, meshes, value)
-  },
-  onExplosionModeChange: (value) => {
-    applyExplosion(root, meshes, root.metadata.explosionIntensity ?? 0, value)
-  }
-})
+const createModelDetail = (root: TransformNode, meshes: AbstractMesh[]) => {
+  const dtaaMaterials = new Set<PBRMaterial>()
+  meshes.forEach((mesh) => {
+    const materials = new Set<PBRMaterial>()
+    collectPbrMaterialsFromMaterial(mesh.material, materials)
+    materials.forEach((material) => {
+      if (isDitherFadeMaterial(material)) {
+        dtaaMaterials.add(material)
+      }
+    })
+  })
+  const dtaaList = [...dtaaMaterials]
+  const dtaaOpacity = dtaaList.length > 0
+    ? dtaaList.reduce((sum, material) => sum + getDitherFadeOpacity(material), 0) / dtaaList.length
+    : undefined
+
+  return createModelDetailDescriptor({
+    root,
+    meshes,
+    dtaaOpacity,
+    dtaaMaterialCount: dtaaList.length,
+    onDtaaOpacityChange: dtaaList.length > 0
+      ? (value) => {
+          dtaaList.forEach((material) => setDitherFadeOpacity(material, value))
+          flushSceneRenderCaches()
+        }
+      : undefined,
+  })
+}
 
 const dynamicDetailsRegistry = createDynamicDetailsRegistry({
   detailRegistry,
   createMeshDetail,
-  createMaterialDetail,
   createModelDetail,
   getModelRoots: () => currentModelRoots,
   getMeshesForRoot,
@@ -1697,7 +1793,10 @@ const loadModel = async (
     collectPbrMaterialsFromMaterial(mesh.material, materials)
   })
 
-  materials.forEach(tuneImportedMaterial)
+  materials.forEach((material) => {
+    tuneImportedMaterial(material)
+    markAsStandardPbrMaterial(material)
+  })
   currentModelRoots.push(root)
   importedMeshes = [...importedMeshes, ...result.meshes]
   refreshImportedRenderingState()
@@ -1853,6 +1952,39 @@ const loadProject = async (project: ProjectEntry) => {
         setLoadingScreen(false)
         return
       }
+    }
+
+    if (project.config.material === 'dtaa') {
+      importedMeshes.forEach((mesh) => {
+        if (!mesh.isDisposed() && mesh.material) {
+          applyDitherFadeMaterial({
+            scene,
+            camera,
+            sunLight,
+            mesh,
+          })
+        }
+      })
+      refreshImportedDetails()
+      rebuildImportedOutline()
+      refreshImportedRenderingState()
+      flushSceneRenderCaches()
+    }
+
+    if (project.pbrTextureRules.length > 0) {
+      const appliedTextureCount = applyProjectPbrTextureRules({
+        scene,
+        rules: project.pbrTextureRules,
+        modelRoots: currentModelRoots,
+        modelFileNames: importedFileNames,
+        getMeshesForRoot,
+      })
+      if (appliedTextureCount === 0) {
+        console.warn(`Project PBR texture rules matched no meshes: ${project.id}`)
+      }
+      refreshImportedDetails()
+      refreshImportedRenderingState()
+      flushSceneRenderCaches()
     }
 
     if (project.lightmaps.length > 0) {

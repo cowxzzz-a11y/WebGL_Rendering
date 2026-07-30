@@ -1,8 +1,61 @@
 {
   "title": "\u5730\u5c42",
   "models": ["target.glb", "struct-surface.glb", "wuhai-bim.glb"],
+  "material": "dtaa",
+  "pbrTextureSets": [
+    {
+      "id": "白云岩",
+      "albedo": "PBR岩性图/沉积岩/白云岩/Albedo_512__rmshykp0.PNG",
+      "normal": "PBR岩性图/沉积岩/白云岩/Normal_512__rmshykp0.PNG",
+      "arm": "PBR岩性图/沉积岩/白云岩/ARM_512__rmshykp0.PNG"
+    },
+    {
+      "id": "角砾岩",
+      "albedo": "PBR岩性图/沉积岩/角砾岩/Albedo_512__olqjn1p0.PNG",
+      "normal": "PBR岩性图/沉积岩/角砾岩/Normal_512__olqjn1p0.PNG",
+      "arm": "PBR岩性图/沉积岩/角砾岩/ARM_512__olqjn1p0.PNG"
+    },
+    {
+      "id": "页岩",
+      "albedo": "PBR岩性图/沉积岩/页岩/Albedo_512__ui5lcc0g.PNG",
+      "normal": "PBR岩性图/沉积岩/页岩/Normal_512__ui5lcc0g.PNG",
+      "arm": "PBR岩性图/沉积岩/页岩/ARM_512__ui5lcc0g.PNG"
+    },
+    {
+      "id": "泥岩",
+      "albedo": "PBR岩性图/沉积岩/泥岩/Albedo_512__ulmiecglw.PNG",
+      "normal": "PBR岩性图/沉积岩/泥岩/Normal_512__ulmiecglw.PNG",
+      "arm": "PBR岩性图/沉积岩/泥岩/ARM_512__ulmiecglw.PNG"
+    },
+    {
+      "id": "片麻岩",
+      "albedo": "PBR岩性图/变质岩/片麻岩/Albedo_2K__wehpadev.PNG",
+      "normal": "PBR岩性图/变质岩/片麻岩/Normal_512__ui1obc3n.PNG",
+      "arm": "PBR岩性图/变质岩/片麻岩/ARM_512__ui1obc3n.PNG"
+    }
+  ],
+  "pbrTextureRules": [
+    {
+      "model": "target.glb",
+      "meshIncludes": "张夏组",
+      "textureSets": ["片麻岩", "白云岩", "片麻岩", "角砾岩"],
+      "distribution": "alternating",
+      "seed": 0,
+      "uvScaleU": 0.06,
+      "uvScaleV": 0.06
+    },
+    {
+      "model": "target.glb",
+      "meshIncludes": "徐庄组",
+      "textureSets": ["片麻岩", "页岩", "片麻岩", "泥岩", "片麻岩", "白云岩"],
+      "distribution": "alternating",
+      "seed": 0,
+      "uvScaleU": 0.06,
+      "uvScaleV": 0.06
+    }
+  ],
   "config": {
     "realtimeEffectsEnabled": false,
-    "environmentIntensity": 0.8
+    "environmentIntensity": 1
   }
 }
