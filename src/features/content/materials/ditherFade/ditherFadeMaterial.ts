@@ -605,6 +605,59 @@ export const setDitherFadeOpacity = (material: PBRMaterial, opacity: number) => 
   applyParams(material, params)
 }
 
+export const syncDitherFadeProjection = (
+  target: PBRMaterial,
+  source: PBRMaterial,
+) => {
+  if (!isDitherFadeMaterial(source)) {
+    return false
+  }
+
+  const sourceParams = getParams(source)
+  let targetParams = target.metadata?.ditherFadeParams as Params | undefined
+  if (!targetParams) {
+    targetParams = {
+      ...sourceParams,
+      baseColor: sourceParams.baseColor.clone(),
+      emissiveColor: sourceParams.emissiveColor.clone(),
+    }
+  } else {
+    targetParams.baseColor.copyFrom(sourceParams.baseColor)
+    targetParams.emissiveColor.copyFrom(sourceParams.emissiveColor)
+    targetParams.opacity = sourceParams.opacity
+    targetParams.metallic = sourceParams.metallic
+    targetParams.roughness = sourceParams.roughness
+    targetParams.ambientStrength = sourceParams.ambientStrength
+    targetParams.directIntensity = sourceParams.directIntensity
+    targetParams.specularIntensity = sourceParams.specularIntensity
+    targetParams.normalStrength = sourceParams.normalStrength
+    targetParams.ambientOcclusionStrength = sourceParams.ambientOcclusionStrength
+    targetParams.uvScaleU = sourceParams.uvScaleU
+    targetParams.uvScaleV = sourceParams.uvScaleV
+  }
+
+  let plugin = getPlugin(target)
+  if (!plugin) {
+    plugin = new DitherFadePlugin(
+      target,
+      target.getScene(),
+      targetParams.opacity,
+      targetParams.uvScaleU,
+      targetParams.uvScaleV,
+    )
+  }
+  target.metadata = {
+    ...target.metadata,
+    contentMaterial: materialKey,
+    originalMaterialName: source.name,
+    ditherFadeParams: targetParams,
+    ditherFadePlugin: plugin,
+    clippingCapProjection: true,
+  }
+  applyParams(target, targetParams)
+  return true
+}
+
 export const applyDitherFadeMaterial = ({
   scene,
   mesh,

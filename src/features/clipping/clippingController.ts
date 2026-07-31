@@ -1,6 +1,7 @@
 import earcut from 'earcut'
 import type { Scene } from '@babylonjs/core/scene'
 import { Material } from '@babylonjs/core/Materials/material'
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Plane } from '@babylonjs/core/Maths/math.plane'
@@ -12,6 +13,7 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { VertexBuffer } from '@babylonjs/core/Buffers/buffer'
 import { GizmoManager } from '@babylonjs/core/Gizmos/gizmoManager'
 import { createCheckbox, createModule, createSelect, createSlider } from '../../ui/controls'
+import { syncDitherFadeProjection } from '../content/materials/ditherFade/ditherFadeMaterial'
 
 type ClippingSide = 'positive' | 'negative'
 
@@ -46,7 +48,8 @@ const getPositionStep = (radius: number) => {
 type CapBinding = {
   source: AbstractMesh
   capMesh: Mesh
-  capMaterial: StandardMaterial
+  capMaterial: Material | null
+  sourceMaterial: Material | null
 }
 
 type PlaneBasis = {
@@ -220,6 +223,7 @@ const triangulateLoops = (
   basis: PlaneBasis,
   normal: Vector3,
   tolerance: number,
+  uvDensity: number,
 ): CapGeometry => {
   const geometry: CapGeometry = {
     positions: [],
@@ -265,8 +269,8 @@ const triangulateLoops = (
       geometry.positions.push(point.world.x, point.world.y, point.world.z)
       geometry.normals.push(normal.x, normal.y, normal.z)
       geometry.uvs.push(
-        Vector3.Dot(point.world.subtract(basis.origin), basis.u),
-        Vector3.Dot(point.world.subtract(basis.origin), basis.v),
+        Vector3.Dot(point.world.subtract(basis.origin), basis.u) * uvDensity,
+        Vector3.Dot(point.world.subtract(basis.origin), basis.v) * uvDensity,
       )
     })
 
@@ -411,8 +415,93 @@ export const createClippingController = (scene: Scene): ClippingController => {
   }
 
   const capBindings = new Map<number, CapBinding>()
+  const capUvDensityCache = new Map<number, number>()
 
   const getTolerance = () => Math.max(frameRadius * 1e-6, 1e-5)
+
+  const getMaterialUvKind = (material: Material | null) => {
+    if (!material) {
+      return VertexBuffer.UVKind
+    }
+    const materialRecord = material as unknown as Record<string, unknown>
+    const textureKeys = [
+      'albedoTexture',
+      'diffuseTexture',
+      'baseTexture',
+      'ambientTexture',
+      'emissiveTexture',
+    ]
+    for (const textureKey of textureKeys) {
+      const texture = materialRecord[textureKey] as { coordinatesIndex?: number } | null | undefined
+      if (texture && texture.coordinatesIndex === 1) {
+        return VertexBuffer.UV2Kind
+      }
+      if (texture) {
+        return VertexBuffer.UVKind
+      }
+    }
+    return VertexBuffer.UVKind
+  }
+
+  const getCapUvDensity = (
+    mesh: AbstractMesh,
+    source: AbstractMesh,
+    positions: ArrayLike<number>,
+    indices: number[],
+    world: Matrix,
+  ) => {
+    const cached = capUvDensityCache.get(mesh.uniqueId)
+    if (cached !== undefined) {
+      return cached
+    }
+
+    const uvKind = getMaterialUvKind(getCapSourceMaterial(mesh))
+    const uvs = source.getVerticesData(uvKind)
+    if (!uvs || uvs.length < 6) {
+      const fallback = 1 / Math.max(frameRadius, 1)
+      capUvDensityCache.set(mesh.uniqueId, fallback)
+      return fallback
+    }
+
+    const ratios: number[] = []
+    const triangleCount = Math.floor(indices.length / 3)
+    const triangleStep = Math.max(1, Math.floor(triangleCount / 2048))
+    const addEdgeRatio = (startIndex: number, endIndex: number) => {
+      const startWorld = getPointFromPositions(positions, startIndex, world)
+      const endWorld = getPointFromPositions(positions, endIndex, world)
+      const worldLength = Vector3.Distance(startWorld, endWorld)
+      if (worldLength <= 1e-8) {
+        return
+      }
+      const startUvOffset = startIndex * 2
+      const endUvOffset = endIndex * 2
+      const du = uvs[endUvOffset] - uvs[startUvOffset]
+      const dv = uvs[endUvOffset + 1] - uvs[startUvOffset + 1]
+      const uvLength = Math.hypot(du, dv)
+      const ratio = uvLength / worldLength
+      if (Number.isFinite(ratio) && ratio > 1e-10) {
+        ratios.push(ratio)
+      }
+    }
+
+    for (let triangle = 0; triangle < triangleCount; triangle += triangleStep) {
+      const indexOffset = triangle * 3
+      const a = indices[indexOffset]
+      const b = indices[indexOffset + 1]
+      const c = indices[indexOffset + 2]
+      addEdgeRatio(a, b)
+      addEdgeRatio(b, c)
+      addEdgeRatio(c, a)
+    }
+
+    ratios.sort((a, b) => a - b)
+    const density = ratios.length > 0
+      ? ratios[Math.floor(ratios.length / 2)]
+      : 1 / Math.max(frameRadius, 1)
+    const safeDensity = Math.min(Math.max(density, 1e-8), 1e4)
+    capUvDensityCache.set(mesh.uniqueId, safeDensity)
+    return safeDensity
+  }
 
   const getColorProperty = (material: Material, propertyName: string) => {
     const value = (material as unknown as Record<string, unknown>)[propertyName]
@@ -475,28 +564,137 @@ export const createClippingController = (scene: Scene): ClippingController => {
     return new Color3(0.5, 0.5, 0.5)
   }
 
+  const getCapSourceMaterial = (source: AbstractMesh) => {
+    const sourceMaterial = source.material
+    if (!sourceMaterial) {
+      return null
+    }
+    if (sourceMaterial.getClassName() !== 'MultiMaterial') {
+      return sourceMaterial
+    }
+
+    const subMaterials = (sourceMaterial as unknown as { subMaterials?: Array<Material | null> }).subMaterials
+    return subMaterials?.find((material): material is Material => material !== null) ?? null
+  }
+
+  const sharedMaterialProperties = [
+    'alpha',
+    'transparencyMode',
+    'disableDepthWrite',
+    'fogEnabled',
+    'zOffset',
+  ] as const
+
+  const pbrMaterialProperties = [
+    'albedoColor',
+    'albedoTexture',
+    'metallic',
+    'roughness',
+    'metallicTexture',
+    'reflectivityColor',
+    'reflectivityTexture',
+    'microSurface',
+    'bumpTexture',
+    'ambientTexture',
+    'ambientTextureStrength',
+    'opacityTexture',
+    'emissiveColor',
+    'emissiveTexture',
+    'emissiveIntensity',
+    'environmentIntensity',
+    'directIntensity',
+    'specularIntensity',
+    'indexOfRefraction',
+    'useAlphaFromAlbedoTexture',
+    'useAmbientOcclusionFromMetallicTextureRed',
+    'useRoughnessFromMetallicTextureAlpha',
+    'useRoughnessFromMetallicTextureGreen',
+    'useMetallnessFromMetallicTextureBlue',
+    'invertNormalMapX',
+    'invertNormalMapY',
+  ] as const
+
+  const standardMaterialProperties = [
+    'diffuseColor',
+    'diffuseTexture',
+    'ambientColor',
+    'ambientTexture',
+    'specularColor',
+    'specularTexture',
+    'specularPower',
+    'emissiveColor',
+    'emissiveTexture',
+    'bumpTexture',
+    'opacityTexture',
+    'reflectionTexture',
+    'useAlphaFromDiffuseTexture',
+    'disableLighting',
+  ] as const
+
+  const copyMaterialProperties = (
+    target: Material,
+    source: Material,
+    propertyNames: readonly string[],
+  ) => {
+    const targetRecord = target as unknown as Record<string, unknown>
+    const sourceRecord = source as unknown as Record<string, unknown>
+    propertyNames.forEach((propertyName) => {
+      const value = sourceRecord[propertyName]
+      const targetValue = targetRecord[propertyName]
+      if (value instanceof Color3 && targetValue instanceof Color3) {
+        targetValue.copyFrom(value)
+      } else if (value !== undefined) {
+        targetRecord[propertyName] = value
+      }
+    })
+  }
+
+  const syncCapMaterialProperties = (target: Material, source: Material | null) => {
+    if (!source) {
+      return
+    }
+    copyMaterialProperties(target, source, sharedMaterialProperties)
+    if (target instanceof PBRMaterial && source instanceof PBRMaterial) {
+      copyMaterialProperties(target, source, pbrMaterialProperties)
+      syncDitherFadeProjection(target, source)
+    } else if (target instanceof StandardMaterial && source instanceof StandardMaterial) {
+      copyMaterialProperties(target, source, standardMaterialProperties)
+    }
+    target.backFaceCulling = false
+  }
+
   const createCapMaterial = (source: AbstractMesh) => {
-    const color = getMeshColor(source)
-    const material = new StandardMaterial(`__clipping_cap_material_${source.uniqueId}`, scene)
-    material.diffuseColor = color.clone()
-    material.emissiveColor = color.scale(0.82)
-    material.alpha = 1
-    material.transparencyMode = Material.MATERIAL_OPAQUE
+    const sourceMaterial = getCapSourceMaterial(source)
+    let material: Material
+    if (sourceMaterial instanceof PBRMaterial) {
+      material = new PBRMaterial(`__clipping_cap_material_${source.uniqueId}`, scene)
+    } else if (sourceMaterial instanceof StandardMaterial) {
+      material = new StandardMaterial(`__clipping_cap_material_${source.uniqueId}`, scene)
+    } else {
+      const color = getMeshColor(source)
+      const fallback = new StandardMaterial(`__clipping_cap_material_${source.uniqueId}`, scene)
+      fallback.diffuseColor = color.clone()
+      fallback.emissiveColor = color.scale(0.82)
+      fallback.alpha = 1
+      fallback.transparencyMode = Material.MATERIAL_OPAQUE
+      fallback.disableLighting = true
+      material = fallback
+    }
+    syncCapMaterialProperties(material, sourceMaterial)
     material.backFaceCulling = false
-    material.disableLighting = true
-    material.disableDepthWrite = false
     material.forceDepthWrite = true
-    return material
+    return { material, sourceMaterial }
   }
 
   const disposeCapBinding = (binding: CapBinding) => {
     binding.capMesh.dispose(false, false)
-    binding.capMaterial.dispose()
+    binding.capMaterial?.dispose(false, false)
   }
 
   const disposeAllCapBindings = () => {
     capBindings.forEach(disposeCapBinding)
     capBindings.clear()
+    capUvDensityCache.clear()
   }
 
   const cancelScheduledCapSync = () => {
@@ -588,9 +786,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
       return binding
     }
 
-    const capMaterial = createCapMaterial(mesh)
     const capMesh = new Mesh(`__clipping_cap_mesh_${mesh.uniqueId}`, scene)
-    capMesh.material = capMaterial
     capMesh.renderingGroupId = 0
     capMesh.isPickable = false
     capMesh.receiveShadows = false
@@ -600,7 +796,8 @@ export const createClippingController = (scene: Scene): ClippingController => {
     binding = {
       source: mesh,
       capMesh,
-      capMaterial,
+      capMaterial: null,
+      sourceMaterial: null,
     }
     capBindings.set(mesh.uniqueId, binding)
     return binding
@@ -693,6 +890,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
     const rawIndices = source.getIndices()
     const indices = rawIndices && rawIndices.length > 0 ? Array.from(rawIndices) : createSequentialIndices(positions.length / 3)
     const world = mesh.computeWorldMatrix(true)
+    const uvDensity = getCapUvDensity(mesh, source, positions, indices, world)
     const tolerance = getTolerance()
     const capOffset = clipNormal.scale(-tolerance * 0.5)
     const pointMap = new Map<string, CapPoint>()
@@ -756,24 +954,42 @@ export const createClippingController = (scene: Scene): ClippingController => {
       return null
     }
 
-    const geometry = triangulateLoops(loops, basis, capNormal, tolerance)
+    const geometry = triangulateLoops(loops, basis, capNormal, tolerance, uvDensity)
     return geometry.indices.length > 0 ? geometry : null
   }
 
   const applyCapGeometry = (binding: CapBinding, geometry: CapGeometry | null) => {
-    const color = getMeshColor(binding.source)
-    binding.capMaterial.diffuseColor.copyFrom(color)
-    binding.capMaterial.emissiveColor.copyFrom(color.scale(0.82))
-    binding.capMaterial.clipPlane = Plane.FromPositionAndNormal(
-      state.position.add(getClipNormal().scale(Math.max(frameRadius * 20, 1000))),
-      getClipNormal(),
-    )
-
     if (!geometry) {
       binding.capMesh.setEnabled(false)
       return
     }
 
+    const currentSourceMaterial = getCapSourceMaterial(binding.source)
+    const materialTypeChanged =
+      !binding.capMaterial ||
+      binding.sourceMaterial !== currentSourceMaterial ||
+      (currentSourceMaterial instanceof PBRMaterial) !== (binding.capMaterial instanceof PBRMaterial) ||
+      (currentSourceMaterial instanceof StandardMaterial) !== (binding.capMaterial instanceof StandardMaterial)
+
+    if (materialTypeChanged) {
+      const replacement = createCapMaterial(binding.source)
+      binding.capMaterial?.dispose(false, false)
+      binding.capMaterial = replacement.material
+      binding.sourceMaterial = replacement.sourceMaterial
+      binding.capMesh.material = replacement.material
+    } else {
+      syncCapMaterialProperties(binding.capMaterial!, currentSourceMaterial)
+    }
+
+    const capMaterial = binding.capMaterial
+    if (!capMaterial) {
+      binding.capMesh.setEnabled(false)
+      return
+    }
+    capMaterial.clipPlane = Plane.FromPositionAndNormal(
+      state.position.add(getClipNormal().scale(Math.max(frameRadius * 20, 1000))),
+      getClipNormal(),
+    )
     binding.capMesh.setVerticesData(VertexBuffer.PositionKind, geometry.positions, true)
     binding.capMesh.setVerticesData(VertexBuffer.NormalKind, geometry.normals, true)
     binding.capMesh.setVerticesData(VertexBuffer.UVKind, geometry.uvs, true)

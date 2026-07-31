@@ -1,4 +1,5 @@
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
+import type { ArcRotateCameraMouseWheelInput } from '@babylonjs/core/Cameras/Inputs/arcRotateCameraMouseWheelInput'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { Scene } from '@babylonjs/core/scene'
 import type { ArcRotateTouchInput } from '../shared/types'
@@ -40,11 +41,14 @@ const getPanWorldUnitsPerPixel = (camera: ArcRotateCamera, controlRadius: number
   return clamp((controlRadius * 0.34) / viewportHeight, 0.00002, 32)
 }
 
+const getZoomWorldUnitsPerWheelUnit = (radius: number) =>
+  Math.max(radius / 150, 0.0001)
+
 export const createViewerCamera = ({ canvas, scene }: CreateViewerCameraOptions) => {
   const camera = new ArcRotateCamera('Camera', -Math.PI / 2.15, Math.PI / 2.62, 8, new Vector3(0, 1.5, 0), scene)
 
   camera.fov = 0.72
-  camera.wheelPrecision = 8
+  camera.wheelPrecision = 2
   camera.wheelDeltaPercentage = 0
   camera.pinchPrecision = 28
   camera.pinchDeltaPercentage = 0.012
@@ -84,6 +88,7 @@ export const tuneTouchCameraControls = ({
 }: TuneTouchCameraControlsOptions) => {
   const controlRadius = getControlRadius(sceneRadius)
   const pointersInput = camera.inputs.attached.pointers as Partial<ArcRotateTouchInput> | undefined
+  const mouseWheelInput = camera.inputs.attached.mousewheel as ArcRotateCameraMouseWheelInput | undefined
 
   const panningSens = clamp(defaultPanningSensibility * (8 / controlRadius), 2, 2000)
   const panWorldUnitsPerPixel = getPanWorldUnitsPerPixel(camera, controlRadius)
@@ -100,6 +105,16 @@ export const tuneTouchCameraControls = ({
   // The pointer input already divides by panningSensibility. Multiplying by
   // panningSens here would cancel the user's setting and make the slider inert.
   camera.movement.panSpeed = panWorldUnitsPerPixel
+  // Babylon 9 applies wheelPrecision before movement.zoomSpeed. Scale that
+  // world-space speed with the current camera distance while keeping each
+  // project's wheelPrecision active.
+  camera.movement.zoomSpeed = getZoomWorldUnitsPerWheelUnit(camera.radius)
+  if (mouseWheelInput) {
+    mouseWheelInput.customComputeDeltaFromMouseWheel = (wheelDelta, input) => {
+      camera.movement.zoomSpeed = getZoomWorldUnitsPerWheelUnit(camera.radius)
+      return wheelDelta / (Math.max(input.wheelPrecision, 0.01) * 40)
+    }
+  }
   camera.movement.resetPanVelocity()
 
   if (!pointersInput) {

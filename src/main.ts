@@ -966,6 +966,38 @@ const camera = createViewerCamera({
   scene,
 })
 
+type ProjectCameraControlOverrides = {
+  wheelPrecision?: number
+  panningSensibility?: number
+}
+
+const defaultCameraWheelPrecision = camera.wheelPrecision
+let activeProjectCameraControlOverrides: ProjectCameraControlOverrides | null = null
+
+const getProjectCameraControlOverrides = (
+  config: ViewerProjectConfigInput | undefined,
+): ProjectCameraControlOverrides => ({
+  wheelPrecision: config?.cameraWheelPrecision ?? config?.camera?.wheelPrecision,
+  panningSensibility: config?.cameraPanningSensibility ?? config?.camera?.panningSensibility,
+})
+
+const applyActiveProjectCameraControlOverrides = () => {
+  if (!activeProjectCameraControlOverrides) {
+    return
+  }
+
+  const { wheelPrecision, panningSensibility } = activeProjectCameraControlOverrides
+
+  if (wheelPrecision !== undefined) {
+    camera.wheelDeltaPercentage = 0
+    camera.wheelPrecision = wheelPrecision
+  }
+
+  if (panningSensibility !== undefined) {
+    camera.panningSensibility = panningSensibility
+  }
+}
+
 tuneTouchCameraControls({
   camera,
   sceneCenter,
@@ -1993,6 +2025,7 @@ let projectLoadSerial = 0
 
 const showProjectManager = () => {
   projectLoadSerial += 1
+  activeProjectCameraControlOverrides = null
   disposeCurrentModels()
   restoreRealtimeLightState()
   flushSceneRenderCaches()
@@ -2008,6 +2041,9 @@ const showProjectManager = () => {
 const loadProject = async (project: ProjectEntry) => {
   const loadSerial = projectLoadSerial + 1
   projectLoadSerial = loadSerial
+  activeProjectCameraControlOverrides = getProjectCameraControlOverrides(project.config.config)
+  camera.wheelDeltaPercentage = 0
+  camera.wheelPrecision = defaultCameraWheelPrecision
   projectManager.hidden = true
   projectBackButton.hidden = false
   const nextUrl = new URL(window.location.href)
@@ -2159,12 +2195,14 @@ const loadProject = async (project: ProjectEntry) => {
     }
 
     frameCurrentModels()
+    tuneCameraControlsForCurrentScene()
 
     if (project.config.config) {
       await applyViewerConfig(project.config.config)
     } else {
       realtimeController.applyRealtimeEffectsState()
     }
+    applyActiveProjectCameraControlOverrides()
 
     if (project.config.camera && !project.config.config?.camera) {
       const cc = project.config.camera
@@ -2262,4 +2300,5 @@ window.addEventListener('resize', () => {
     sceneCenter,
     sceneRadius,
   })
+  applyActiveProjectCameraControlOverrides()
 })
