@@ -33,6 +33,17 @@ export type ClippingController = {
   clear: () => void
 }
 
+export type ClippingModelTarget = {
+  id: string
+  label: string
+  meshes: AbstractMesh[]
+}
+
+type ClippingControllerOptions = {
+  scene: Scene
+  getModelTargets: () => ClippingModelTarget[]
+}
+
 const positiveSideLabel = '\u6cd5\u7ebf\u6b63\u4fa7'
 const negativeSideLabel = '\u6cd5\u7ebf\u53cd\u4fa7'
 
@@ -358,7 +369,10 @@ const buildLoopsFromSegments = (
   return loops
 }
 
-export const createClippingController = (scene: Scene): ClippingController => {
+export const createClippingController = ({
+  scene,
+  getModelTargets,
+}: ClippingControllerOptions): ClippingController => {
   const state: ClippingState = {
     enabled: false,
     helperVisible: true,
@@ -416,6 +430,8 @@ export const createClippingController = (scene: Scene): ClippingController => {
 
   const capBindings = new Map<number, CapBinding>()
   const capUvDensityCache = new Map<number, number>()
+  const excludedModelIds = new Set<string>()
+  const originalMaterialClipPlanes = new Map<Material, Plane | null>()
 
   const getTolerance = () => Math.max(frameRadius * 1e-6, 1e-5)
 
@@ -709,16 +725,78 @@ export const createClippingController = (scene: Scene): ClippingController => {
     capBindings.forEach((binding) => binding.capMesh.setEnabled(false))
   }
 
+  const getSelectedModelTargets = () =>
+    getModelTargets().filter((target) => !excludedModelIds.has(target.id))
+
   const getTargetMeshes = () => {
-    return scene.meshes.filter((mesh): mesh is AbstractMesh => {
-      return (
+    const uniqueMeshes = new Map<number, AbstractMesh>()
+    getSelectedModelTargets().forEach((target) => {
+      target.meshes.forEach((mesh) => {
+        if (
         !!mesh.material &&
         mesh.isEnabled() &&
         !mesh.name.startsWith('__') &&
         mesh.name !== 'skyBox' &&
         mesh.name !== 'background'
-      )
+        ) {
+          uniqueMeshes.set(mesh.uniqueId, mesh)
+        }
+      })
     })
+    return [...uniqueMeshes.values()]
+  }
+
+  const getMeshMaterials = (mesh: AbstractMesh) => {
+    if (!mesh.material) {
+      return []
+    }
+    if (mesh.material.getClassName() !== 'MultiMaterial') {
+      return [mesh.material]
+    }
+    const subMaterials = (mesh.material as unknown as { subMaterials?: Array<Material | null> }).subMaterials
+    return subMaterials?.filter((material): material is Material => material !== null) ?? []
+  }
+
+  const restoreMaterialClipOverrides = () => {
+    originalMaterialClipPlanes.forEach((clipPlane, material) => {
+      material.clipPlane = clipPlane
+      material.markAsDirty(Material.MiscDirtyFlag)
+    })
+    originalMaterialClipPlanes.clear()
+  }
+
+  const syncUnselectedMaterialClipOverrides = () => {
+    restoreMaterialClipOverrides()
+    if (!state.enabled) {
+      return
+    }
+
+    const selectedMaterials = new Set<Material>()
+    getSelectedModelTargets().forEach((target) => {
+      target.meshes.forEach((mesh) => {
+        getMeshMaterials(mesh).forEach((material) => selectedMaterials.add(material))
+      })
+    })
+
+    const clipNormal = getClipNormal()
+    const bypassPlane = Plane.FromPositionAndNormal(
+      state.position.add(clipNormal.scale(Math.max(frameRadius * 20, 1000))),
+      clipNormal,
+    )
+    getModelTargets()
+      .filter((target) => excludedModelIds.has(target.id))
+      .forEach((target) => {
+        target.meshes.forEach((mesh) => {
+          getMeshMaterials(mesh).forEach((material) => {
+            if (selectedMaterials.has(material) || originalMaterialClipPlanes.has(material)) {
+              return
+            }
+            originalMaterialClipPlanes.set(material, material.clipPlane)
+            material.clipPlane = bypassPlane
+            material.markAsDirty(Material.MiscDirtyFlag)
+          })
+        })
+      })
   }
 
   const updateFrameBounds = () => {
@@ -1125,6 +1203,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
     const hadClipPlane = scene.clipPlane !== null
     const clipNormal = getClipNormal()
     scene.clipPlane = state.enabled ? Plane.FromPositionAndNormal(state.position, clipNormal) : null
+    syncUnselectedMaterialClipOverrides()
 
     syncHelperPlane()
     if (capSync === 'deferred') {
@@ -1192,6 +1271,8 @@ export const createClippingController = (scene: Scene): ClippingController => {
   }
 
   const resetForSceneFrame = (center: Vector3, radius: number) => {
+    restoreMaterialClipOverrides()
+    excludedModelIds.clear()
     state.enabled = false
     state.helperVisible = true
     state.keepSide = 'positive'
@@ -1239,6 +1320,29 @@ export const createClippingController = (scene: Scene): ClippingController => {
       applyClipPlane()
       rerenderPanel()
     }))
+
+    const modelTargetBody: HTMLElement[] = []
+    getModelTargets().forEach((target) => {
+      modelTargetBody.push(createCheckbox(
+        target.label,
+        !excludedModelIds.has(target.id),
+        (selected) => {
+          if (selected) {
+            excludedModelIds.delete(target.id)
+          } else {
+            excludedModelIds.add(target.id)
+          }
+          applyClipPlane(true)
+          rerenderPanel()
+        },
+      ))
+    })
+    if (modelTargetBody.length === 0) {
+      const emptyState = document.createElement('div')
+      emptyState.className = 'tech-row'
+      emptyState.textContent = '\u6682\u65e0\u53ef\u5256\u5207\u7684 GLB'
+      modelTargetBody.push(emptyState)
+    }
 
     const transformBody: HTMLElement[] = []
     ;(['x', 'y', 'z'] as const).forEach((axis) => {
@@ -1293,6 +1397,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
     transformBody.push(resetRow)
 
     panel.append(createModule(mode === 'quick' ? '\u5256\u5207\u5de5\u5177' : '\u5256\u5207', switchBody))
+    panel.append(createModule('\u5256\u5207\u6a21\u578b\uff08\u53ef\u591a\u9009\uff09', modelTargetBody))
     panel.append(createModule(mode === 'quick' ? '\u4f4d\u7f6e' : '\u53d8\u6362', transformBody))
   }
 
@@ -1304,6 +1409,7 @@ export const createClippingController = (scene: Scene): ClippingController => {
       state.enabled = false
       cancelScheduledCapSync()
       applyClipPlane(true)
+      restoreMaterialClipOverrides()
       disposeAllCapBindings()
     },
   }

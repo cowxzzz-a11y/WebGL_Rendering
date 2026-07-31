@@ -1072,7 +1072,14 @@ lightmapController = createLightmapController({
   getSelectableMeshes,
 })
 
-clippingController = createClippingController(scene)
+clippingController = createClippingController({
+  scene,
+  getModelTargets: () => currentModelRoots.map((root, index) => ({
+    id: String(root.uniqueId),
+    label: importedFileNames[index] ?? root.name.replace(/Root$/i, ''),
+    meshes: getMeshesForRoot(root),
+  })),
+})
 clippingController.setSceneFrame(sceneCenter, sceneRadius)
 
 canvas.addEventListener('contextmenu', (event) => {
