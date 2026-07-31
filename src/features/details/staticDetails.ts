@@ -116,6 +116,7 @@ export const registerStaticDetails = ({
         title: '\u63a7\u5236',
         items: [
           numberItem('\u6eda\u8f6e\u7cbe\u5ea6', camera.wheelPrecision, 1, 80, 1, (value) => {
+            camera.wheelDeltaPercentage = 0
             camera.wheelPrecision = value
           }),
           numberItem('\u5e73\u79fb\u7075\u654f\u5ea6', camera.panningSensibility, 1, 200, 1, (value) => {

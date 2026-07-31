@@ -289,6 +289,7 @@ export const buildCameraPanelContent = (camera: ArcRotateCamera) => {
 
   const controlsBody: HTMLElement[] = []
   controlsBody.push(createSlider('\u6eda\u8f6e\u7cbe\u5ea6', camera.wheelPrecision, 1, 80, 1, (value) => {
+    camera.wheelDeltaPercentage = 0
     camera.wheelPrecision = value
   }))
   controlsBody.push(createSlider('\u5e73\u79fb\u7075\u654f\u5ea6', camera.panningSensibility, 1, 200, 1, (value) => {

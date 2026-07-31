@@ -1,0 +1,49 @@
+{
+  "title": "水坝",
+  "models": ["dam.glb"],
+  "materialRules": [
+    {
+      "model": "dam.glb",
+      "meshIncludes": "河流下",
+      "material": "riverWater",
+      "waveScale": 1.65
+    },
+    {
+      "model": "dam.glb",
+      "meshIncludes": "瀑布",
+      "material": "waterfall"
+    }
+  ],
+  "removeMeshes": ["河流下地形"],
+  "mergeMeshes": [
+    {
+      "model": "dam.glb",
+      "meshIncludes": "大坝_primitive",
+      "name": "大坝"
+    },
+    {
+      "model": "dam.glb",
+      "meshIncludes": "山体_primitive",
+      "name": "山"
+    },
+    {
+      "model": "dam.glb",
+      "meshIncludes": "河流下",
+      "name": "水库"
+    }
+  ],
+  "config": {
+    "realtimeEffectsEnabled": true,
+    "environmentIntensity": 1,
+    "cameraFov": 0.72,
+    "cameraRadius": 75.2,
+    "cameraAlpha": -7.25,
+    "cameraBeta": 1.28,
+    "cameraTarget": [14.8281, 26.0493, -39.0457],
+    "cameraWheelPrecision": 2,
+    "cameraPanningSensibility": 20,
+    "sunIntensity": 5.8,
+    "sunDirection": [0.5, -0.17, -1],
+    "sunPosition": [107.92163079646889, 69.5680404668945, 333.59379930673913]
+  }
+}

@@ -30,7 +30,14 @@ export type ProjectPbrTextureRuleConfig = {
 export type ProjectMaterialRuleConfig = {
   model?: string
   meshIncludes: string
-  material: 'pbr' | 'dtaa' | 'riverWater'
+  material: 'pbr' | 'dtaa' | 'riverWater' | 'waterfall'
+  waveScale?: number
+}
+
+export type ProjectMeshMergeRuleConfig = {
+  model?: string
+  meshIncludes: string
+  name: string
 }
 
 export type ProjectConfig = {
@@ -40,10 +47,12 @@ export type ProjectConfig = {
   model?: string
   config?: ViewerProjectConfigInput
   lightmaps?: ProjectLightmapConfig[]
-  material?: 'pbr' | 'dtaa' | 'riverWater'
+  material?: 'pbr' | 'dtaa' | 'riverWater' | 'waterfall'
   pbrTextureSets?: ProjectPbrTextureSetConfig[]
   pbrTextureRules?: ProjectPbrTextureRuleConfig[]
   materialRules?: ProjectMaterialRuleConfig[]
+  mergeMeshes?: ProjectMeshMergeRuleConfig[]
+  removeMeshes?: string[]
   camera?: {
     alpha?: number
     beta?: number
@@ -99,6 +108,8 @@ export type ProjectEntry = {
   lightmaps: ResolvedProjectLightmap[]
   pbrTextureRules: ResolvedProjectPbrTextureRule[]
   materialRules: ProjectMaterialRuleConfig[]
+  meshMergeRules: ProjectMeshMergeRuleConfig[]
+  removeMeshes: string[]
 }
 
 const projectConfigs = import.meta.glob<ProjectConfig>('../../../assets/*/project.json', {
@@ -268,6 +279,8 @@ export const getProjectEntries = (): ProjectEntry[] =>
         lightmaps: resolveConfiguredLightmaps(id, config),
         pbrTextureRules: resolveConfiguredPbrTextureRules(id, config),
         materialRules: config.materialRules ?? [],
+        meshMergeRules: config.mergeMeshes ?? [],
+        removeMeshes: config.removeMeshes ?? [],
       }]
     })
     .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))

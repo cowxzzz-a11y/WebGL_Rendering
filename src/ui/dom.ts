@@ -56,6 +56,7 @@ export type AppDom = {
   frameGrid: HTMLDivElement
   selectionModePanel: HTMLDivElement
   resetCameraButton: HTMLButtonElement
+  dockResetCameraButton: HTMLButtonElement
 }
 
 export const renderAppShell = (app: HTMLDivElement) => {
@@ -158,7 +159,7 @@ export const renderAppShell = (app: HTMLDivElement) => {
       <button type="button" data-mode="replace">替换场景</button>
       <button type="button" data-mode="insert">追加模型</button>
     </div>
-    <button class="dock-button" type="button" data-panel-tab="viewport" data-panel-subtab="剖切" aria-label="工具" title="工具">
+    <button id="dockResetCameraButton" class="dock-button" type="button" aria-label="重置视角" title="重置视角">
       <i data-lucide="focus" aria-hidden="true"></i>
     </button>
     <button id="shareWechat" class="share-button dock-button" type="button" aria-label="分享" title="分享">
@@ -272,4 +273,5 @@ export const queryAppDom = (): AppDom => ({
   frameGrid: requireElement<HTMLDivElement>('#frameGrid', 'Frame grid'),
   selectionModePanel: requireElement<HTMLDivElement>('#selectionModePanel', 'Selection mode panel'),
   resetCameraButton: requireElement<HTMLButtonElement>('#resetCameraButton', 'Reset camera button'),
+  dockResetCameraButton: requireElement<HTMLButtonElement>('#dockResetCameraButton', 'Dock reset camera button'),
 })

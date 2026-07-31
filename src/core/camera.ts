@@ -23,18 +23,6 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(val
 const getControlRadius = (sceneRadius: number | undefined) =>
   Math.max(sceneRadius ?? defaultSceneControlRadius, minimumSceneControlRadius)
 
-const getWheelDeltaPercentage = (controlRadius: number) => {
-  if (controlRadius <= 1.5) {
-    return 0.025
-  }
-
-  if (controlRadius <= 8) {
-    return 0.035
-  }
-
-  return 0.045
-}
-
 const getPinchDeltaPercentage = (controlRadius: number) => {
   if (controlRadius <= 1.5) {
     return 0.008
@@ -57,7 +45,7 @@ export const createViewerCamera = ({ canvas, scene }: CreateViewerCameraOptions)
 
   camera.fov = 0.72
   camera.wheelPrecision = 8
-  camera.wheelDeltaPercentage = 0.06
+  camera.wheelDeltaPercentage = 0
   camera.pinchPrecision = 28
   camera.pinchDeltaPercentage = 0.012
   camera.useNaturalPinchZoom = true
@@ -102,13 +90,16 @@ export const tuneTouchCameraControls = ({
 
   camera.lowerRadiusLimit = Math.max(controlRadius * 0.02, 0.03)
   camera.upperRadiusLimit = Math.max(controlRadius * 12, 8)
-  camera.wheelDeltaPercentage = getWheelDeltaPercentage(controlRadius)
+  // Keep percentage zoom disabled so Babylon actually uses wheelPrecision.
+  camera.wheelDeltaPercentage = 0
   camera.pinchDeltaPercentage = getPinchDeltaPercentage(controlRadius)
   camera.panningSensibility = panningSens
   camera.panningInertia = 0.35
   camera.panningDistanceLimit = Math.max(controlRadius * 1.25, 1.5)
   camera.panningOriginTarget.copyFrom(sceneCenter ?? camera.target)
-  camera.movement.panSpeed = panWorldUnitsPerPixel * panningSens
+  // The pointer input already divides by panningSensibility. Multiplying by
+  // panningSens here would cancel the user's setting and make the slider inert.
+  camera.movement.panSpeed = panWorldUnitsPerPixel
   camera.movement.resetPanVelocity()
 
   if (!pointersInput) {

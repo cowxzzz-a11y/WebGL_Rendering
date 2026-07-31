@@ -18,3 +18,9 @@ export {
   isStandardPbrMaterial,
   markAsStandardPbrMaterial,
 } from './standardPbr/standardPbrMaterial'
+
+export {
+  applyWaterfallMaterial,
+  createWaterfallMaterialDetail,
+  isWaterfallMaterial,
+} from './waterfall/waterfallMaterial'

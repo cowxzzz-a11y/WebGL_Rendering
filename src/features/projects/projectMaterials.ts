@@ -7,6 +7,7 @@ import {
   applyDitherFadeMaterial,
   applyRiverWaterMaterial,
   applyStandardPbrMaterial,
+  applyWaterfallMaterial,
 } from '../content/materials'
 import type { ProjectMaterialRuleConfig } from './projectAssets'
 
@@ -40,7 +41,20 @@ export const applyProjectMaterialRules = ({
         .filter((mesh) => mesh.name.includes(rule.meshIncludes))
         .forEach((mesh) => {
           if (rule.material === 'riverWater') {
-            applyRiverWaterMaterial({ scene, camera, sunLight, mesh })
+            applyRiverWaterMaterial({
+              scene,
+              camera,
+              sunLight,
+              mesh,
+              waveScale: rule.waveScale,
+            })
+          } else if (rule.material === 'waterfall') {
+            applyWaterfallMaterial({
+              scene,
+              camera,
+              sunLight,
+              mesh,
+            })
           } else if (rule.material === 'dtaa') {
             applyDitherFadeMaterial({ scene, camera, sunLight, mesh })
           } else {

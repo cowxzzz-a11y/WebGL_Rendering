@@ -35,6 +35,11 @@ const categories: ContentCategory[] = [
         kind: 'material.riverWater',
       },
       {
+        name: '瀑布材质',
+        description: '世界重力自动向下流动',
+        kind: 'material.waterfall',
+      },
+      {
         name: 'DTAA透明材质',
         description: '深度裁剪式可调透明',
         kind: 'material.dtaa',

@@ -1,7 +1,11 @@
 import type { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
 import type { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
-import { Color3 } from '@babylonjs/core/Maths/math.color'
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
+import { Plane } from '@babylonjs/core/Maths/math.plane'
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial'
+import { MirrorTexture } from '@babylonjs/core/Materials/Textures/mirrorTexture'
+import { RenderTargetTexture } from '@babylonjs/core/Materials/Textures/renderTargetTexture'
+import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Scene } from '@babylonjs/core/scene'
 import type { DetailDescriptor } from '../../../../shared/types'
@@ -43,6 +47,7 @@ uniform vec3 u_LightColor;
 uniform vec3 u_SkyColor;
 uniform float u_NormalStrength;
 uniform float u_NormalTiling;
+uniform float u_WaveScale;
 uniform float u_NormalSpeed;
 uniform float u_FlowSpeed;
 uniform float u_FoamAmount;
@@ -55,6 +60,10 @@ uniform float u_OwnEnvironmentIntensity;
 uniform float u_AmbientStrength;
 uniform float u_GlintStrength;
 uniform float u_MultiAngleReflection;
+uniform float u_ReflectionEnabled;
+uniform mat4 view;
+uniform mat4 u_ReflectionMatrix;
+uniform sampler2D u_ReflectionSampler;
 
 varying vec3 v_WorldPos;
 varying vec3 v_WorldNormal;
@@ -113,12 +122,13 @@ void main(void) {
   vec3 viewDir = normalize(u_CameraPos - v_WorldPos);
   vec3 meshNormal = normalize(v_WorldNormal);
   vec2 waterPos = v_WorldPos.xz + v_UV * 0.35;
+  vec2 patternPos = waterPos / max(u_WaveScale, 0.01);
   float time = u_Time * u_NormalSpeed;
 
-  vec3 waterNormal = sampleWaterNormal(waterPos, time);
+  vec3 waterNormal = sampleWaterNormal(patternPos, time);
   vec3 normal = normalize(mix(meshNormal, waterNormal, clamp(u_NormalStrength, 0.0, 1.0)));
 
-  float depthNoise = fbm(waterPos * 0.18 + vec2(time * 0.08, -time * 0.05));
+  float depthNoise = fbm(patternPos * 0.18 + vec2(time * 0.08, -time * 0.05));
   vec3 waterColor = mix(u_ShallowColor, u_DeepColor, smoothstep(0.18, 0.92, depthNoise));
 
   float sceneEnv = clamp(u_SceneEnvironmentIntensity, 0.0, 3.0);
@@ -141,20 +151,20 @@ void main(void) {
   float sideReflectionD = pow(abs(dot(viewDir, normalize(vec3(-0.38, 0.58, -0.72)))), 2.1);
   float horizonSheen = pow(1.0 - abs(dot(viewDir, meshNormal)), 1.35);
 
-  float streamLines = fbm(vec2(waterPos.x * 1.8 + time * u_FlowSpeed * 2.0, waterPos.y * 9.0));
+  float streamLines = fbm(vec2(patternPos.x * 1.8 + time * u_FlowSpeed * 2.0, patternPos.y * 9.0));
   float foamBands = smoothstep(0.72, 0.95, streamLines);
-  float foamEdges = smoothstep(0.54, 0.72, fbm(waterPos * vec2(0.42, 2.6) + vec2(time * 0.6, 0.0)));
+  float foamEdges = smoothstep(0.54, 0.72, fbm(patternPos * vec2(0.42, 2.6) + vec2(time * 0.6, 0.0)));
   float foam = clamp((foamBands * 0.7 + foamEdges * 0.3) * u_FoamAmount, 0.0, 1.0);
 
-  float microSparkle = smoothstep(0.62, 1.0, fbm(waterPos * 4.8 + vec2(time * 1.2, time * 0.35)));
-  float fineSparkle = smoothstep(0.74, 0.99, fbm(waterPos * 7.0 + vec2(time * 1.35, -time * 0.45)));
-  vec2 elongatedA = vec2(waterPos.x * 0.36 + waterPos.y * 0.08, waterPos.y * 2.4 - time * 0.55);
-  vec2 elongatedB = vec2(waterPos.x * -0.24 + waterPos.y * 0.14, waterPos.y * 1.8 + time * 0.38);
+  float microSparkle = smoothstep(0.62, 1.0, fbm(patternPos * 4.8 + vec2(time * 1.2, time * 0.35)));
+  float fineSparkle = smoothstep(0.74, 0.99, fbm(patternPos * 7.0 + vec2(time * 1.35, -time * 0.45)));
+  vec2 elongatedA = vec2(patternPos.x * 0.36 + patternPos.y * 0.08, patternPos.y * 2.4 - time * 0.55);
+  vec2 elongatedB = vec2(patternPos.x * -0.24 + patternPos.y * 0.14, patternPos.y * 1.8 + time * 0.38);
   float longHighlightA = smoothstep(0.68, 0.94, fbm(elongatedA * 1.6));
   float longHighlightB = smoothstep(0.74, 0.97, fbm(elongatedB * 2.1));
   float brokenHighlights = (longHighlightA * 0.56 + longHighlightB * 0.34 + fineSparkle * 0.18)
-    * (0.38 + fbm(waterPos * 3.2 + vec2(time * 0.35, -time * 0.22)) * 0.72);
-  float waveRidges = smoothstep(0.66, 0.92, abs(riverWaveHeight(waterPos * 0.56, time) - riverWaveHeight(waterPos * 0.56 + vec2(0.28, -0.19), time)) * 2.8);
+    * (0.38 + fbm(patternPos * 3.2 + vec2(time * 0.35, -time * 0.22)) * 0.72);
+  float waveRidges = smoothstep(0.66, 0.92, abs(riverWaveHeight(patternPos * 0.56, time) - riverWaveHeight(patternPos * 0.56 + vec2(0.28, -0.19), time)) * 2.8);
   float angleSparkle = 0.42 + 0.58 * pow(abs(dot(viewDir, normalize(vec3(0.2, 0.92, 0.18)))), 1.35);
   float omniSparkle = (microSparkle * 0.32 + fineSparkle * 0.28 + waveRidges * 0.4) * (0.55 + horizonSheen * 0.45);
   float multiAngleSheen = (sideReflectionA + sideReflectionB + sideReflectionC + sideReflectionD + horizonSheen * 0.62) * 0.42 * u_MultiAngleReflection;
@@ -162,10 +172,31 @@ void main(void) {
   float sparkle = (tightSpec * 0.42 + broadSpec * 0.75 + omniSparkle * angleSparkle * 0.34 + multiAngleSheen * 0.22 + alwaysOnReflection * 0.78) * u_GlintStrength * (0.55 + envFactor);
 
   vec3 reflectionTint = mix(u_SkyColor, vec3(1.0, 1.0, 0.96), 0.58);
-  vec3 reflection = u_SkyColor * envFactor * (0.46 + fresnel * 0.42 + multiAngleSheen * 0.14 + omniSparkle * 0.12)
+  vec3 fallbackReflection = u_SkyColor * envFactor * (0.46 + fresnel * 0.42 + multiAngleSheen * 0.14 + omniSparkle * 0.12)
     + reflectionTint * alwaysOnReflection * (0.38 + envFactor * 0.34);
+
+  vec3 reflectionUVW = vec3(u_ReflectionMatrix * (view * vec4(v_WorldPos, 1.0)));
+    vec2 reflectionUV = reflectionUVW.xy / reflectionUVW.z;
+  reflectionUV.y = 1.0 - reflectionUV.y;
+  reflectionUV += waterNormal.xz * (0.008 + u_NormalStrength * 0.006);
+  float reflectionInBounds =
+    step(0.0, reflectionUV.x) * step(reflectionUV.x, 1.0) *
+    step(0.0, reflectionUV.y) * step(reflectionUV.y, 1.0);
+  vec3 planarReflection = texture2D(u_ReflectionSampler, clamp(reflectionUV, vec2(0.002), vec2(0.998))).rgb;
+  float planarAmount = clamp(
+    (0.55 + fresnel * 0.52 + horizonSheen * 0.14 + multiAngleSheen * 0.06) *
+    reflectionInBounds * u_ReflectionEnabled,
+    0.0,
+    0.94
+  );
+  vec3 reflection = mix(
+    fallbackReflection,
+    planarReflection * (0.72 + envFactor * 0.22),
+    planarAmount
+  );
   float diffuse = max(dot(normal, u_LightDir), 0.0);
   vec3 lighting = waterColor * (u_AmbientStrength * modeEnvMask + envFactor * 0.18 + diffuse * 0.22 * (0.28 + modeEnvMask * 0.72));
+  lighting *= 1.0 - planarAmount * 0.42;
   vec3 color = lighting + reflection + u_LightColor * sparkle * 0.75 * (0.18 + modeEnvMask * 0.82);
   color = mix(color, u_FoamColor, foam);
 
@@ -182,6 +213,7 @@ type RiverWaterParams = {
   foamColor: Color3
   normalStrength: number
   normalTiling: number
+  waveScale: number
   normalSpeed: number
   flowSpeed: number
   foamAmount: number
@@ -198,6 +230,7 @@ type RiverWaterParams = {
 type RiverWaterNumberParam =
   | 'normalStrength'
   | 'normalTiling'
+  | 'waveScale'
   | 'normalSpeed'
   | 'flowSpeed'
   | 'foamAmount'
@@ -214,6 +247,7 @@ type RiverWaterMaterialOptions = {
   camera: ArcRotateCamera
   sunLight: DirectionalLight
   mesh: AbstractMesh
+  waveScale?: number
 }
 
 const createDefaultRiverWaterParams = (): RiverWaterParams => ({
@@ -222,6 +256,7 @@ const createDefaultRiverWaterParams = (): RiverWaterParams => ({
   foamColor: new Color3(0.88, 0.98, 0.95),
   normalStrength: 0.85,
   normalTiling: 16,
+  waveScale: 1,
   normalSpeed: 0.72,
   flowSpeed: 0.55,
   foamAmount: 0.42,
@@ -230,7 +265,7 @@ const createDefaultRiverWaterParams = (): RiverWaterParams => ({
   opacity: 0.82,
   environmentMode: 'mixed',
   ownEnvironmentIntensity: 0.9,
-  ambientStrength: 1,
+  ambientStrength: 0.48,
   glintStrength: 0.72,
   multiAngleReflection: 0.85,
 })
@@ -243,7 +278,11 @@ const getRiverWaterParams = (material: ShaderMaterial): RiverWaterParams => {
     }
   }
 
-  return material.metadata.riverWaterParams as RiverWaterParams
+  const params = material.metadata.riverWaterParams as RiverWaterParams
+  if (!Number.isFinite(params.waveScale)) {
+    params.waveScale = 1
+  }
+  return params
 }
 
 const applyRiverWaterParams = (material: ShaderMaterial, params: RiverWaterParams) => {
@@ -254,6 +293,7 @@ const applyRiverWaterParams = (material: ShaderMaterial, params: RiverWaterParam
   material.setColor3('u_FoamColor', params.foamColor)
   material.setFloat('u_NormalStrength', params.normalStrength)
   material.setFloat('u_NormalTiling', params.normalTiling)
+  material.setFloat('u_WaveScale', params.waveScale)
   material.setFloat('u_NormalSpeed', params.normalSpeed)
   material.setFloat('u_FlowSpeed', params.flowSpeed)
   material.setFloat('u_FoamAmount', params.foamAmount)
@@ -290,6 +330,7 @@ export const applyRiverWaterMaterial = ({
   camera,
   sunLight,
   mesh,
+  waveScale,
 }: RiverWaterMaterialOptions) => {
   const previousMaterial = mesh.material
 
@@ -298,6 +339,22 @@ export const applyRiverWaterMaterial = ({
   }
 
   const startedAt = performance.now()
+  const waterCenter = mesh.getBoundingInfo().boundingBox.centerWorld
+  const reflectionTexture = new MirrorTexture(
+    `RiverWaterReflection_${mesh.uniqueId}`,
+    { ratio: 0.5 },
+    scene,
+    true,
+  )
+  reflectionTexture.mirrorPlane = new Plane(0, -1, 0, waterCenter.y + 0.02)
+  reflectionTexture.renderList = scene.meshes.filter((candidate) =>
+    candidate !== mesh && !candidate.isDisposed() && candidate.material !== null
+  )
+  reflectionTexture.wrapU = Texture.CLAMP_ADDRESSMODE
+  reflectionTexture.wrapV = Texture.CLAMP_ADDRESSMODE
+  reflectionTexture.anisotropicFilteringLevel = 1
+  reflectionTexture.clearColor = new Color4(0.18, 0.48, 0.7, 1)
+
   const material = new ShaderMaterial(
     `RiverWater_${mesh.uniqueId}`,
     scene,
@@ -320,6 +377,7 @@ export const applyRiverWaterMaterial = ({
         'u_SkyColor',
         'u_NormalStrength',
         'u_NormalTiling',
+        'u_WaveScale',
         'u_NormalSpeed',
         'u_FlowSpeed',
         'u_FoamAmount',
@@ -332,7 +390,11 @@ export const applyRiverWaterMaterial = ({
         'u_AmbientStrength',
         'u_GlintStrength',
         'u_MultiAngleReflection',
+        'u_ReflectionEnabled',
+        'u_ReflectionMatrix',
+        'view',
       ],
+      samplers: ['u_ReflectionSampler'],
       needAlphaBlending: true,
     },
   )
@@ -344,13 +406,34 @@ export const applyRiverWaterMaterial = ({
   material.backFaceCulling = false
   material.alpha = 0.82
   setRiverWaterDefaults(material, sunLight)
+  if (Number.isFinite(waveScale)) {
+    const params = getRiverWaterParams(material)
+    params.waveScale = Math.min(20, Math.max(0.1, waveScale as number))
+    applyRiverWaterParams(material, params)
+  }
+  material.setTexture('u_ReflectionSampler', reflectionTexture)
 
   material.onBindObservable.add(() => {
+    const realtimeReflectionEnabled = sunLight.intensity > 0
+    reflectionTexture.refreshRate = realtimeReflectionEnabled
+      ? RenderTargetTexture.REFRESHRATE_RENDER_ONEVERYFRAME
+      : RenderTargetTexture.REFRESHRATE_RENDER_ONCE
     material.setFloat('u_Time', (performance.now() - startedAt) / 1000)
     material.setVector3('u_CameraPos', camera.globalPosition)
     material.setVector3('u_LightDir', sunLight.direction.negate().normalize())
     material.setFloat('u_SceneEnvironmentIntensity', scene.environmentIntensity)
+    material.setFloat('u_ReflectionEnabled', realtimeReflectionEnabled ? 1 : 0)
+    material.setMatrix('u_ReflectionMatrix', reflectionTexture.getReflectionTextureMatrix())
   })
+
+  let reflectionDisposed = false
+  const disposeReflection = () => {
+    if (reflectionDisposed) return
+    reflectionDisposed = true
+    reflectionTexture.dispose()
+  }
+  material.onDisposeObservable.add(disposeReflection)
+  mesh.onDisposeObservable.add(disposeReflection)
 
   mesh.material = material
   mesh.receiveShadows = false
@@ -390,6 +473,7 @@ export const createRiverWaterMaterialDetail = (material: ShaderMaterial): Detail
         items: [
           numberItem('流速', params.flowSpeed, 0, 3, 0.01, updateNumber('flowSpeed')),
           numberItem('动画速度', params.normalSpeed, 0, 3, 0.01, updateNumber('normalSpeed')),
+          numberItem('整体波纹大小', params.waveScale, 0.1, 20, 0.05, updateNumber('waveScale')),
           numberItem('波纹密度', params.normalTiling, 1, 48, 0.5, updateNumber('normalTiling')),
           numberItem('法线强度', params.normalStrength, 0, 2, 0.01, updateNumber('normalStrength')),
         ],

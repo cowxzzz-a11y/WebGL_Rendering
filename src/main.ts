@@ -46,6 +46,9 @@ import {
   applyRiverWaterMaterial,
   createRiverWaterMaterialDetail,
   isRiverWaterMaterial,
+  applyWaterfallMaterial,
+  createWaterfallMaterialDetail,
+  isWaterfallMaterial,
   applyStandardPbrMaterial,
   createStandardPbrMaterialDetail,
   markAsStandardPbrMaterial,
@@ -61,6 +64,7 @@ import type { ProjectEntry } from './features/projects/projectAssets'
 import { renderProjectManager } from './features/projects/projectManager'
 import { applyProjectPbrTextureRules } from './features/projects/projectPbrTextures'
 import { applyProjectMaterialRules } from './features/projects/projectMaterials'
+import { applyProjectMeshMergeRules } from './features/projects/projectMeshMerges'
 import { renderRealtimePanel as renderRealtimePanelContent } from './features/rendering/realtimePanel'
 import { createRealtimeRenderingController } from './features/rendering/realtimeRuntime'
 import type { RealtimeRenderingController } from './features/rendering/realtimeRuntime'
@@ -136,6 +140,7 @@ const {
   frameOverlayClose,
   frameGrid,
   resetCameraButton,
+  dockResetCameraButton,
 } = queryAppDom()
 
 const scenePanelCloseButton = document.querySelector<HTMLButtonElement>('#scenePanelClose')
@@ -154,6 +159,16 @@ let currentModelRoots: TransformNode[] = []
 let importedFileNames: string[] = []
 let sceneCenter = Vector3.Zero()
 let sceneRadius = 8
+type CameraViewPreset = {
+  fov: number
+  radius: number
+  alpha: number
+  beta: number
+  target: Vector3
+  wheelPrecision: number
+  panningSensibility: number
+}
+let initialCameraPreset: CameraViewPreset | null = null
 const lightHelperVisible = {
   hemi: false,
   sun: false,
@@ -1270,7 +1285,12 @@ contentBrowserController = setupContentBrowser({
   button: contentBrowserButton,
   panel: contentBrowserPanel,
   onAssetActivate: (kind) => {
-    if (kind !== 'material.riverWater' && kind !== 'material.dtaa' && kind !== 'material.pbr') {
+    if (
+      kind !== 'material.riverWater'
+      && kind !== 'material.waterfall'
+      && kind !== 'material.dtaa'
+      && kind !== 'material.pbr'
+    ) {
       return
     }
 
@@ -1282,6 +1302,13 @@ contentBrowserController = setupContentBrowser({
 
     if (kind === 'material.riverWater') {
       applyRiverWaterMaterial({
+        scene,
+        camera,
+        sunLight,
+        mesh: selectedMesh,
+      })
+    } else if (kind === 'material.waterfall') {
+      applyWaterfallMaterial({
         scene,
         camera,
         sunLight,
@@ -1308,9 +1335,11 @@ contentBrowserController = setupContentBrowser({
     flushSceneRenderCaches()
     const materialName = kind === 'material.riverWater'
       ? '\u6cb3\u6d41\u6c34\u6750\u8d28'
-      : kind === 'material.dtaa'
-        ? 'DTAA\u900f\u660e\u6750\u8d28'
-        : '\u6807\u51c6PBR\u6750\u8d28'
+      : kind === 'material.waterfall'
+        ? '\u7011\u5e03\u6750\u8d28'
+        : kind === 'material.dtaa'
+          ? 'DTAA\u900f\u660e\u6750\u8d28'
+          : '\u6807\u51c6PBR\u6750\u8d28'
     showTemporaryStatus(`已应用${materialName}：${selectedMesh.name || `Mesh ${selectedMesh.uniqueId}`}`)
   },
 })
@@ -1321,6 +1350,10 @@ saveConfigButton.hidden = true
 resetConfigButton.hidden = true
 
 const createMaterialDetail = (material: Material): DetailDescriptor => {
+  if (isWaterfallMaterial(material)) {
+    return createWaterfallMaterialDetail(material)
+  }
+
   if (isRiverWaterMaterial(material)) {
     return createRiverWaterMaterialDetail(material)
   }
@@ -1569,6 +1602,52 @@ const frameHierarchy = (root: TransformNode, meshes: AbstractMesh[]) => {
   updateLightDirectionHelpers()
 }
 
+const captureCameraViewPreset = (): CameraViewPreset => ({
+  fov: camera.fov,
+  radius: camera.radius,
+  alpha: camera.alpha,
+  beta: camera.beta,
+  target: camera.target.clone(),
+  wheelPrecision: camera.wheelPrecision,
+  panningSensibility: camera.panningSensibility,
+})
+
+const restoreInitialCameraView = () => {
+  if (initialCameraPreset) {
+    clearCameraInertia(camera)
+    camera.fov = initialCameraPreset.fov
+    camera.target.copyFrom(initialCameraPreset.target)
+    camera.radius = initialCameraPreset.radius
+    camera.alpha = initialCameraPreset.alpha
+    camera.beta = initialCameraPreset.beta
+    camera.wheelDeltaPercentage = 0
+    camera.wheelPrecision = initialCameraPreset.wheelPrecision
+    camera.panningSensibility = initialCameraPreset.panningSensibility
+    camera.panningOriginTarget.copyFrom(initialCameraPreset.target)
+    camera.movement.resetPanVelocity()
+    updateCameraDepthRange()
+    updateLightDirectionHelpers()
+    setOutline(currentMeshNodes)
+    return
+  }
+
+  if (currentModelRoots.length > 0 && importedMeshes.length > 0) {
+    frameCurrentModels()
+  } else {
+    sceneCenter = Vector3.Zero()
+    sceneRadius = 8
+    tuneCameraControlsForCurrentScene()
+    clearCameraInertia(camera)
+    camera.setTarget(new Vector3(0, 1.5, 0))
+    camera.radius = 8
+    camera.alpha = -Math.PI / 2.15
+    camera.beta = Math.PI / 2.62
+    clippingController.resetForSceneFrame(sceneCenter, sceneRadius)
+    updateCameraDepthRange()
+    updateLightDirectionHelpers()
+  }
+}
+
 const frameCurrentModels = () => {
   if (currentModelRoots.length === 0 || importedMeshes.length === 0) {
     return
@@ -1668,6 +1747,7 @@ const ensureCurrentModelsRenderable = () => {
 }
 
 const disposeCurrentModels = () => {
+  initialCameraPreset = null
   clearMeshSelection()
   dynamicDetailsRegistry.unregisterImportedDetails()
   currentModelRoots.forEach((root) => root.dispose(false, false))
@@ -1756,6 +1836,37 @@ type LoadModelOptions = {
   onProgress?: (percent: number, label: string) => void
 }
 
+const initializeExplosionMetadata = (root: TransformNode, mesh: AbstractMesh) => {
+  root.computeWorldMatrix(true)
+  const invRootMatrix = root.getWorldMatrix().clone().invert()
+  const modelCenter = root.metadata?.modelCenter ?? Vector3.Zero()
+  const modelCenterRootLocal = Vector3.TransformCoordinates(modelCenter, invRootMatrix)
+
+  mesh.metadata = mesh.metadata || {}
+  mesh.metadata.originalPosition = mesh.position.clone()
+  mesh.computeWorldMatrix(true)
+
+  const originalWorldPos = mesh.getAbsolutePosition().clone()
+  const originalPosRootLocal = Vector3.TransformCoordinates(originalWorldPos, invRootMatrix)
+  const meshCenterWorld = mesh.getBoundingInfo().boundingBox.centerWorld.clone()
+  const meshCenterRootLocal = Vector3.TransformCoordinates(meshCenterWorld, invRootMatrix)
+
+  let dirRootLocal = meshCenterRootLocal.subtract(modelCenterRootLocal)
+  if (dirRootLocal.length() < 0.001) {
+    dirRootLocal = originalPosRootLocal.clone()
+    if (dirRootLocal.length() < 0.001) {
+      dirRootLocal = new Vector3(0, 1, 0)
+    }
+  }
+
+  const originalDistance = dirRootLocal.length()
+  mesh.metadata.originalWorldPosition = originalWorldPos
+  mesh.metadata.originalPositionRootLocal = originalPosRootLocal
+  mesh.metadata.explosionDirRootLocal = dirRootLocal.normalize()
+  mesh.metadata.originalDistance = originalDistance
+  mesh.metadata.meshCenterRootLocal = meshCenterRootLocal
+}
+
 const loadModel = async (
   source: string | File,
   fileName: string,
@@ -1831,34 +1942,8 @@ const loadModel = async (
   root.metadata.explosionIntensity = 0
   root.metadata.explosionMode = 'radial'
 
-  root.computeWorldMatrix(true)
-  const invRootMatrix = root.getWorldMatrix().clone().invert()
-
   result.meshes.forEach((mesh) => {
-    mesh.metadata = mesh.metadata || {}
-    mesh.metadata.originalPosition = mesh.position.clone()
-
-    mesh.computeWorldMatrix(true)
-    const originalWorldPos = mesh.getAbsolutePosition().clone()
-    const originalPosRootLocal = Vector3.TransformCoordinates(originalWorldPos, invRootMatrix)
-    mesh.metadata.originalWorldPosition = originalWorldPos
-    mesh.metadata.originalPositionRootLocal = originalPosRootLocal
-
-    const meshCenterWorld = mesh.getBoundingInfo().boundingBox.centerWorld.clone()
-    const meshCenterRootLocal = Vector3.TransformCoordinates(meshCenterWorld, invRootMatrix)
-    const modelCenterRootLocal = Vector3.TransformCoordinates(modelCenter, invRootMatrix)
-
-    let dirRootLocal = meshCenterRootLocal.subtract(modelCenterRootLocal)
-    if (dirRootLocal.length() < 0.001) {
-      dirRootLocal = originalPosRootLocal.clone()
-      if (dirRootLocal.length() < 0.001) {
-        dirRootLocal = new Vector3(0, 1, 0)
-      }
-    }
-    const originalDistance = dirRootLocal.length()
-    mesh.metadata.explosionDirRootLocal = dirRootLocal.normalize()
-    mesh.metadata.originalDistance = originalDistance
-    mesh.metadata.meshCenterRootLocal = meshCenterRootLocal
+    initializeExplosionMetadata(root, mesh)
   })
 
   dynamicDetailsRegistry.registerImportedDetails(result.meshes, new Set<Material>(materials))
@@ -1892,22 +1977,8 @@ setupModelImportControls({
   setStatus,
 })
 
-resetCameraButton.addEventListener('click', () => {
-  if (currentModelRoots.length > 0 && importedMeshes.length > 0) {
-    frameCurrentModels()
-  } else {
-    sceneCenter = Vector3.Zero()
-    sceneRadius = 8
-    tuneCameraControlsForCurrentScene()
-    clearCameraInertia(camera)
-    camera.setTarget(new Vector3(0, 1.5, 0))
-    camera.radius = 8
-    camera.alpha = -Math.PI / 2.15
-    camera.beta = Math.PI / 2.62
-    clippingController.resetForSceneFrame(sceneCenter, sceneRadius)
-    updateCameraDepthRange()
-    updateLightDirectionHelpers()
-  }
+;[resetCameraButton, dockResetCameraButton].forEach((button) => {
+  button.addEventListener('click', restoreInitialCameraView)
 })
 
 const keyboardNavigationController = createKeyboardNavigationController({
@@ -1967,6 +2038,20 @@ const loadProject = async (project: ProjectEntry) => {
         setLoadingScreen(false)
         return
       }
+    }
+
+    if (project.removeMeshes.length > 0) {
+      const removeMeshNames = new Set(project.removeMeshes)
+      importedMeshes.forEach((mesh) => {
+        if (!mesh.isDisposed() && removeMeshNames.has(mesh.name)) {
+          mesh.dispose(false, false)
+        }
+      })
+      importedMeshes = importedMeshes.filter((mesh) => !mesh.isDisposed())
+      refreshImportedDetails()
+      rebuildImportedOutline()
+      refreshImportedRenderingState()
+      flushSceneRenderCaches()
     }
 
     if (project.config.material === 'dtaa') {
@@ -2032,6 +2117,34 @@ const loadProject = async (project: ProjectEntry) => {
       }
     }
 
+    if (project.meshMergeRules.length > 0) {
+      const mergeResults = applyProjectMeshMergeRules({
+        rules: project.meshMergeRules,
+        modelRoots: currentModelRoots,
+        modelFileNames: importedFileNames,
+        getMeshesForRoot,
+      })
+
+      if (mergeResults.length === 0) {
+        console.warn(`Project mesh merge rules matched fewer than two meshes: ${project.id}`)
+      } else {
+        const disposedSources = new Set<AbstractMesh>(
+          mergeResults.flatMap((result) => result.sourceMeshes),
+        )
+        importedMeshes = [
+          ...importedMeshes.filter((mesh) => !mesh.isDisposed() && !disposedSources.has(mesh)),
+          ...mergeResults.map((result) => result.mergedMesh),
+        ]
+        mergeResults.forEach(({ root, mergedMesh }) => {
+          initializeExplosionMetadata(root, mergedMesh)
+        })
+        refreshImportedDetails()
+        rebuildImportedOutline()
+        refreshImportedRenderingState()
+        flushSceneRenderCaches()
+      }
+    }
+
     ensureCurrentModelsRenderable()
 
     await new Promise<void>((resolve) => {
@@ -2077,6 +2190,7 @@ const loadProject = async (project: ProjectEntry) => {
       }
     }
 
+    initialCameraPreset = captureCameraViewPreset()
     flushSceneRenderCaches()
     setLoadingScreen(false)
 

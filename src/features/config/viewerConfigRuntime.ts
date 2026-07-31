@@ -221,6 +221,8 @@ export const applyViewerConfigSnapshot = async (
   let shouldApplyRealtimeEffectsState = false
 
   const cameraConfig = config.camera
+  const configuredWheelPrecision = config.cameraWheelPrecision ?? cameraConfig?.wheelPrecision
+  const configuredPanningSensibility = config.cameraPanningSensibility ?? cameraConfig?.panningSensibility
   if (includeCamera && cameraConfig) {
     camera.fov = config.cameraFov ?? cameraConfig.fov ?? camera.fov
     camera.radius = config.cameraRadius ?? cameraConfig.radius ?? camera.radius
@@ -230,13 +232,13 @@ export const applyViewerConfigSnapshot = async (
     if (cameraTarget) {
       assignVector(camera.target, cameraTarget)
     }
-    camera.wheelPrecision = config.cameraWheelPrecision ?? cameraConfig.wheelPrecision ?? camera.wheelPrecision
-    camera.panningSensibility = config.cameraPanningSensibility ?? cameraConfig.panningSensibility ?? camera.panningSensibility
     tuneTouchCameraControls({
       camera,
       sceneCenter: getSceneCenter(),
       sceneRadius: getSceneRadius(),
     })
+    camera.wheelPrecision = configuredWheelPrecision ?? camera.wheelPrecision
+    camera.panningSensibility = configuredPanningSensibility ?? camera.panningSensibility
   }
   if (includeCamera && !cameraConfig) {
     camera.fov = config.cameraFov ?? camera.fov
@@ -246,8 +248,6 @@ export const applyViewerConfigSnapshot = async (
     if (config.cameraTarget) {
       assignVector(camera.target, config.cameraTarget)
     }
-    camera.wheelPrecision = config.cameraWheelPrecision ?? camera.wheelPrecision
-    camera.panningSensibility = config.cameraPanningSensibility ?? camera.panningSensibility
     if (
       config.cameraFov !== undefined
       || config.cameraRadius !== undefined
@@ -262,6 +262,8 @@ export const applyViewerConfigSnapshot = async (
         sceneCenter: getSceneCenter(),
         sceneRadius: getSceneRadius(),
       })
+      camera.wheelPrecision = configuredWheelPrecision ?? camera.wheelPrecision
+      camera.panningSensibility = configuredPanningSensibility ?? camera.panningSensibility
     }
   }
 
@@ -456,6 +458,15 @@ export const applyViewerConfigSnapshot = async (
   }
 
   updateSceneBoundsFromCurrentModels()
+  if (includeCamera) {
+    if (configuredWheelPrecision !== undefined) {
+      camera.wheelDeltaPercentage = 0
+      camera.wheelPrecision = configuredWheelPrecision
+    }
+    if (configuredPanningSensibility !== undefined) {
+      camera.panningSensibility = configuredPanningSensibility
+    }
+  }
   updateGBufferRenderList()
   updateLightDirectionHelpers()
   refreshSelectedDetail()
